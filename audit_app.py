@@ -4,72 +4,66 @@ import re
 from io import BytesIO
 from openpyxl import Workbook
 
-# --- 1. ОЧИСТКА ДАННЫХ ---
-def clean(key):
+# --- 1. ОЧИСТКА ---
+def ultra_clean(key):
     val = st.secrets.get(key, "")
-    return re.sub(r"[^a-zA-Z0-9:]", "", str(val)) if val else ""
+    if not val: return ""
+    return re.sub(r"[^a-zA-Z0-9:]", "", str(val))
 
-TOKEN = clean("TELEGRAM_TOKEN")
-CHAT_ID = clean("TELEGRAM_CHAT_ID")
+TOKEN = ultra_clean("TELEGRAM_TOKEN")
+# Важно: CHAT_ID должен быть строкой для корректной отправки
+CHAT_ID = ultra_clean("TELEGRAM_CHAT_ID")
 
-st.set_page_config(page_title="Khalil Audit", layout="centered")
-st.title("🛡️ Khalil Trade: Отправка аудита")
+st.set_page_config(page_title="Khalil Audit", page_icon="🛡️")
 
-# --- 2. ИНТЕРФЕЙС ---
-with st.form("audit_form"):
-    st.subheader("📋 Данные проверки")
-    company = st.text_input("Название организации")
-    expert = st.text_input("ФИО эксперта", value="Иван Рудой")
+st.title("🛡️ Khalil Trade Audit")
+
+# --- 2. ФОРМА ---
+with st.form("main_form"):
+    company = st.text_input("Название компании")
+    name = st.text_input("Эксперт", value="Иван Рудой")
+    pcs = st.number_input("Кол-во ПК", min_value=0)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        pc_count = st.number_input("Кол-во ПК", min_value=0)
-    with col2:
-        servers = st.number_input("Серверы", min_value=0)
-    
-    st.divider()
-    submit = st.form_submit_button("🚀 СФОРМИРОВАТЬ И ОТПРАВИТЬ")
+    submit = st.form_submit_button("🚀 ОТПРАВИТЬ ОТЧЕТ")
 
 # --- 3. ЛОГИКА ---
 if submit:
-    if not company or not expert:
-        st.error("⚠️ Пожалуйста, заполните название компании и ФИО.")
+    if not company:
+        st.warning("Введите название компании")
     else:
-        with st.status("Создание отчета и отправка...") as status:
-            try:
-                # Генерируем Excel в памяти
-                output = BytesIO()
-                wb = Workbook()
-                ws = wb.active
-                ws.title = "Аудит"
-                ws.append(["Параметр", "Значение"])
-                ws.append(["Компания", company])
-                ws.append(["Эксперт", expert])
-                ws.append(["Кол-во ПК", pc_count])
-                ws.append(["Серверы", servers])
-                wb.save(output)
-                
-                # Отправка в Telegram
-                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                files = {'document': (f"Audit_{company}.xlsx", output.getvalue())}
-                payload = {
-                    "chat_id": CHAT_ID,
-                    "caption": f"✅ *НОВЫЙ АУДИТ*\n🏢 {company}\n👤 {expert}",
-                    "parse_mode": "Markdown"
-                }
-                
-                response = requests.post(url, data=payload, files=files, timeout=20)
-                
-                if response.ok:
-                    status.update(label="✅ Успешно доставлено!", state="complete")
-                    st.balloons()
-                    st.success(f"Отчет по компании '{company}' отправлен в ваш Telegram.")
-                else:
-                    status.update(label="❌ Ошибка доставки", state="error")
-                    st.error("Telegram не принял файл.")
-                    st.json(response.json()) # Тут будет написано почему
-                    
-            except Exception as e:
-                st.error(f"Сбой приложения: {e}")
+        try:
+            # Создаем Excel
+            output = BytesIO()
+            wb = Workbook()
+            ws = wb.active
+            ws.append(["Параметр", "Значение"])
+            ws.append(["Компания", company])
+            ws.append(["ФИО", name])
+            ws.append(["ПК", pcs])
+            wb.save(output)
+            
+            # Отправка
+            url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+            
+            # Мы принудительно превращаем CHAT_ID в строку и убираем лишнее
+            payload = {
+                "chat_id": str(CHAT_ID).strip(),
+                "caption": f"📄 Новый аудит: {company}\n👤 Эксперт: {name}",
+                "parse_mode": "Markdown"
+            }
+            files = {'document': (f"Audit_{company}.xlsx", output.getvalue())}
+            
+            r = requests.post(url, data=payload, files=files, timeout=15)
+            
+            if r.ok:
+                st.success("✅ Отчет успешно доставлен в Telegram!")
+                st.balloons()
+            else:
+                st.error("❌ Ошибка отправки")
+                st.json(r.json())
+                st.info(f"Бот пытался отправить на ID: `{CHAT_ID}`. Если это ваш ID, напишите боту @Khaliltrade_bot любое сообщение еще раз.")
+        
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
 
-st.caption(f"Бот: @Khaliltrade_bot | ID назначения: {CHAT_ID}")
+st.caption(f"v1.1 | Бот: @Khaliltrade_bot | ID: {CHAT_ID}")
