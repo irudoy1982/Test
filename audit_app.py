@@ -3,95 +3,85 @@ import requests
 import re
 from io import BytesIO
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
 
-# --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
-st.set_page_config(page_title="ИТ-Аудит 2026", layout="centered", page_icon="🛡️")
+# --- 1. ТОТАЛЬНАЯ ОЧИСТКА ---
+def ultra_clean(key):
+    # Берем значение из Secrets
+    val = st.secrets.get(key, "")
+    if not val:
+        return ""
+    # Оставляем только то, что может быть в токене и ID
+    return re.sub(r"[^a-zA-Z0-9:]", "", str(val))
 
-# Функция тотальной очистки (убирает пробелы, кавычки и невидимые знаки)
-def force_clean(text):
-    if text:
-        return re.sub(r"[^a-zA-Z0-9:]", "", str(text))
-    return ""
+# Сразу получаем очищенные данные
+TOKEN = ultra_clean("TELEGRAM_TOKEN")
+CHAT_ID = ultra_clean("TELEGRAM_CHAT_ID")
 
-# Получаем данные и СРАЗУ чистим
-TOKEN = force_clean(st.secrets.get("TELEGRAM_TOKEN", ""))
-CHAT_ID = force_clean(st.secrets.get("TELEGRAM_CHAT_ID", ""))
+st.set_page_config(page_title="Диагностика системы", layout="centered")
 
-# --- 2. ИНТЕРФЕЙС ---
-st.title("🛡️ Khalil Trade | IT Audit")
-st.write("Система готова к отправке отчета.")
+st.title("🛡️ Khalil Trade: Финальный тест")
 
-# Используем st.form, чтобы данные не терялись при вводе
-with st.form("final_form"):
-    st.subheader("📋 Данные для аудита")
+# --- 2. ИНСТРУМЕНТ ПРОВЕРКИ ---
+with st.expander("🛠 СКАНЕР ТОКЕНА (Нажмите здесь)", expanded=True):
+    st.write("Ниже показано то, что видит код внутри вашего приложения:")
     
-    comp_name = st.text_input("Название компании", placeholder="Напр: ТОО 'Алма-Ата'")
-    rep_name = st.text_input("Ваше имя")
-    
-    st.divider()
-    
-    st.subheader("⚙️ Технические параметры")
     col1, col2 = st.columns(2)
     with col1:
-        pc = st.number_input("Кол-во ПК", min_value=0, step=1)
-        srv = st.number_input("Кол-во серверов", min_value=0, step=1)
+        st.metric("Длина токена", len(TOKEN))
+        st.write(f"Начало: `{TOKEN[:8]}...`")
     with col2:
-        is_backup = st.checkbox("Резервное копирование")
-        is_av = st.checkbox("Антивирусная защита")
+        st.metric("Длина ID", len(CHAT_ID))
+        st.write(f"ID: `{CHAT_ID}`")
+    
+    if st.button("🔌 ПРОВЕРИТЬ СВЯЗЬ С BOTFATHER"):
+        try:
+            # Самый простой запрос к Telegram: "Кто я?"
+            test_url = f"https://api.telegram.org/bot{TOKEN}/getMe"
+            r = requests.get(test_url, timeout=10)
+            if r.ok:
+                bot_info = r.json()
+                st.success(f"✅ СВЯЗЬ ЕСТЬ! Имя бота: @{bot_info['result']['username']}")
+            else:
+                st.error(f"❌ СВЯЗИ НЕТ. Ошибка {r.status_code}")
+                st.json(r.json())
+        except Exception as e:
+            st.error(f"Ошибка запроса: {e}")
 
-    submit = st.form_submit_button("🚀 ОТПРАВИТЬ В TELEGRAM")
+st.divider()
 
-# --- 3. ЛОГИКА ---
+# --- 3. ФОРМА ОТПРАВКИ ---
+with st.form("debug_form"):
+    company = st.text_input("Название компании (для теста)")
+    name = st.text_input("Имя")
+    submit = st.form_submit_button("🚀 ТЕСТОВАЯ ОТПРАВКА ФАЙЛА")
+
 if submit:
-    if not comp_name or not rep_name:
-        st.warning("⚠️ Пожалуйста, заполните название компании и имя!")
+    if not company or not name:
+        st.warning("Заполните поля!")
     else:
-        with st.status("Связь с Telegram...") as status:
-            try:
-                # Генерируем Excel
-                output = BytesIO()
-                wb = Workbook()
-                ws = wb.active
-                ws.title = "Audit"
-                
-                # Заголовки
-                ws.append(["Параметр", "Значение"])
-                ws.append(["Компания", comp_name])
-                ws.append(["Представитель", rep_name])
-                ws.append(["ПК", pc])
-                ws.append(["Серверы", srv])
-                ws.append(["Бэкап", "Есть" if is_backup else "Нет"])
-                ws.append(["Антивирус", "Есть" if is_av else "Нет"])
-                
-                # Немного оформления
-                ws['A1'].font = Font(bold=True)
-                ws['B1'].font = Font(bold=True)
-                
-                wb.save(output)
-                file_data = output.getvalue()
-
-                # Отправка
-                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                payload = {
-                    "chat_id": CHAT_ID,
-                    "caption": f"🔔 *НОВЫЙ АУДИТ*\n🏢 Организация: {comp_name}\n👤 Эксперт: {rep_name}\n💻 Инфраструктура: {pc} ПК, {srv} Серв.",
-                    "parse_mode": "Markdown"
-                }
-                files = {'document': (f"Audit_{comp_name}.xlsx", file_data)}
-                
-                r = requests.post(url, data=payload, files=files, timeout=20)
-                
-                if r.ok:
-                    status.update(label="✅ Отчет успешно отправлен!", state="complete")
-                    st.balloons()
-                    st.success("Проверьте Telegram!")
-                else:
-                    status.update(label="❌ Ошибка Telegram", state="error")
-                    st.error(f"Ответ сервера: {r.text}")
-                    st.info(f"Проверьте, что в Secrets ID указан без кавычек. Ваш текущий ID: {CHAT_ID}")
+        try:
+            # Создаем микро-Excel
+            output = BytesIO()
+            wb = Workbook()
+            ws = wb.active
+            ws.append(["Тест", "Успешно"])
+            ws.append(["Компания", company])
+            wb.save(output)
             
-            except Exception as e:
-                st.error(f"Ошибка приложения: {e}")
+            # Отправка
+            url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+            files = {'document': (f"Test_{company}.xlsx", output.getvalue())}
+            payload = {"chat_id": CHAT_ID, "caption": "Тест пройден!"}
+            
+            response = requests.post(url, data=payload, files=files, timeout=20)
+            
+            if response.ok:
+                st.success("🎉 ФАЙЛ УШЕЛ! Проверьте Telegram.")
+                st.balloons()
+            else:
+                st.error("Ошибка при отправке файла:")
+                st.json(response.json())
+        except Exception as e:
+            st.error(f"Ошибка кода: {e}")
 
-st.caption(f"App Version 1.0.4 | User: Ivan Rudoy")
+st.caption("Ivan Rudoy | 2026")
