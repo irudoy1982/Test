@@ -4,7 +4,7 @@ from io import BytesIO
 from openpyxl import Workbook
 
 # --- ВСТАВЬТЕ ВАШИ ДАННЫЕ СЮДА НАПРЯМУЮ ДЛЯ ТЕСТА ---
-TEST_TOKEN = "8757743843:AAGr5vZGr1C9cAbukm2eFM_suwQwEu6eyCk"
+TEST_TOKEN = "8757743843:AAELoPZlnUf0K5P0HYNxXyr0EswTfdqqD2o"
 TEST_CHAT_ID = "ВАШ_ID_ИЗ_USERINFOBOT" # Например: "125320424"
 
 st.set_page_config(page_title="Khalil Audit Final Test")
