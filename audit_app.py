@@ -2,128 +2,124 @@ import streamlit as st
 import requests
 from io import BytesIO
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment
+from datetime import datetime
 
-# --- НАСТРОЙКИ И БЕЗОПАСНОСТЬ ---
+# --- ИНИЦИАЛИЗАЦИЯ И SECRETS ---
 TOKEN = st.secrets.get("TELEGRAM_TOKEN")
-MY_ID = st.secrets.get("TELEGRAM_CHAT_ID")
+CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
 st.set_page_config(page_title="Khalil Audit Pro", page_icon="🛡️", layout="centered")
 
-# Проверка конфигурации
-if not TOKEN or not MY_ID:
-    st.error("⚠️ Настройте Secrets (TELEGRAM_TOKEN и TELEGRAM_CHAT_ID) в панели Streamlit!")
+if not TOKEN or not CHAT_ID:
+    st.error("⚠️ Ошибка: Настройте TELEGRAM_TOKEN и TELEGRAM_CHAT_ID в Secrets!")
     st.stop()
 
 # --- ИНТЕРФЕЙС ---
 st.title("🛡️ Khalil Audit Professional")
-st.info("Заполните данные аудита. После отправки вы получите готовый Excel-отчет в Telegram.")
+st.write(f"Сегодня: {datetime.now().strftime('%d.%m.%2026')}")
 
-with st.form("full_audit_form"):
-    # Основная информация
-    st.subheader("📍 Общие сведения")
+with st.form("main_audit_form"):
+    # Секция 1: Общая информация
+    st.subheader("📍 Информация об объекте")
     col1, col2 = st.columns(2)
     with col1:
-        company = st.text_input("Название организации", placeholder="ТОО 'Пример'")
-        expert = st.text_input("Эксперт", value="Иван Рудой")
+        company = st.text_input("Название организации", placeholder="Напр. ТОО 'ТехноСервис'")
+        expert = st.text_input("Ведущий эксперт", value="Иван Рудой")
     with col2:
-        audit_date = st.date_input("Дата проведения")
-        location = st.text_input("Город/Объект", value="Алматы")
+        audit_type = st.selectbox("Тип проверки", ["Первичный аудит", "Плановый контроль", "Внеплановая проверка"])
+        city = st.text_input("Город", value="Алматы")
 
     st.divider()
 
-    # Технические показатели
-    st.subheader("💻 Техническая инвентаризация")
+    # Секция 2: Техническая инвентаризация
+    st.subheader("💻 ИТ-инфраструктура")
     c1, c2, c3 = st.columns(3)
     with c1:
-        pcs = st.number_input("Кол-во ПК (АРМ)", min_value=0, step=1)
+        pcs = st.number_input("Кол-во АРМ (ПК)", min_value=0, step=1)
     with c2:
         servers = st.number_input("Серверы", min_value=0, step=1)
     with c3:
-        network_nodes = st.number_input("Сетевое обор.", min_value=0, step=1)
+        printers = st.number_input("Периферия", min_value=0, step=1)
 
     st.divider()
 
-    # Кибербезопасность
-    st.subheader("🔒 Проверка систем защиты")
-    pam_status = st.selectbox("Система PAM (Управление доступом)", ["Не внедрено", "В процессе", "Активно", "Требует обновления"])
-    dlp_status = st.selectbox("Система DLP (Защита данных)", ["Отсутствует", "Внедрена частично", "Активна"])
-    antivirus = st.radio("Антивирусная защита актуальна?", ["Да", "Нет", "Частично"], horizontal=True)
+    # Секция 3: Безопасность и ПО
+    st.subheader("🔒 Кибербезопасность")
+    os_versions = st.multiselect("Операционные системы", ["Windows 10/11", "Windows Server", "Linux", "macOS"])
+    antivirus = st.radio("Антивирусная защита:", ["Установлена (Актуальна)", "Требует обновления", "Отсутствует"], horizontal=True)
+    backup_status = st.checkbox("Резервное копирование настроено?")
     
-    notes = st.text_area("Дополнительные замечания и рекомендации")
+    st.divider()
 
-    # Кнопка отправки
-    st.markdown("---")
-    submit = st.form_submit_button("🚀 СФОРМИРОВАТЬ И ОТПРАВИТЬ ПОЛНЫЙ ОТЧЕТ")
+    # Секция 4: Заметки
+    st.subheader("📝 Заключение")
+    notes = st.text_area("Замечания и рекомендации эксперта", placeholder="Опишите выявленные уязвимости или требования...")
+
+    submit = st.form_submit_button("🚀 СФОРМИРОВАТЬ И ОТПРАВИТЬ ОТЧЕТ")
 
 # --- ЛОГИКА ОБРАБОТКИ ---
 if submit:
     if not company:
-        st.warning("Пожалуйста, укажите название организации.")
+        st.warning("Пожалуйста, введите название организации.")
     else:
-        with st.spinner("Создание профессионального отчета..."):
+        with st.status("Генерация отчета...") as status:
             try:
-                # 1. Генерация Excel
+                # 1. Создание Excel-файла
                 output = BytesIO()
                 wb = Workbook()
                 ws = wb.active
                 ws.title = "Результаты аудита"
 
-                # Стилизация заголовков
-                bold_font = Font(bold=True)
-                center_align = Alignment(horizontal='center')
-
-                # Заполнение данных
-                data = [
-                    ["Параметр", "Значение"],
+                # Заполнение данных (заголовки и значения)
+                rows = [
+                    ["ПАРАМЕТР", "ЗНАЧЕНИЕ"],
                     ["Организация", company],
-                    ["Дата", str(audit_date)],
-                    ["Город", location],
+                    ["Дата аудита", datetime.now().strftime('%d.%m.%Y')],
+                    ["Тип проверки", audit_type],
+                    ["Город", city],
                     ["Эксперт", expert],
                     ["---", "---"],
-                    ["Кол-во ПК (АРМ)", pcs],
-                    ["Серверы", servers],
-                    ["Сетевые узлы", network_nodes],
+                    ["Количество АРМ", pcs],
+                    ["Количество серверов", servers],
+                    ["Периферия", printers],
                     ["---", "---"],
-                    ["Статус PAM", pam_status],
-                    ["Статус DLP", dlp_status],
+                    ["ОС в сети", ", ".join(os_versions)],
                     ["Антивирус", antivirus],
+                    ["Бэкап настроен", "Да" if backup_status else "Нет"],
                     ["---", "---"],
                     ["Замечания", notes]
                 ]
 
-                for row in data:
-                    ws.append(row)
-
-                # Минимальное форматирование
-                for cell in ws["A"]: cell.font = bold_font
-                ws.column_dimensions['A'].width = 25
-                ws.column_dimensions['B'].width = 40
+                for r in rows:
+                    ws.append(r)
                 
+                # Косметическое расширение колонок
+                ws.column_dimensions['A'].width = 25
+                ws.column_dimensions['B'].width = 45
                 wb.save(output)
 
                 # 2. Отправка в Telegram
                 url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                caption = (f"📑 *ПОЛНЫЙ ОТЧЕТ ПО АУДИТУ*\n\n"
+                caption = (f"📑 *ОТЧЕТ ПО АУДИТУ*\n\n"
                            f"🏢 *Объект:* {company}\n"
                            f"👤 *Эксперт:* {expert}\n"
-                           f"📅 *Дата:* {audit_date}\n"
-                           f"📍 *Локация:* {location}\n\n"
-                           f"💻 *Инфраструктура:* {pcs} ПК, {servers} Серв.\n"
-                           f"🔐 *PAM:* {pam_status}")
+                           f"🖥️ *Инфраструктура:* {pcs} ПК, {servers} Серв.\n"
+                           f"🛡️ *Антивирус:* {antivirus}\n"
+                           f"📅 *Дата:* {datetime.now().strftime('%d.%m.%Y')}")
 
                 files = {'document': (f"Audit_Report_{company}.xlsx", output.getvalue())}
-                payload = {"chat_id": MY_ID, "caption": caption, "parse_mode": "Markdown"}
-                
-                r = requests.post(url, data=payload, files=files)
+                payload = {"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}
 
-                if r.ok:
-                    st.success(f"Отчет для {company} отправлен успешно!")
+                response = requests.post(url, data=payload, files=files)
+
+                if response.ok:
+                    status.update(label="✅ Отчет доставлен в Telegram!", state="complete")
                     st.balloons()
+                    st.success(f"Файл для {company} успешно отправлен Ивану.")
                 else:
-                    st.error(f"Ошибка Telegram: {r.text}")
+                    st.error(f"Ошибка API: {response.text}")
 
             except Exception as e:
-                st.error(f"Произошла ошибка: {e}")
+                st.error(f"Техническая ошибка: {e}")
 
-st.caption(f"Khalil Audit Tool | {location} 2026")
+st.caption("Ivan Rudoy | IT Security Almaty 2026")
