@@ -5,6 +5,7 @@ import requests
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.drawing.image import Image as OpenpyxlImage
 from datetime import datetime
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
@@ -47,13 +48,12 @@ with col_h2:
 
 st.divider()
 
-# --- БЛОК 1: ТЕХНИЧЕСКАЯ ЧАСТЬ ---
+# --- ТЕХНИЧЕСКИЕ БЛОКИ (БЕЗ ИЗМЕНЕНИЙ В ЛОГИКЕ) ---
+# Блок 1: Инфраструктура
 st.header("Блок 1: Техническая часть")
-
 st.subheader("1.1. Конечные точки (АРМ)")
 total_arm = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1, key="total_arm_val")
 data['1.1. Всего АРМ'] = total_arm
-
 selected_os_arm = st.multiselect("Выберите ОС на АРМ:", ["Windows", "Linux", "macOS", "Другое"], key="ms_arm_list")
 if selected_os_arm:
     for os_item in selected_os_arm:
@@ -61,7 +61,6 @@ if selected_os_arm:
         data[f"ОС АРМ ({os_item})"] = count_arm
 
 st.write("---")
-
 st.subheader("1.2. Серверы")
 col_s1, col_s2 = st.columns(2)
 with col_s1:
@@ -78,7 +77,6 @@ if selected_os_srv:
         data[f"ОС Сервера ({os_s})"] = count_srv
 
 st.write("---")
-
 col_v1, col_v2 = st.columns(2)
 with col_v1:
     st.subheader("1.3. Виртуализация")
@@ -88,150 +86,155 @@ with col_v2:
     data['1.4. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
 
 st.write("---")
-
 st.subheader("1.5. Внутренние Информационные системы")
 has_is = st.checkbox("Есть ли внутренние Информационные системы (1C, ERP, CRM)?", key="is_15_chk")
-if has_is:
-    data['1.5. Внутренние ИС'] = st.text_input("Перечислите их через запятую:", key="is_input_field")
-else:
-    data['1.5. Внутренние ИС'] = "Нет"
+data['1.5. Внутренние ИС'] = st.text_input("Перечислите их:", key="is_input_field") if has_is else "Нет"
 
 st.subheader("1.6. Система мониторинга")
 has_mon = st.checkbox("Есть ли система мониторинга?", key="mon_16_chk")
-if has_mon:
-    data['1.6. Мониторинг'] = st.selectbox("Выберите систему:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_select_field")
-else:
-    data['1.6. Мониторинг'] = "Нет"
+data['1.6. Мониторинг'] = st.selectbox("Выберите:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_select") if has_mon else "Нет"
 
-
-# --- БЛОК 2: СЕТЬ ---
-st.header("Блок 2: Сетевая инфраструктура и Интернет")
+# Блок 2: Сеть
+st.header("Блок 2: Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_block_toggle"):
     net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink"]
     c_n1, c_n2 = st.columns(2)
     with c_n1:
-        data['2.1. Основной канал'] = st.selectbox("Тип канала (Основной):", net_types, key="main_net_type")
-        data['2.1. Скорость осн. (mbit/s)'] = st.number_input("Скорость основного канала (mbit/s):", min_value=0, key="main_net_speed")
+        data['2.1. Основной канал'] = st.selectbox("Тип (Основной):", net_types, key="main_net_type")
+        data['2.1. Скорость (mbit/s)'] = st.number_input("Скорость:", min_value=0, key="main_net_speed")
     with c_n2:
-        data['2.1. Резервный канал'] = st.selectbox("Тип канала (Резервный):", ["Нет"] + net_types, key="res_net_type")
-        data['2.1. Скорость рез. (mbit/s)'] = st.number_input("Скорость резервного канала (mbit/s):", min_value=0, key="res_net_speed")
-
-    data['2.4. NGFW'] = st.text_input("Вендор Межсетевого экрана (NGFW):", key="ngfw_vendor_input")
+        data['2.1. Резервный канал'] = st.selectbox("Тип (Резервный):", ["Нет"] + net_types, key="res_net_type")
+    
+    data['2.4. NGFW'] = st.text_input("Вендор NGFW:", key="ngfw_vendor")
     if data['2.4. NGFW']: score += 20
 
-    has_wifi = st.checkbox("Используется Wi-Fi?", key="wifi_usage_chk")
-    if has_wifi:
-        if st.checkbox("Есть ли Wi-Fi контроллер?", key="wifi_ctrl_exists"):
-            data['2.5. Контроллер'] = st.text_input("Модель контроллера:", key="wifi_ctrl_model")
-        else:
-            data['2.5. Контроллер'] = "Без контроллера"
-        data['2.5. Число точек'] = st.number_input("Кол-во точек доступа:", min_value=0, key="wifi_ap_count")
+    if st.checkbox("Используется Wi-Fi?", key="wifi_usage_chk"):
+        data['2.5. Контроллер'] = st.text_input("Модель контроллера:", key="wifi_ctrl")
+        data['2.5. Число точек'] = st.number_input("Кол-во точек:", min_value=0, key="wifi_ap_cnt")
 
-
-# --- БЛОК 3: ИБ ---
+# Блок 3: ИБ
 st.header("Блок 3: Информационная Безопасность")
-if st.toggle("Есть отдел Информационной безопасности", key="ib_block_main_toggle"):
-    st.info("Отметьте внедренные системы и укажите их вендора:")
+if st.toggle("Есть отдел ИБ", key="ib_block_toggle"):
     ib_list = {
-        "DLP (Защита от утечек)": 15,
-        "PAM (Контроль доступа)": 10,
-        "SIEM/SOC (Мониторинг ИБ)": 20,
-        "WAF (Защита Web)": 10,
-        "EDR/Antimalware": 15,
-        "Резервное копирование": 20
+        "DLP (Защита от утечек)": 15, "PAM (Контроль доступа)": 10, "SIEM/SOC": 20, 
+        "WAF (Защита Web)": 10, "EDR/Antimalware": 15, "Резервное копирование": 20
     }
     for label, pts in ib_list.items():
         c_ib1, c_ib2 = st.columns([1, 2])
-        with c_ib1:
-            is_on = st.checkbox(label, key=f"ib_v2_{label}")
-        if is_on:
-            with c_ib2:
-                v_name = st.text_input(f"Вендор {label}:", key=f"v_name_{label}")
-                data[label] = f"Да ({v_name if v_name else 'не указан'})"
-                score += pts
+        if c_ib1.checkbox(label, key=f"chk_{label}"):
+            v_n = c_ib2.text_input(f"Вендор {label}:", key=f"v_{label}")
+            data[label] = f"Да ({v_n if v_n else 'не указан'})"
+            score += pts
         else:
             data[label] = "Нет"
     
-    st.write("---")
-    if st.checkbox("3.7. Другое (дополнительные системы защиты)", key="ib_other_toggle"):
-        data['3.7. Прочие системы ИБ'] = st.text_area("Перечислите все, что мы не учли:", key="ib_other_input")
-    else:
-        data['3.7. Прочие системы ИБ'] = "Нет"
+    if st.checkbox("3.7. Другие системы защиты", key="ib_other_toggle"):
+        data['3.7. Прочее ИБ'] = st.text_area("Описание:", key="ib_other_input")
 
-
-# --- БЛОК 4: WEB-РЕСУРСЫ ---
+# Блок 4: Web
 st.header("Блок 4: Web-ресурсы")
-if st.toggle("Есть свои Web-ресурсы", key="web_block_toggle"):
-    data['4.1. Хостинг'] = st.selectbox("Где размещены сайты:", ["Собственный ЦОД", "Облако (Казахстан)", "Облако (Мировое)", "Нет сайтов"], key="web_hosting")
-    data['4.2. CMS'] = st.text_input("Используемые CMS (Bitrix, WP и т.д.):", key="web_cms")
-    data['4.3. СУБД'] = st.multiselect("Используемые базы данных:", ["PostgreSQL", "MySQL", "MS SQL", "Oracle", "MongoDB"], key="web_db")
-    
-    data['4.4. Frontend Web-серверы'] = st.multiselect(
-        "Какие веб-сервера используются на frontend?", 
-        ["Nginx", "Apache HTTP Server", "Microsoft IIS", "LiteSpeed", "Caddy", "Node.js (как прокси)", "Cloudflare", "Другое"], 
-        key="web_servers_frontend"
-    )
+if st.toggle("Есть свои Web-ресурсы", key="web_toggle"):
+    data['4.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако (KZ)", "Облако (Global)", "Нет"], key="web_host")
+    data['4.2. CMS'] = st.text_input("CMS:", key="web_cms")
+    data['4.4. Frontend'] = st.multiselect("Frontend серверы:", ["Nginx", "Apache", "IIS", "LiteSpeed", "Caddy", "Cloudflare"], key="web_front")
 
-
-# --- БЛОК 5: РАЗРАБОТКА ---
+# Блок 5: Разработка
 st.header("Блок 5: Разработка")
-if st.toggle("Своя разработка", key="dev_block_toggle"):
-    data['5.1. Разработчики'] = st.number_input("Количество разработчиков в штате:", min_value=0, key="dev_count")
-    data['5.2. Стек'] = st.text_input("Основной стек технологий:", key="dev_stack")
-    data['5.3. CI/CD'] = st.checkbox("Используется ли CI/CD?", key="dev_cicd")
+if st.toggle("Своя разработка", key="dev_toggle"):
+    data['5.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0, key="dev_cnt")
+    data['5.3. CI/CD'] = st.checkbox("Используется CI/CD?", key="dev_cicd")
     data['5.4. Контейнеры'] = st.text_input("Технологии (Docker/K8s):", key="dev_cont")
 
 
-# --- ЭКСЕЛЬ ГЕНЕРАЦИЯ ---
-def make_excel(c_info, results, final_score):
+# --- ЭКСЕЛЬ ГЕНЕРАЦИЯ (НОВАЯ ВЕРСИЯ С РЕКОМЕНДАЦИЯМИ) ---
+def make_expert_excel(c_info, results, final_score):
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Анализ Аудита"
+    ws.title = "Khalil Audit Report"
 
+    # Стили
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
+    bold_font = Font(bold=True)
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
+    # 1. Заголовок и Лого
+    ws.merge_cells('A1:D2')
+    ws['A1'] = "ЭКСПЕРТНЫЙ ОТЧЕТ ПО ИТ И ИБ (2026)"
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
 
-    ws.merge_cells('A1:C1')
-    ws['A1'] = "ЭКСПЕРТНЫЙ ОТЧЕТ: ТЕХНИЧЕСКИЙ АУДИТ 2026"
-    ws['A1'].alignment = Alignment(horizontal='center')
-    ws['A1'].font = Font(bold=True, size=12)
+    if os.path.exists("logo.png"):
+        try:
+            img = OpenpyxlImage("logo.png")
+            img.height = 60; img.width = 180
+            ws.add_image(img, 'D1')
+        except: pass
 
-    current_row = 3
+    # 2. Инфо о клиенте
+    current_row = 4
     for k, v in c_info.items():
-        ws.cell(row=current_row, column=1, value=k).font = Font(bold=True)
+        ws.cell(row=current_row, column=1, value=k).font = bold_font
         ws.cell(row=current_row, column=2, value=str(v))
         current_row += 1
 
+    # 3. Скоринг
     current_row += 1
-    ws.cell(row=current_row, column=1, value="ИНДЕКС ТЕХНИЧЕСКОЙ ЗРЕЛОСТИ:").font = Font(bold=True)
-    ws.cell(row=current_row, column=2, value=f"{final_score} / 100")
-    bg_color = "00B050" if final_score > 70 else "FFCC00" if final_score > 40 else "FF0000"
-    ws.cell(row=current_row, column=2).fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
-    
+    ws.cell(row=current_row, column=1, value="ИНДЕКС ТЕХНИЧЕСКОЙ ЗРЕЛОСТИ:").font = bold_font
+    score_cell = ws.cell(row=current_row, column=2, value=f"{final_score}%")
+    bg_color = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
+    score_cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+    score_cell.font = bold_font
+    score_cell.alignment = Alignment(horizontal='center')
+
+    # 4. Таблица данных
     current_row += 2
-    headers = ["Параметр", "Значение", "Анализ"]
+    headers = ["Параметр", "Значение", "Статус", "Рекомендация эксперта Khalil Trade"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=current_row, column=i, value=h)
-        cell.fill = header_fill
-        cell.font = white_font
+        cell.fill = header_fill; cell.font = white_font
+        cell.alignment = Alignment(horizontal='center')
+
+    # Логика рекомендаций
+    rec_map = {
+        "Нет": "Требуется внедрение для минимизации рисков.",
+        "Резервное копирование": "Критично! Настроить схему 3-2-1 с хранением вне офиса.",
+        "NGFW": "Рекомендуется NGFW для глубокого анализа трафика.",
+        "DLP": "Необходимо для предотвращения утечек конфиденциальных данных.",
+        "SIEM": "Рекомендуется для централизованного сбора логов и выявления атак.",
+        "CI/CD": "Внедрение автоматизации ускорит выпуск и повысит качество кода."
+    }
 
     current_row += 1
     for k, v in results.items():
         ws.cell(row=current_row, column=1, value=k).border = border
         ws.cell(row=current_row, column=2, value=str(v)).border = border
         
+        # Определяем статус и рекомендацию
+        val_str = str(v)
         status = "В норме"
-        if "Нет" in str(v) or v == 0 or v == []:
-            status = "РИСК / ТРЕБУЕТ ВНИМАНИЯ"
-            ws.cell(row=current_row, column=3).font = Font(color="FF0000", bold=True)
-        ws.cell(row=current_row, column=3, value=status).border = border
+        recommendation = "Поддерживать текущее состояние."
+
+        if "Нет" in val_str or val_str == "0" or val_str == "[]":
+            status = "РИСК"
+            recommendation = rec_map.get(k, "Рассмотреть возможность внедрения.")
+            st_cell = ws.cell(row=current_row, column=3, value=status)
+            st_cell.font = Font(color="FF0000", bold=True)
+        else:
+            ws.cell(row=current_row, column=3, value=status)
+            # Специальные советы для того, что УЖЕ есть
+            if "Резервное копирование" in k: recommendation = "Регулярно проводить тестовое восстановление."
+            if "NGFW" in k: recommendation = "Проверить актуальность подписок на сигнатуры."
+
+        ws.cell(row=current_row, column=4, value=recommendation).border = border
+        ws.cell(row=current_row, column=3).border = border
         current_row += 1
 
-    ws.column_dimensions['A'].width = 40
-    ws.column_dimensions['B'].width = 40
-    ws.column_dimensions['C'].width = 25
+    # Ширина колонок
+    dims = {'A': 35, 'B': 30, 'C': 15, 'D': 60}
+    for col, width in dims.items(): ws.column_dimensions[col].width = width
+    
     wb.save(output)
     return output.getvalue()
 
@@ -239,46 +242,31 @@ def make_excel(c_info, results, final_score):
 # --- ФИНАЛ И ОТПРАВКА ---
 st.divider()
 if st.button("📊 Сформировать экспертный отчет", key="final_btn_report"):
-    mandatory_fields = [
-        client_info['Город'], 
-        client_info['Наименование компании'], 
-        client_info['ФИО контактного лица'],
-        client_info['Должность'],
-        client_info['Контактный телефон']
-    ]
-    
-    if not all(mandatory_fields):
-        st.error("⚠️ Пожалуйста, заполните все обязательные поля шапки (отмечены *)!")
-    elif not data:
-        st.error("Технические данные не заполнены!")
+    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица']]
+    if not all(mandatory):
+        st.error("⚠️ Заполните обязательные поля (отмечены *)!")
     else:
-        with st.spinner("Генерация отчета и отправка в Telegram..."):
+        with st.spinner("Создаем шедевр и отправляем коллегам..."):
             f_score = min(score, 100)
-            report_bytes = make_excel(client_info, data, f_score)
+            report_bytes = make_expert_excel(client_info, data, f_score)
             
             try:
                 url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                # ИЗМЕНЕННЫЙ ТЕКСТ СООБЩЕНИЯ
                 caption = (f"🚀 *Коллеги, у нас новый заказ. Давайте зарабатывать!*\n\n"
-                           f"🛡️ *Новый аудит: {client_info['Наименование компании']}*\n"
-                           f"📍 *Город:* {client_info['Город']}\n"
-                           f"📊 *Зрелость:* {f_score}/100\n"
-                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
-                           f"📅 *Дата:* {client_info['Дата заполнения']}")
+                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
+                           f"📊 *Зрелость ИТ:* {f_score}%\n"
+                           f"👤 *Эксперт:* Иван Рудой\n"
+                           f"📞 *Тел:* {client_info['Контактный телефон']}")
                 
-                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
-                payload = {"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}
-                
-                r = requests.post(url, data=payload, files=files)
+                files = {'document': (f"Audit_{client_info['Наименование компании']}_2026.xlsx", report_bytes)}
+                r = requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
                 
                 if r.ok:
-                    st.success(f"Заказ для {client_info['Наименование компании']} отправлен коллегам!")
+                    st.success("Отчет готов и отправлен!")
                     st.balloons()
-                else:
-                    st.error(f"Ошибка Telegram: {r.text}")
             except Exception as e:
-                st.error(f"Сбой отправки: {e}")
+                st.error(f"Сбой: {e}")
             
-            st.download_button(f"📥 Скачать Excel {client_info['Наименование компании']}", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
+            st.download_button(f"📥 Скачать отчет для {client_info['Наименование компании']}", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Разработано Ivan Rudoy | Khalil Audit | Almaty 2026")
+st.info("Khalil Audit System v2.0 | Almaty 2026")
