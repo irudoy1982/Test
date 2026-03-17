@@ -29,13 +29,12 @@ data = {}
 client_info = {}
 score = 0
 
-# --- НОВАЯ ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
+# --- ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
 st.header("📍 Общая информация")
 col_h1, col_h2 = st.columns(2)
 
 with col_h1:
     client_info['Город'] = st.text_input("Город:*")
-    # Используем дату из календаря, но в отчет пойдет строкой
     filling_date = st.date_input("Дата заполнения:*", value=datetime.now())
     client_info['Дата заполнения'] = filling_date.strftime("%d.%m.%Y")
     client_info['Наименование компании'] = st.text_input("Наименование компании:*")
@@ -48,7 +47,7 @@ with col_h2:
 
 st.divider()
 
-# --- БЛОК 1: ТЕХНИЧЕСКАЯ ИНФРАСТРУКТУРА ---
+# --- БЛОК 1: ТЕХНИЧЕСКАЯ ЧАСТЬ ---
 st.header("Блок 1: Техническая часть")
 
 st.subheader("1.1. Конечные точки (АРМ)")
@@ -166,6 +165,12 @@ if st.toggle("Есть свои Web-ресурсы", key="web_block_toggle"):
     data['4.1. Хостинг'] = st.selectbox("Где размещены сайты:", ["Собственный ЦОД", "Облако (Казахстан)", "Облако (Мировое)", "Нет сайтов"], key="web_hosting")
     data['4.2. CMS'] = st.text_input("Используемые CMS (Bitrix, WP и т.д.):", key="web_cms")
     data['4.3. СУБД'] = st.multiselect("Используемые базы данных:", ["PostgreSQL", "MySQL", "MS SQL", "Oracle", "MongoDB"], key="web_db")
+    
+    data['4.4. Frontend Web-серверы'] = st.multiselect(
+        "Какие веб-сервера используются на frontend?", 
+        ["Nginx", "Apache HTTP Server", "Microsoft IIS", "LiteSpeed", "Caddy", "Node.js (как прокси)", "Cloudflare", "Другое"], 
+        key="web_servers_frontend"
+    )
 
 
 # --- БЛОК 5: РАЗРАБОТКА ---
@@ -193,7 +198,6 @@ def make_excel(c_info, results, final_score):
     ws['A1'].alignment = Alignment(horizontal='center')
     ws['A1'].font = Font(bold=True, size=12)
 
-    # Информация о компании
     current_row = 3
     for k, v in c_info.items():
         ws.cell(row=current_row, column=1, value=k).font = Font(bold=True)
@@ -219,7 +223,7 @@ def make_excel(c_info, results, final_score):
         ws.cell(row=current_row, column=2, value=str(v)).border = border
         
         status = "В норме"
-        if "Нет" in str(v) or v == 0:
+        if "Нет" in str(v) or v == 0 or v == []:
             status = "РИСК / ТРЕБУЕТ ВНИМАНИЯ"
             ws.cell(row=current_row, column=3).font = Font(color="FF0000", bold=True)
         ws.cell(row=current_row, column=3, value=status).border = border
@@ -235,7 +239,6 @@ def make_excel(c_info, results, final_score):
 # --- ФИНАЛ И ОТПРАВКА ---
 st.divider()
 if st.button("📊 Сформировать экспертный отчет", key="final_btn_report"):
-    # Проверка обязательных полей
     mandatory_fields = [
         client_info['Город'], 
         client_info['Наименование компании'], 
@@ -253,23 +256,23 @@ if st.button("📊 Сформировать экспертный отчет", ke
             f_score = min(score, 100)
             report_bytes = make_excel(client_info, data, f_score)
             
-            # --- ЛОГИКА ТЕЛЕГРАМ ---
             try:
                 url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                caption = (f"🛡️ *Новый аудит: {client_info['Наименование компании']}*\n\n"
+                # ИЗМЕНЕННЫЙ ТЕКСТ СООБЩЕНИЯ
+                caption = (f"🚀 *Коллеги, у нас новый заказ. Давайте зарабатывать!*\n\n"
+                           f"🛡️ *Новый аудит: {client_info['Наименование компании']}*\n"
                            f"📍 *Город:* {client_info['Город']}\n"
                            f"📊 *Зрелость:* {f_score}/100\n"
                            f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
-                           f"📞 *Тел:* {client_info['Контактный телефон']}\n"
                            f"📅 *Дата:* {client_info['Дата заполнения']}")
                 
-                files = {'document': (f"Audit_{client_info['Наименование компании']}_2026.xlsx", report_bytes)}
+                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
                 payload = {"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}
                 
                 r = requests.post(url, data=payload, files=files)
                 
                 if r.ok:
-                    st.success(f"Аналитика для {client_info['Наименование компании']} отправлена в группу!")
+                    st.success(f"Заказ для {client_info['Наименование компании']} отправлен коллегам!")
                     st.balloons()
                 else:
                     st.error(f"Ошибка Telegram: {r.text}")
