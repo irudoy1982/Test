@@ -37,21 +37,16 @@ col_h1, col_h2 = st.columns(2)
 with col_h1:
     client_info['Город'] = st.text_input("Город:*")
     client_info['Наименование компании'] = st.text_input("Наименование компании:*")
-    
-    # Поле сайта без примера
     site_input = st.text_input("Сайт компании:", key="site_field")
     client_info['Сайт компании'] = site_input
 
-    # Извлекаем домен
+    # Email с жестким доменом
     clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
-
     if clean_domain:
-        st.write("**Email контактного лица:**")
-        e_col1, e_col2 = st.columns([3, 2])
-        with e_col1:
-            email_prefix = st.text_input("Логин почты", placeholder="например, info", label_visibility="collapsed", key="email_pre")
-        with e_col2:
-            st.markdown(f"<div style='padding-top: 5px; font-size: 18px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
+        st.write("Email контактного лица:*")
+        e_col1, e_col2 = st.columns([2, 3])
+        email_prefix = e_col1.text_input("Логин", placeholder="info", label_visibility="collapsed", key="email_pre")
+        e_col2.markdown(f"<div style='padding-top: 5px; font-size: 16px; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
         client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
     else:
         client_info['Email'] = ""
@@ -60,24 +55,43 @@ with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
     client_info['Должность'] = st.text_input("Должность:*")
     
-    # Поле телефона с префиксом +7 и подсказкой формата
-    st.write("**Контактный телефон:**")
-    t_col1, t_col2 = st.columns([1, 4])
+    # Улучшенное поле телефона
+    st.write("Контактный телефон:*")
+    t_col1, t_col2 = st.columns([1, 10]) # Минимальный отступ для префикса
     t_col1.markdown("<div style='padding-top: 5px; font-size: 18px; font-weight: bold;'>+7</div>", unsafe_allow_html=True)
-    phone_main = t_col2.text_input("Телефон", placeholder="777 777 77 77", label_visibility="collapsed", key="phone_input")
+    phone_main = t_col2.text_input("Номер", placeholder="777 777 77 77", label_visibility="collapsed", key="phone_input")
     client_info['Контактный телефон'] = f"+7 {phone_main}" if phone_main else ""
 
 st.divider()
 
-# --- 4. ТЕХНИЧЕСКИЕ БЛОКИ ---
-st.header("Блок 1: Техническая часть")
-data['1.1. Всего АРМ'] = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1)
-data['1.4. Почта'] = st.selectbox("Тип почты:", ["Microsoft 365", "Google Workspace", "Exchange", "SmarterMail", "Другое", "Нет"])
+# --- 4. ТЕХНИЧЕСКИЕ БЛОКИ (ПЕРЕМЕШАНЫ ПО ЗАПРОСУ) ---
 
-st.header("Блок 3: Информационная Безопасность")
-ib_items = {"DLP": 15, "PAM": 10, "SIEM/SOC": 20, "WAF": 10, "EDR": 15, "Резервное копирование": 20}
+# БЛОК 1: АРМ
+st.header("Блок 1: Конечные точки (АРМ)")
+data['1.1. Всего АРМ'] = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1)
+data['1.4. Почта'] = st.selectbox("Тип почты:", ["Microsoft 365", "Google Workspace", "Exchange", "SmarterMail", "Нет"])
+
+# БЛОК 2: СЕТЬ (ТЕПЕРЬ ВТОРОЙ)
+st.header("Блок 2: Сетевая инфраструктура")
+if st.toggle("Развернуть блок Сети", key="net_toggle"):
+    net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink"]
+    data['2.1. Основной канал'] = st.selectbox("Тип канала:", net_types)
+    data['2.4. NGFW'] = st.text_input("Вендор Межсетевого экрана (NGFW):")
+    if data['2.4. NGFW']: score += 20
+
+# БЛОК 3: СЕРВЕРЫ (ТЕПЕРЬ ТРЕТИЙ)
+st.header("Блок 3: Серверная инфраструктура")
+if st.toggle("Развернуть блок Серверов", key="srv_toggle"):
+    col_s1, col_s2 = st.columns(2)
+    data['3.1. Физические серверы'] = col_s1.number_input("Физических серверов:", min_value=0, step=1)
+    data['3.2. Виртуальные серверы'] = col_s2.number_input("Виртуальных серверов:", min_value=0, step=1)
+    data['3.3. Виртуализация'] = st.multiselect("Системы:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Нет"])
+
+# БЛОК 4: ИБ
+st.header("Блок 4: Информационная Безопасность")
+ib_items = {"DLP": 15, "PAM": 10, "SIEM/SOC": 20, "Резервное копирование": 20}
 for label, pts in ib_items.items():
-    if st.checkbox(label):
+    if st.checkbox(label, key=f"ib_{label}"):
         v = st.text_input(f"Вендор {label}:", key=f"v_{label}")
         data[label] = f"Да ({v if v else 'не указан'})"
         score += pts
@@ -92,9 +106,9 @@ def make_expert_excel(c_info, results, final_score):
     ws.title = "Khalil Audit Report"
 
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    white_font = Font(color="FFFFFF", bold=True)
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
+    # Заголовок
     ws.merge_cells('A1:D2')
     ws['A1'] = "ЭКСПЕРТНЫЙ ОТЧЕТ: ТЕХНИЧЕСКИЙ АУДИТ 2026"
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
@@ -120,7 +134,7 @@ def make_expert_excel(c_info, results, final_score):
     headers = ["Параметр", "Значение", "Статус", "Рекомендация эксперта"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=current_row, column=i, value=h)
-        cell.fill = header_fill; cell.font = white_font
+        cell.fill = header_fill; cell.font = Font(color="FFFFFF", bold=True)
 
     current_row += 1
     for k, v in results.items():
@@ -133,46 +147,4 @@ def make_expert_excel(c_info, results, final_score):
 
     if os.path.exists("logo.png"):
         try:
-            img = OpenpyxlImage("logo.png")
-            img.height = 55; img.width = 160
-            ws.add_image(img, 'D1')
-        except: pass
-
-    ws.column_dimensions['A'].width = 35
-    ws.column_dimensions['B'].width = 30
-    ws.column_dimensions['D'].width = 40
-    wb.save(output)
-    return output.getvalue(), report_date
-
-# --- 6. КНОПКА ОТПРАВКИ ---
-st.divider()
-if st.button("📊 Сформировать экспертный отчет", use_container_width=True):
-    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица']]
-    if not all(mandatory):
-        st.error("⚠️ Заполните Город, Компанию и ФИО!")
-    elif not client_info['Email'] or not phone_main:
-        st.error("⚠️ Заполните Email и Телефон!")
-    else:
-        with st.spinner("Генерация..."):
-            f_score = min(score, 100)
-            report_bytes, final_date = make_expert_excel(client_info, data, f_score)
-            
-            try:
-                caption = (f"🚀 *Коллеги, у нас новый заказ. Давайте зарабатывать!*\n\n"
-                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
-                           f"📧 *Email:* {client_info['Email']}\n"
-                           f"📞 *Тел:* {client_info['Контактный телефон']}\n"
-                           f"📊 *Зрелость:* {f_score}%\n"
-                           f"📅 *Дата:* {final_date}")
-                
-                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
-                              data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, 
-                              files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)})
-                st.success("Отчет отправлен в Telegram!")
-                st.balloons()
-            except:
-                st.error("Ошибка Telegram")
-            
-            st.download_button("📥 Скачать Excel", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
-
-st.info("Khalil Audit System | Almaty 2026")
+            img = OpenpyxlImage("logo
