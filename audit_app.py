@@ -4,8 +4,7 @@ import os
 import requests
 from io import BytesIO
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.drawing.image import Image as OpenpyxlImage
+from openpyxl.styles import Font, Alignment, PatternFill
 from datetime import datetime
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
@@ -84,4 +83,5 @@ data['Серверы (вирт)'] = st.number_input("Виртуальные се
 data['Почтовая система'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"])
 
 # --- БЛОК 2: ИБ ---
-st.
+st.header("Блок 2: Информационная безопасность")
+data['Антивирус'] = st.text_input("Используемое антивирусное ПО (EDR/AV):
