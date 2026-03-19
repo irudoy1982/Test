@@ -24,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.7")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.8")
 
 data = {}
 client_info = {}
@@ -92,7 +92,7 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
-# 1.2 Сетевая инфраструктура
+# 1.2 Сетевая инфраструктура (ОБНОВЛЕНО v2.8)
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -119,18 +119,44 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
     if col_add3.checkbox("VPN", key="chk_vpn"): add_channels.append("VPN")
     data['1.2.3. Доп. каналы'] = ", ".join(add_channels) if add_channels else "Нет"
 
-    # ИЗМЕНЕНО В v2.7: Чекбокс для NGFW
+    # НОВОЕ В v2.8: Маршрутизаторы и Коммутаторы
+    st.write("**Активное сетевое оборудование:**")
+    c_net1, c_net2, c_net3 = st.columns(3)
+    
+    with c_net1:
+        if st.checkbox("Маршрутизаторы", key="router_chk"):
+            r_count = st.number_input("Кол-во маршрутизаторов:", min_value=0, step=1, key="router_cnt")
+            data['1.2.4. Маршрутизаторы'] = f"Да ({r_count} шт)"
+        else:
+            data['1.2.4. Маршрутизаторы'] = "Нет"
+
+    with c_net2:
+        if st.checkbox("Коммутаторы L2", key="swl2_chk"):
+            sw2_count = st.number_input("Кол-во коммутаторов L2:", min_value=0, step=1, key="swl2_cnt")
+            data['1.2.5. Коммутаторы L2'] = f"Да ({sw2_count} шт)"
+        else:
+            data['1.2.5. Коммутаторы L2'] = "Нет"
+
+    with c_net3:
+        if st.checkbox("Коммутаторы L3", key="swl3_chk"):
+            sw3_count = st.number_input("Кол-во коммутаторов L3:", min_value=0, step=1, key="swl3_cnt")
+            data['1.2.6. Коммутаторы L3'] = f"Да ({sw3_count} шт)"
+        else:
+            data['1.2.6. Коммутаторы L3'] = "Нет"
+
+    # NGFW
     if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk"):
         ngfw_vendor = st.text_input("Производитель (NGFW):", key="ngfw_v")
-        data['1.2.4. NGFW'] = f"Да ({ngfw_vendor if ngfw_vendor else 'не указан'})"
+        data['1.2.7. NGFW'] = f"Да ({ngfw_vendor if ngfw_vendor else 'не указан'})"
         score += 20
     else:
-        data['1.2.4. NGFW'] = "Нет"
+        data['1.2.7. NGFW'] = "Нет"
 else:
     data['1.2. Сетевая инфраструктура'] = "Не указана/Аренда"
 
 # 1.3 Серверы, Виртуализация и Резервное копирование
 st.write("---")
+# ... (Остальной код без изменений) ...
 st.subheader("1.3. Серверы и Виртуализация")
 col_s1, col_s2 = st.columns(2)
 with col_s1:
@@ -352,4 +378,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v2.7 | Almaty 2026")
+st.info("Khalil Audit System v2.8 | Almaty 2026")
