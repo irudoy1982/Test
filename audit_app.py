@@ -30,7 +30,7 @@ data = {}
 client_info = {}
 score = 0
 
-# --- ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
+# --- ШАПКА: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
 st.header("📍 Общая информация")
 col_h1, col_h2 = st.columns(2)
 
@@ -86,7 +86,6 @@ st.header("Блок 1: Информационные технологии")
 st.subheader("1.1. Конечные точки (АРМ)")
 total_arm = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1, key="total_arm_val")
 data['1.1. Всего АРМ'] = total_arm
-# ОБНОВЛЕННЫЙ СПИСОК ОС (v2.5)
 selected_os_arm = st.multiselect("Выберите ОС на АРМ:", ["Windows XP/Vista/7/8", "Windows 10", "Windows 11", "Linux", "macOS", "Другое"], key="ms_arm_list")
 if selected_os_arm:
     for os_item in selected_os_arm:
@@ -240,7 +239,6 @@ def make_expert_excel(c_info, results, final_score):
 
     current_row += 1
     
-    # КАРТА РЕКОМЕНДАЦИЙ (v2.5)
     rec_map = {
         "Нет": "Требуется внедрение для минимизации рисков.", 
         "Резервное копирование": "Критично! Настроить схему 3-2-1.", 
@@ -256,8 +254,6 @@ def make_expert_excel(c_info, results, final_score):
         
         status = "В норме"
         recommendation = "Поддерживать текущее состояние."
-        
-        # Логика определения статуса и рекомендации (v2.5)
         is_risk = False
         is_warning = False
         
@@ -265,7 +261,6 @@ def make_expert_excel(c_info, results, final_score):
             is_risk = True
             recommendation = rec_map.get(k, "Рассмотреть возможность внедрения.")
         
-        # Специальная проверка версий Windows
         if "Windows XP/Vista/7/8" in k and v > 0:
             is_risk = True
             recommendation = rec_map["Windows XP/Vista/7/8"]
@@ -290,4 +285,45 @@ def make_expert_excel(c_info, results, final_score):
         ws.cell(row=current_row, column=3).border = border
         current_row += 1
 
-    for col, width in {'A': 35, 'B': 30, 'C': 20, 'D': 65
+    for col, width in {'A': 35, 'B': 30, 'C': 20, 'D': 65}.items():
+        ws.column_dimensions[col].width = width
+    
+    wb.save(output)
+    return output.getvalue(), auto_date
+
+# --- ФИНАЛ И ОТПРАВКА ---
+st.divider()
+if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
+    mandatory = [
+        client_info['Город'], 
+        client_info['Наименование компании'], 
+        client_info['ФИО контактного лица'], 
+        client_info['Сайт компании'], 
+        client_info.get('Email'),
+        client_info.get('Контактный телефон')
+    ]
+    if not all(mandatory):
+        st.error("⚠️ Заполните все обязательные поля (включая Сайт, Email и Телефон)!")
+    else:
+        with st.spinner("Создаем отчет..."):
+            f_score = min(score, 100)
+            report_bytes, final_date = make_expert_excel(client_info, data, f_score)
+            try:
+                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+                caption = (f"🚀 *Новый заказ Khalil Trade*\n\n"
+                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
+                           f"📊 *Зрелость ИТ:* {f_score}%\n"
+                           f"📅 *Дата:* {final_date}\n"
+                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
+                           f"📧 *Email:* {client_info['Email']}\n"
+                           f"📞 *Тел:* {client_info['Контактный телефон']}")
+                
+                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
+                requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
+                st.success("Отчет успешно отправлен в Telegram!")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Ошибка связи: {e}")
+            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
+
+st.info("Khalil Audit System v2.5 | Almaty 2026")
