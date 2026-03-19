@@ -189,4 +189,74 @@ def make_expert_excel(c_info, results, final_score):
 
     ws.cell(row=current_row, column=1, value="ИНДЕКС ТЕХНИЧЕСКОЙ ЗРЕЛОСТИ:").font = Font(bold=True)
     score_cell = ws.cell(row=current_row, column=2, value=f"{final_score}%")
-    bg_color = "92D
+    
+    # ИСПРАВЛЕННАЯ СТРОКА (Версия 1.5)
+    bg_color = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
+    
+    score_cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+    score_cell.font = Font(bold=True)
+    current_row += 2
+
+    headers = ["Параметр", "Значение", "Статус", "Рекомендация эксперта Khalil Trade"]
+    for i, h in enumerate(headers, 1):
+        cell = ws.cell(row=current_row, column=i, value=h)
+        cell.fill = header_fill; cell.font = white_font
+
+    current_row += 1
+    rec_map = {"Нет": "Требуется внедрение для минимизации рисков.", "Резервное копирование": "Критично! Настроить схему 3-2-1.", "NGFW": "Рекомендуется для защиты периметра."}
+
+    for k, v in results.items():
+        ws.cell(row=current_row, column=1, value=k).border = border
+        ws.cell(row=current_row, column=2, value=str(v)).border = border
+        
+        status = "В норме"
+        recommendation = "Поддерживать текущее состояние."
+        
+        if "Нет" in str(v) or v == 0 or v == []:
+            status = "РИСК"
+            recommendation = rec_map.get(k, "Рассмотреть возможность внедрения.")
+            st_cell = ws.cell(row=current_row, column=3, value=status)
+            st_cell.font = Font(color="FF0000", bold=True)
+        else:
+            ws.cell(row=current_row, column=3, value=status)
+        
+        ws.cell(row=current_row, column=4, value=recommendation).border = border
+        ws.cell(row=current_row, column=3).border = border
+        current_row += 1
+
+    for col, width in {'A': 35, 'B': 30, 'C': 15, 'D': 60}.items():
+        ws.column_dimensions[col].width = width
+    
+    wb.save(output)
+    return output.getvalue(), auto_date
+
+# --- ФИНАЛ И ОТПРАВКА ---
+st.divider()
+if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
+    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица'], client_info['Сайт компании']]
+    if not all(mandatory):
+        st.error("⚠️ Заполните все обязательные поля (Город, Компанию, Сайт и ФИО)!")
+    elif "@" not in client_info.get('Email', "") or client_info['Email'].startswith("@"):
+        st.error("⚠️ Введите логин пользователя для формирования Email!")
+    else:
+        with st.spinner("Создаем отчет..."):
+            f_score = min(score, 100)
+            report_bytes, final_date = make_expert_excel(client_info, data, f_score)
+            try:
+                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+                caption = (f"🚀 *Коллеги, у нас новый заказ. Давайте зарабатывать!*\n\n"
+                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
+                           f"📊 *Зрелость ИТ:* {f_score}%\n"
+                           f"📅 *Дата (авто):* {final_date}\n"
+                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
+                           f"📧 *Email:* {client_info['Email']}")
+                
+                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
+                requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
+                st.success("Отчет успешно отправлен в Telegram!")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Ошибка связи: {e}")
+            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
+
+st.info("Khalil Audit System | Almaty 2026")
