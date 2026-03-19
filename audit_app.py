@@ -64,7 +64,19 @@ with col_h1:
 with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
     client_info['Должность'] = st.text_input("Должность:*")
-    client_info['Контактный телефон'] = st.text_input("Контактный телефон:*")
+    
+    # --- НОВОЕ ПОЛЕ ТЕЛЕФОНА (Версия 2.0) ---
+    st.write("Контактный телефон:*")
+    p_col1, p_col2 = st.columns([1, 2])
+    with p_col1:
+        country_code = st.selectbox("Страна", 
+            options=[("🇰🇿 +7", "+7"), ("🇷🇺 +7", "+7"), ("🇺🇿 +998", "+998"), ("🇰🇬 +996", "+996"), ("🇦🇪 +971", "+971")],
+            format_func=lambda x: x[0],
+            label_visibility="collapsed"
+        )
+    with p_col2:
+        phone_number = st.text_input("Номер телефона", placeholder="777 777 77 77", label_visibility="collapsed")
+    client_info['Контактный телефон'] = f"{country_code[1]} {phone_number}"
 
 st.divider()
 
@@ -228,9 +240,20 @@ def make_expert_excel(c_info, results, final_score):
 # --- ФИНАЛ И ОТПРАВКА ---
 st.divider()
 if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
-    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица'], client_info['Сайт компании'], client_info.get('Email')]
-    if not all(mandatory):
-        st.error("⚠️ Заполните все обязательные поля (включая Сайт и Email)!")
+    # Проверка обязательных полей
+    mandatory_fields = [
+        client_info['Город'], 
+        client_info['Наименование компании'], 
+        client_info['ФИО контактного лица'], 
+        client_info['Сайт компании'], 
+        client_info.get('Email'),
+        phone_number # Проверяем саму переменную номера
+    ]
+    
+    if not all(mandatory_fields):
+        st.error("⚠️ Заполните все обязательные поля (включая Телефон и Email)!")
+    elif len(phone_number) < 7:
+        st.error("⚠️ Введите корректный номер телефона!")
     else:
         with st.spinner("Создаем отчет..."):
             f_score = min(score, 100)
@@ -242,6 +265,7 @@ if st.button("📊 Сформировать экспертный отчет", ke
                            f"📊 *Зрелость ИТ:* {f_score}%\n"
                            f"📅 *Дата:* {final_date}\n"
                            f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
+                           f"📞 *Тел:* {client_info['Контактный телефон']}\n"
                            f"📧 *Email:* {client_info['Email']}")
                 
                 files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
