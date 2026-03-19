@@ -24,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.6")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.7")
 
 data = {}
 client_info = {}
@@ -92,7 +92,7 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
-# 1.2 Сетевая инфраструктура (ОБНОВЛЕНО v2.6)
+# 1.2 Сетевая инфраструктура
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -119,8 +119,13 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
     if col_add3.checkbox("VPN", key="chk_vpn"): add_channels.append("VPN")
     data['1.2.3. Доп. каналы'] = ", ".join(add_channels) if add_channels else "Нет"
 
-    data['1.2.4. NGFW'] = st.text_input("Вендор Межсетевого экрана (NGFW):", key="ngfw_v")
-    if data['1.2.4. NGFW']: score += 20
+    # ИЗМЕНЕНО В v2.7: Чекбокс для NGFW
+    if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk"):
+        ngfw_vendor = st.text_input("Производитель (NGFW):", key="ngfw_v")
+        data['1.2.4. NGFW'] = f"Да ({ngfw_vendor if ngfw_vendor else 'не указан'})"
+        score += 20
+    else:
+        data['1.2.4. NGFW'] = "Нет"
 else:
     data['1.2. Сетевая инфраструктура'] = "Не указана/Аренда"
 
@@ -347,4 +352,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v2.6 | Almaty 2026")
+st.info("Khalil Audit System v2.7 | Almaty 2026")
