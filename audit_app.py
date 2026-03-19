@@ -228,3 +228,31 @@ def make_expert_excel(c_info, results, final_score):
 st.divider()
 if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
     mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица']]
+    if not all(mandatory):
+        st.error("⚠️ Заполните Город, Компанию и ФИО!")
+    elif not client_info.get('Email'):
+        st.error("⚠️ Заполните Email!")
+    else:
+        with st.spinner("Создаем отчет..."):
+            f_score = min(score, 100)
+            report_bytes, final_date = make_expert_excel(client_info, data, f_score)
+            
+            try:
+                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+                caption = (f"🚀 *Коллеги, у нас новый заказ. Давайте зарабатывать!*\n\n"
+                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
+                           f"📊 *Зрелость ИТ:* {f_score}%\n"
+                           f"📅 *Дата (авто):* {final_date}\n"
+                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
+                           f"📧 *Email:* {client_info['Email']}")
+                
+                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
+                requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
+                st.success("Отчет успешно отправлен в Telegram!")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Ошибка связи: {e}")
+            
+            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
+
+st.info("Khalil Audit System | Almaty 2026")
