@@ -11,9 +11,11 @@ from datetime import datetime
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
 
+# Данные для Telegram из Secrets
 TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
+# Логотип
 if os.path.exists("logo.png"):
     st.image("logo.png", width=300)
 else:
@@ -38,14 +40,14 @@ with col_h1:
     site_in = st.text_input("Сайт:*", placeholder="example.kz")
     client_info['Сайт'] = site_in
 
-    if st.checkbox("Email отличается от сайта"):
+    if st.checkbox("Email отличается от домена сайта"):
         client_info['Email'] = st.text_input("Email:*", placeholder="info@domain.com")
     else:
         domain = site_in.replace("https://","").replace("http://","").replace("www.","").split('/')[0]
         if domain and "." in domain:
             st.write("Email (логин):*")
             e1, e2 = st.columns([2, 3])
-            prefix = e1.text_input("Login", placeholder="info", label_visibility="collapsed")
+            prefix = e1.text_input("Login", placeholder="info", label_visibility="collapsed", key="em_pre")
             e2.markdown(f"**@{domain}**")
             client_info['Email'] = f"{prefix}@{domain}" if prefix else ""
         else:
@@ -59,91 +61,27 @@ with col_h2:
     codes = [
         ("🇰🇿 +7","+7"), ("🇷🇺 +7","+7"), ("🇺🇿 +998","+998"), 
         ("🇰🇬 +996","+996"), ("🇹🇯 +992","+992"), ("🇦🇪 +971","+971"),
-        ("🇹🇷 +90","+90"), ("🇦🇿 +994","+994"), ("🇧🇾 +375","+375")
+        ("🇹🇷 +90","+90"), ("🇦🇿 +994","+994"), ("🇧🇾 +375","+375"),
+        ("🇬🇪 +995","+995"), ("🇺🇸 +1","+1"), ("🇬🇧 +44","+44")
     ]
     code = p1.selectbox("Код", codes, format_func=lambda x: x[0], label_visibility="collapsed")
-    num = p2.text_input("Номер", placeholder="701 123 45 67", label_visibility="collapsed")
+    num = p2.text_input("Номер", placeholder="701 123 45 67", label_visibility="collapsed", key="ph_num")
     client_info['Телефон'] = f"{code[1]} {num}"
 
 st.divider()
 
-# --- БЛОК 1: ИТ ---
+# --- БЛОК 1: ИТ ИНФРАСТРУКТУРА ---
 st.header("Блок 1: ИТ Инфраструктура")
 data['АРМ (всего)'] = st.number_input("Кол-во АРМ (шт):", min_value=0, step=1)
-if st.toggle("Своя сеть"):
-    data['Канал'] = st.selectbox("Связь:", ["Оптика", "Радио", "Спутник", "4G/5G"])
-    data['NGFW'] = st.text_input("Вендор NGFW:")
+
+if st.toggle("Своя сетевая инфраструктура"):
+    data['Канал'] = st.selectbox("Тип связи:", ["Оптика", "Радио", "Спутник", "4G/5G", "Starlink"])
+    data['NGFW'] = st.text_input("Вендор Межсетевого экрана (NGFW):")
     if data['NGFW']: score += 20
 
-data['Серверы (физ)'] = st.number_input("Физ. серверы:", min_value=0)
-data['Серверы (вирт)'] = st.number_input("Вирт. серверы:", min_value=0)
-data['Почта'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"])
+data['Серверы (физ)'] = st.number_input("Физические серверы:", min_value=0)
+data['Серверы (вирт)'] = st.number_input("Виртуальные серверы:", min_value=0)
+data['Почтовая система'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"])
 
 # --- БЛОК 2: ИБ ---
-st.header("Блок 2: Безопасность")
-if st.toggle("Системы ИБ"):
-    ib_map = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15, "Backup": 20}
-    for k, v in ib_map.items():
-        if st.checkbox(k):
-            vnd = st.text_input(f"Вендор {k}:", key=f"v_{k}")
-            data[k] = f"Да ({vnd})" if vnd else "Да"
-            score += v
-        else: data[k] = "Нет"
-
-# --- EXCEL LOGIC ---
-def get_excel(c_info, res, sc):
-    out = BytesIO()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Audit"
-    f_bold = Font(bold=True)
-    bd = Border(left=Side("thin"), right=Side("thin"), top=Side("thin"), bottom=Side("thin"))
-
-    ws.merge_cells('A1:D2')
-    ws['A1'] = "ОТЧЕТ ПО ИТ И ИБ 2026"
-    ws['A1'].font = Font(bold=True, size=14)
-    ws['A1'].alignment = Alignment(horizontal='center')
-
-    curr = 4
-    for k, v in c_info.items():
-        ws.cell(curr, 1, k).font = f_bold
-        ws.cell(curr, 2, str(v))
-        curr += 1
-    
-    ws.cell(curr+1, 1, "ЗРЕЛОСТЬ ИТ:").font = f_bold
-    ws.cell(curr+1, 2, f"{sc}%").font = f_bold
-    
-    curr += 4
-    for k, v in res.items():
-        ws.cell(curr, 1, k).border = bd
-        ws.cell(curr, 2, str(v)).border = bd
-        curr += 1
-    
-    wb.save(out)
-    return out.getvalue()
-
-# --- ФИНАЛЬНАЯ КНОПКА (БЕЗ ДЛИННЫХ СТРОК) ---
-st.divider()
-btn_label = "Сформировать отчет"
-if st.button(btn_label, type="primary"):
-    # Проверка данных
-    valid = all([client_info['Компания'], client_info['ФИО'], client_info['Email']])
-    if not valid or len(num) < 5:
-        st.error("Заполните обязательные поля и телефон!")
-    else:
-        with st.spinner("Работаем..."):
-            f_sc = min(score, 100)
-            ex_data = get_excel(client_info, data, f_sc)
-            try:
-                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                cap = f"Новый аудит: {client_info['Компания']}\nЗрелость: {f_sc}%"
-                files = {'document': (f"Audit_{client_info['Компания']}.xlsx", ex_data)}
-                requests.post(url, data={"chat_id": CHAT_ID, "caption": cap}, files=files)
-                
-                st.success("Отправлено!")
-                st.balloons()
-                st.download_button("Скачать Excel", ex_data, f"Audit_{client_info['Компания']}.xlsx")
-            except Exception as e:
-                st.error(f"Ошибка: {e}")
-
-st.info("Khalil Audit | 2026")
+st.
