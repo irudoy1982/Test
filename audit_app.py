@@ -64,19 +64,19 @@ with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
     client_info['Должность'] = st.text_input("Должность:*")
     
-    # --- РЕАЛИЗАЦИЯ ВЫБОРА ТЕЛЕФОНА (ВМЕСТО ПРОБЛЕМНОЙ БИБЛИОТЕКИ) ---
+    # --- РАСШИРЕННЫЙ СПИСОК ПРЕФИКСОВ (NATIVE STREAMLIT) ---
     st.write("Контактный телефон:*")
     p_col1, p_col2 = st.columns([1, 2])
     with p_col1:
-        # Имитируем выбор страны с флагами
         country_choice = st.selectbox(
             "Код страны",
             options=[
-                ("🇰🇿 +7", "+7"), 
-                ("🇷🇺 +7", "+7"), 
-                ("🇺🇿 +998", "+998"), 
-                ("🇰🇬 +996", "+996"), 
-                ("🇦🇪 +971", "+971")
+                ("🇰🇿 +7", "+7"), ("🇷🇺 +7", "+7"), ("🇺🇿 +998", "+998"), 
+                ("🇰🇬 +996", "+996"), ("🇦🇪 +971", "+971"), ("🇹🇷 +90", "+90"),
+                ("🇦🇿 +994", "+994"), ("🇦🇲 +374", "+374"), ("🇧🇾 +375", "+375"),
+                ("🇬🇪 +995", "+995"), ("🇹🇯 +992", "+992"), ("🇹🇲 +993", "+993"),
+                ("🇨🇳 +86", "+86"), ("🇺🇸 +1", "+1"), ("🇬🇧 +44", "+44"), 
+                ("🇩🇪 +49", "+49"), ("🇫🇷 +33", "+33")
             ],
             format_func=lambda x: x[0],
             label_visibility="collapsed"
@@ -84,7 +84,6 @@ with col_h2:
     with p_col2:
         phone_val = st.text_input("Номер", placeholder="777 777 77 77", label_visibility="collapsed")
     
-    # Собираем итоговую строку для отчета
     client_info['Контактный телефон'] = f"{country_choice[1]} {phone_val}"
 
 st.divider()
@@ -130,10 +129,7 @@ with col_v2:
     st.subheader("1.5. Почтовая система")
     data['1.5. Почта'] = st.selectbox("Тип почты:", ["Exchange", "Microsoft 365", "Google Workspace", "Yandex", "Свой сервер", "Нет"], key="mail_sys")
 
-st.subheader("1.6. Внутренние Информационные системы")
 data['1.6. Внутренние ИС'] = st.text_input("Перечислите (1C, ERP, CRM):", key="is_input")
-
-st.subheader("1.7. Система мониторинга")
 data['1.7. Мониторинг'] = st.selectbox("Система:", ["Нет", "Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel")
 
 st.divider()
@@ -223,7 +219,7 @@ def make_expert_excel(c_info, results, final_score):
 # --- ФИНАЛ И ОТПРАВКА ---
 st.divider()
 if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
-    # Валидация
+    # Проверка обязательных полей
     is_phone_filled = len(phone_val.strip()) > 5
     mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица'], client_info['Email']]
     
@@ -246,10 +242,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                     data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"},
                     files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
                 )
-                st.success("Отчет успешно отправлен в Telegram!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Ошибка связи: {e}")
-            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
-
-st.info("Khalil Audit System | Almaty 2026")
+                st.success("Отчет успешно отправлен в Telegram
