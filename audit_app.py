@@ -7,6 +7,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.drawing.image import Image as OpenpyxlImage
 from datetime import datetime
+# Подключаем библиотеку для работы с телефонами
+from streamlit_phone_number_input import phone_number_input
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
@@ -65,18 +67,17 @@ with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
     client_info['Должность'] = st.text_input("Должность:*")
     
-    # --- НОВОЕ ПОЛЕ ТЕЛЕФОНА (Версия 2.0) ---
+    # --- НОВЫЙ ТЕЛЕФОН ЧЕРЕЗ БИБЛИОТЕКУ ---
     st.write("Контактный телефон:*")
-    p_col1, p_col2 = st.columns([1, 2])
-    with p_col1:
-        country_code = st.selectbox("Страна", 
-            options=[("🇰🇿 +7", "+7"), ("🇷🇺 +7", "+7"), ("🇺🇿 +998", "+998"), ("🇰🇬 +996", "+996"), ("🇦🇪 +971", "+971")],
-            format_func=lambda x: x[0],
-            label_visibility="collapsed"
-        )
-    with p_col2:
-        phone_number = st.text_input("Номер телефона", placeholder="777 777 77 77", label_visibility="collapsed")
-    client_info['Контактный телефон'] = f"{country_code[1]} {phone_number}"
+    phone_data = phone_number_input(
+        label="Введите номер телефона",
+        default_country="KZ",  # Казахстан по умолчанию
+        placeholder="777 777 77 77",
+        key="phone_input_widget",
+        label_visibility="collapsed"
+    )
+    # Сохраняем номер в формате E.164 (+7707...)
+    client_info['Контактный телефон'] = phone_data
 
 st.divider()
 
@@ -195,7 +196,7 @@ def make_expert_excel(c_info, results, final_score):
         current_row += 1
     
     auto_date = datetime.now().strftime("%d.%m.%Y %H:%M")
-    ws.cell(row=current_row, column=1, value="Дата генерации отчета:").font = Font(bold=True)
+    ws.cell(row=current_row, column=1, value="Дата отчета:").font = Font(bold=True)
     ws.cell(row=current_row, column=2, value=auto_date)
     current_row += 2
 
@@ -217,7 +218,7 @@ def make_expert_excel(c_info, results, final_score):
     for k, v in results.items():
         ws.cell(row=current_row, column=1, value=k).border = border
         ws.cell(row=current_row, column=2, value=str(v)).border = border
-        status = "В норме"; recommendation = "Поддерживать текущее состояние."
+        status = "В норме"; recommendation = "Поддерживать состояние."
         
         if "Нет" in str(v) or v == 0 or v == []:
             status = "РИСК"
@@ -247,20 +248,18 @@ if st.button("📊 Сформировать экспертный отчет", ke
         client_info['ФИО контактного лица'], 
         client_info['Сайт компании'], 
         client_info.get('Email'),
-        phone_number # Проверяем саму переменную номера
+        client_info['Контактный телефон']
     ]
     
     if not all(mandatory_fields):
         st.error("⚠️ Заполните все обязательные поля (включая Телефон и Email)!")
-    elif len(phone_number) < 7:
-        st.error("⚠️ Введите корректный номер телефона!")
     else:
         with st.spinner("Создаем отчет..."):
             f_score = min(score, 100)
             report_bytes, final_date = make_expert_excel(client_info, data, f_score)
             try:
                 url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                caption = (f"🚀 *Новый заказ Khalil Trade*\n\n"
+                caption = (f"🚀 *Новый аудит Khalil Trade*\n\n"
                            f"🏢 *Компания:* {client_info['Наименование компании']}\n"
                            f"📊 *Зрелость ИТ:* {f_score}%\n"
                            f"📅 *Дата:* {final_date}\n"
