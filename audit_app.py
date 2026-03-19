@@ -4,13 +4,13 @@ import os
 import requests
 from io import BytesIO
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
 
-# Данные для Telegram из Secrets
+# Данные для Telegram из Secrets (настраиваются в Streamlit Cloud)
 TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
@@ -82,6 +82,94 @@ data['Серверы (физ)'] = st.number_input("Физические серв
 data['Серверы (вирт)'] = st.number_input("Виртуальные серверы:", min_value=0)
 data['Почтовая система'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"])
 
-# --- БЛОК 2: ИБ ---
+# --- БЛОК 2: ИБ (ТУТ БЫЛА ОШИБКА) ---
 st.header("Блок 2: Информационная безопасность")
-data['Антивирус'] = st.text_input("Используемое антивирусное ПО (EDR/AV):
+data['Антивирус'] = st.text_input("Используемое антивирусное ПО (EDR/AV):")
+if data['Антивирус']: score += 15
+
+data['Бэкапы'] = st.radio("Наличие резервного копирования данных:", ["Да", "Нет", "Частично"])
+if data['Бэкапы'] == "Да": score += 25
+
+data['VPN'] = st.checkbox("Используется ли VPN для удаленного доступа?")
+if data['VPN']: score += 10
+
+st.divider()
+
+# --- ФИНАЛЬНАЯ ЛОГИКА ---
+if st.button("🚀 Отправить данные на аудит"):
+    # Валидация обязательных полей
+    if not client_info['Компания'] or not client_info['ФИО'] or not num:
+        st.error("Пожалуйста, заполните обязательные поля: Компания, ФИО и Номер телефона.")
+    else:
+        # 1. Создание Excel в памяти
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Результаты аудита"
+        
+        # Стили
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        
+        # Данные клиента
+        ws.append(["Параметр", "Значение"])
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            
+        for key, value in client_info.items():
+            ws.append([key, value])
+            
+        ws.append([]) # Разделитель
+        
+        # Технические данные
+        ws.append(["Технический параметр", "Ответ"])
+        last_row = ws.max_row
+        for cell in ws[last_row]:
+            cell.font = header_font
+            cell.fill = header_fill
+            
+        for key, value in data.items():
+            ws.append([key, str(value)])
+            
+        ws.append([])
+        ws.append(["ИТОГОВЫЙ БАЛЛ БЕЗОПАСНОСТИ", score])
+        ws.cell(row=ws.max_row, column=2).font = Font(bold=True)
+
+        # Сохранение в буфер
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        excel_bytes = output.getvalue()
+
+        # 2. Отправка в Telegram
+        if TOKEN and CHAT_ID:
+            try:
+                # Текст сообщения
+                text_msg = (f"🔔 **Новая заявка на аудит!**\n\n"
+                            f"🏢 Компания: {client_info['Компания']}\n"
+                            f"👤 Контакт: {client_info['ФИО']}\n"
+                            f"📞 Тел: {client_info['Телефон']}\n"
+                            f"🛡️ Балл ИБ: {score}")
+                
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                             data={"chat_id": CHAT_ID, "text": text_msg, "parse_mode": "Markdown"})
+                
+                # Файл
+                files = {'document': (f"Audit_{client_info['Компания']}.xlsx", excel_bytes)}
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
+                             data={"chat_id": CHAT_ID}, files=files)
+                
+                st.success("✅ Отчет успешно сформирован и отправлен в отдел аудита!")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Ошибка при отправке в Telegram: {e}")
+        else:
+            st.warning("⚠️ Настройки Telegram не найдены. Вы можете скачать файл вручную ниже.")
+
+        # 3. Кнопка скачивания для пользователя
+        st.download_button(
+            label="📥 Скачать отчет (Excel)",
+            data=excel_bytes,
+            file_name=f"Audit_{client_info['Компания']}_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
