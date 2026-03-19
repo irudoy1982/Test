@@ -5,12 +5,13 @@ import requests
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.drawing.image import Image as OpenpyxlImage
 from datetime import datetime
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
 
-# Данные для Telegram из Secrets (настраиваются в Streamlit Cloud)
+# Настройки Telegram
 TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
@@ -35,141 +36,140 @@ col_h1, col_h2 = st.columns(2)
 
 with col_h1:
     client_info['Город'] = st.text_input("Город:*")
-    client_info['Компания'] = st.text_input("Наименование компании:*")
-    site_in = st.text_input("Сайт:*", placeholder="example.kz")
-    client_info['Сайт'] = site_in
+    client_info['Наименование компании'] = st.text_input("Наименование компании:*")
+    site_input = st.text_input("Сайт компании:*", placeholder="example.kz")
+    client_info['Сайт компании'] = site_input
 
-    if st.checkbox("Email отличается от домена сайта"):
-        client_info['Email'] = st.text_input("Email:*", placeholder="info@domain.com")
+    custom_email_mode = st.checkbox("Email отличается от сайта")
+    if custom_email_mode:
+        client_info['Email'] = st.text_input("Email контактного лица:*", placeholder="info@domain.com")
     else:
-        domain = site_in.replace("https://","").replace("http://","").replace("www.","").split('/')[0]
-        if domain and "." in domain:
-            st.write("Email (логин):*")
-            e1, e2 = st.columns([2, 3])
-            prefix = e1.text_input("Login", placeholder="info", label_visibility="collapsed", key="em_pre")
-            e2.markdown(f"**@{domain}**")
-            client_info['Email'] = f"{prefix}@{domain}" if prefix else ""
+        clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+        if clean_domain and "." in clean_domain:
+            st.write("Email контактного лица (логин):*")
+            e_col1, e_col2 = st.columns([1, 2])
+            with e_col1:
+                email_prefix = st.text_input("Логин", placeholder="info", label_visibility="collapsed", key="email_pre")
+            with e_col2:
+                st.markdown(f"**@{clean_domain}**")
+            client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
         else:
             client_info['Email'] = ""
 
 with col_h2:
-    client_info['ФИО'] = st.text_input("ФИО контактного лица:*")
+    client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
     client_info['Должность'] = st.text_input("Должность:*")
-    st.write("Телефон:*")
-    p1, p2 = st.columns([1, 2])
-    codes = [
-        ("🇰🇿 +7","+7"), ("🇷🇺 +7","+7"), ("🇺🇿 +998","+998"), 
-        ("🇰🇬 +996","+996"), ("🇹🇯 +992","+992"), ("🇦🇪 +971","+971"),
-        ("🇹🇷 +90","+90"), ("🇦🇿 +994","+994"), ("🇧🇾 +375","+375"),
-        ("🇬🇪 +995","+995"), ("🇺🇸 +1","+1"), ("🇬🇧 +44","+44")
-    ]
-    code = p1.selectbox("Код", codes, format_func=lambda x: x[0], label_visibility="collapsed")
-    num = p2.text_input("Номер", placeholder="701 123 45 67", label_visibility="collapsed", key="ph_num")
-    client_info['Телефон'] = f"{code[1]} {num}"
+    client_info['Контактный телефон'] = st.text_input("Контактный телефон:*")
 
 st.divider()
 
 # --- БЛОК 1: ИТ ИНФРАСТРУКТУРА ---
-st.header("Блок 1: ИТ Инфраструктура")
-data['АРМ (всего)'] = st.number_input("Кол-во АРМ (шт):", min_value=0, step=1)
+st.header("Блок 1: Информационные технологии")
+total_arm = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1)
+data['1.1. Всего АРМ'] = total_arm
 
 if st.toggle("Своя сетевая инфраструктура"):
-    data['Канал'] = st.selectbox("Тип связи:", ["Оптика", "Радио", "Спутник", "4G/5G", "Starlink"])
-    data['NGFW'] = st.text_input("Вендор Межсетевого экрана (NGFW):")
-    if data['NGFW']: score += 20
+    data['1.2.1. Тип канала'] = st.selectbox("Тип канала:", ["Оптика", "Радио", "Спутник", "4G/5G", "Starlink"])
+    data['1.2.2. NGFW'] = st.text_input("Вендор NGFW:")
+    if data['1.2.2. NGFW']: score += 10 # Добавили баллы за периметр
 
-data['Серверы (физ)'] = st.number_input("Физические серверы:", min_value=0)
-data['Серверы (вирт)'] = st.number_input("Виртуальные серверы:", min_value=0)
-data['Почтовая система'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"])
+# Серверы
+col_s1, col_s2 = st.columns(2)
+data['1.3.1. Физ. серверы'] = col_s1.number_input("Физические серверы:", min_value=0, step=1)
+data['1.3.2. Вирт. серверы'] = col_s2.number_input("Виртуальные серверы:", min_value=0, step=1)
 
-# --- БЛОК 2: ИБ (ТУТ БЫЛА ОШИБКА) ---
-st.header("Блок 2: Информационная безопасность")
-data['Антивирус'] = st.text_input("Используемое антивирусное ПО (EDR/AV):")
-if data['Антивирус']: score += 15
-
-data['Бэкапы'] = st.radio("Наличие резервного копирования данных:", ["Да", "Нет", "Частично"])
-if data['Бэкапы'] == "Да": score += 25
-
-data['VPN'] = st.checkbox("Используется ли VPN для удаленного доступа?")
-if data['VPN']: score += 10
+# Почта и мониторинг
+col_p1, col_p2 = st.columns(2)
+data['1.4. Почта'] = col_p1.selectbox("Почтовая система:", ["Exchange", "M365", "Google", "Yandex", "Свой сервер", "Нет"])
+data['1.5. Мониторинг'] = col_p2.selectbox("Система мониторинга:", ["Zabbix", "PRTG", "Prometheus", "Нет"])
+if data['1.5. Мониторинг'] != "Нет": score += 5
 
 st.divider()
 
-# --- ФИНАЛЬНАЯ ЛОГИКА ---
-if st.button("🚀 Отправить данные на аудит"):
-    # Валидация обязательных полей
-    if not client_info['Компания'] or not client_info['ФИО'] or not num:
-        st.error("Пожалуйста, заполните обязательные поля: Компания, ФИО и Номер телефона.")
+# --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
+st.header("Блок 2: Информационная Безопасность")
+ib_list = {
+    "Vulnerability Management (VM/VMDR)": 15, # Твоя специализация
+    "DLP (Защита данных)": 15,
+    "PAM (Управление доступом)": 10,
+    "SIEM (Мониторинг событий)": 15,
+    "Backup (Резервное копирование)": 20
+}
+
+for label, pts in ib_list.items():
+    if st.checkbox(label):
+        vendor = st.text_input(f"Укажите вендора для {label}:", key=f"v_{label}")
+        data[label] = f"Да ({vendor if vendor else 'не указан'})"
+        score += pts
     else:
-        # 1. Создание Excel в памяти
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Результаты аудита"
-        
-        # Стили
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-        
-        # Данные клиента
-        ws.append(["Параметр", "Значение"])
-        for cell in ws[1]:
-            cell.font = header_font
-            cell.fill = header_fill
-            
-        for key, value in client_info.items():
-            ws.append([key, value])
-            
-        ws.append([]) # Разделитель
-        
-        # Технические данные
-        ws.append(["Технический параметр", "Ответ"])
-        last_row = ws.max_row
-        for cell in ws[last_row]:
-            cell.font = header_font
-            cell.fill = header_fill
-            
-        for key, value in data.items():
-            ws.append([key, str(value)])
-            
-        ws.append([])
-        ws.append(["ИТОГОВЫЙ БАЛЛ БЕЗОПАСНОСТИ", score])
-        ws.cell(row=ws.max_row, column=2).font = Font(bold=True)
+        data[label] = "Нет"
 
-        # Сохранение в буфер
-        output = BytesIO()
-        wb.save(output)
-        output.seek(0)
-        excel_bytes = output.getvalue()
+# --- ГЕНЕРАЦИЯ EXCEL ---
+def make_expert_excel(c_info, results, final_score):
+    output = BytesIO()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Khalil Audit Report"
+    
+    # Стили
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    white_font = Font(color="FFFFFF", bold=True)
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
+    # Шапка
+    ws.merge_cells('A1:C2')
+    ws['A1'] = "ЭКСПЕРТНЫЙ ОТЧЕТ ПО ИТ И ИБ (2026)"
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws['A1'].font = Font(bold=True, size=14, color="1F4E78")
 
-        # 2. Отправка в Telegram
-        if TOKEN and CHAT_ID:
-            try:
-                # Текст сообщения
-                text_msg = (f"🔔 **Новая заявка на аудит!**\n\n"
-                            f"🏢 Компания: {client_info['Компания']}\n"
-                            f"👤 Контакт: {client_info['ФИО']}\n"
-                            f"📞 Тел: {client_info['Телефон']}\n"
-                            f"🛡️ Балл ИБ: {score}")
-                
-                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                             data={"chat_id": CHAT_ID, "text": text_msg, "parse_mode": "Markdown"})
-                
-                # Файл
-                files = {'document': (f"Audit_{client_info['Компания']}.xlsx", excel_bytes)}
-                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
-                             data={"chat_id": CHAT_ID}, files=files)
-                
-                st.success("✅ Отчет успешно сформирован и отправлен в отдел аудита!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Ошибка при отправке в Telegram: {e}")
-        else:
-            st.warning("⚠️ Настройки Telegram не найдены. Вы можете скачать файл вручную ниже.")
+    # Информация о клиенте
+    curr_row = 4
+    for k, v in c_info.items():
+        ws.cell(row=curr_row, column=1, value=k).font = Font(bold=True)
+        ws.cell(row=curr_row, column=2, value=str(v))
+        curr_row += 1
+    
+    # Индекс зрелости
+    curr_row += 1
+    ws.cell(row=curr_row, column=1, value="ИНДЕКС ТЕХНИЧЕСКОЙ ЗРЕЛОСТИ:").font = Font(bold=True)
+    res_cell = ws.cell(row=curr_row, column=2, value=f"{final_score}%")
+    color = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
+    res_cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+    res_cell.font = Font(bold=True)
 
-        # 3. Кнопка скачивания для пользователя
-        st.download_button(
-            label="📥 Скачать отчет (Excel)",
-            data=excel_bytes,
-            file_name=f"Audit_{client_info['Компания']}_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+    # Таблица результатов
+    curr_row += 2
+    headers = ["Параметр", "Значение", "Рекомендация"]
+    for i, h in enumerate(headers, 1):
+        cell = ws.cell(row=curr_row, column=i, value=h)
+        cell.fill = header_fill; cell.font = white_font
+
+    curr_row += 1
+    for k, v in results.items():
+        ws.cell(row=curr_row, column=1, value=k).border = border
+        ws.cell(row=curr_row, column=2, value=str(v)).border = border
+        rec = "Внедрить" if "Нет" in str(v) else "Оптимизировать"
+        ws.cell(row=curr_row, column=3, value=rec).border = border
+        curr_row += 1
+
+    for col in ['A', 'B', 'C']: ws.column_dimensions[col].width = 30
+    wb.save(output)
+    return output.getvalue()
+
+# --- ФИНАЛ ---
+if st.button("📊 Сформировать экспертный отчет"):
+    if not all([client_info['Компания'], client_info['Email'], client_info['Контактный телефон']]):
+        st.error("Заполните все поля со звездочкой!")
+    else:
+        with st.spinner("Отправка данных..."):
+            f_score = min(score, 100)
+            report = make_expert_excel(client_info, data, f_score)
+            
+            # Отправка в TG
+            caption = f"🚀 *Новый аудит: {client_info['Наименование компании']}*\n📊 Зрелость: {f_score}%"
+            files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report)}
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
+                         data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
+            
+            st.success("Отчет отправлен!")
+            st.download_button("📥 Скачать Excel", report, "Audit_Khalil.xlsx")
