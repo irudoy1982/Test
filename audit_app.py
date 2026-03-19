@@ -24,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.8")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.9")
 
 data = {}
 client_info = {}
@@ -92,7 +92,7 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
-# 1.2 Сетевая инфраструктура (ОБНОВЛЕНО v2.8)
+# 1.2 Сетевая инфраструктура (ОБНОВЛЕНО v2.9)
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -119,7 +119,6 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
     if col_add3.checkbox("VPN", key="chk_vpn"): add_channels.append("VPN")
     data['1.2.3. Доп. каналы'] = ", ".join(add_channels) if add_channels else "Нет"
 
-    # НОВОЕ В v2.8: Маршрутизаторы и Коммутаторы
     st.write("**Активное сетевое оборудование:**")
     c_net1, c_net2, c_net3 = st.columns(3)
     
@@ -144,6 +143,38 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         else:
             data['1.2.6. Коммутаторы L3'] = "Нет"
 
+    # НОВОЕ В v2.9: Уровни сети
+    st.write("**Уровни сети:**")
+    l_col1, l_col2, l_col3 = st.columns(3)
+    with l_col1:
+        if st.checkbox("Ядро (Core)", key="net_core"):
+            core_v = st.text_input("Основной производитель (Core):", key="core_vendor")
+            data['Уровень сети: Ядро'] = core_v if core_v else "Да"
+    with l_col2:
+        if st.checkbox("Уровень распределения", key="net_dist"):
+            dist_v = st.text_input("Основной производитель (Dist):", key="dist_vendor")
+            data['Уровень сети: Распределение'] = dist_v if dist_v else "Да"
+    with l_col3:
+        if st.checkbox("Уровень доступа", key="net_acc"):
+            acc_v = st.text_input("Основной производитель (Access):", key="acc_vendor")
+            data['Уровень сети: Доступ'] = acc_v if acc_v else "Да"
+
+    # НОВОЕ В v2.9: Wi-Fi
+    st.write("**Беспроводная сеть:**")
+    if st.checkbox("Wi-Fi", key="wifi_toggle"):
+        w_col1, w_col2, w_col3 = st.columns(3)
+        with w_col1:
+            if st.checkbox("Контроллер", key="wifi_ctrl"):
+                wc_v = st.text_input("Производитель/модель контроллера:", key="wc_vendor")
+                data['Wi-Fi Контроллер'] = wc_v if wc_v else "Да"
+        with w_col2:
+            ap_count = st.number_input("Количество точек доступа (шт):", min_value=0, step=1, key="ap_cnt")
+            data['Wi-Fi Точки доступа'] = ap_count
+        with w_col3:
+            wf_types = ["Wi-Fi 6/6E (802.11ax)", "Wi-Fi 5 (802.11ac)", "Wi-Fi 4 (802.11n)", "Другое"]
+            wf_sel = st.selectbox("Тип Wi-Fi:", wf_types, key="wf_type_sel")
+            data['Wi-Fi Тип'] = wf_sel
+
     # NGFW
     if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk"):
         ngfw_vendor = st.text_input("Производитель (NGFW):", key="ngfw_v")
@@ -156,7 +187,6 @@ else:
 
 # 1.3 Серверы, Виртуализация и Резервное копирование
 st.write("---")
-# ... (Остальной код без изменений) ...
 st.subheader("1.3. Серверы и Виртуализация")
 col_s1, col_s2 = st.columns(2)
 with col_s1:
@@ -378,4 +408,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v2.8 | Almaty 2026")
+st.info("Khalil Audit System v2.9 | Almaty 2026")
