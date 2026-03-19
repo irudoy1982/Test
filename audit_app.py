@@ -79,7 +79,7 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
-# 1.2 Сетевая инфраструктура (ПЕРЕНЕСЕНО СЮДА)
+# 1.2 Сетевая инфраструктура (Перенесено под 1.1)
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -189,28 +189,4 @@ def make_expert_excel(c_info, results, final_score):
 
     ws.cell(row=current_row, column=1, value="ИНДЕКС ТЕХНИЧЕСКОЙ ЗРЕЛОСТИ:").font = Font(bold=True)
     score_cell = ws.cell(row=current_row, column=2, value=f"{final_score}%")
-    bg_color = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
-    score_cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
-    score_cell.font = Font(bold=True)
-    current_row += 2
-
-    headers = ["Параметр", "Значение", "Статус", "Рекомендация эксперта Khalil Trade"]
-    for i, h in enumerate(headers, 1):
-        cell = ws.cell(row=current_row, column=i, value=h)
-        cell.fill = header_fill; cell.font = white_font
-
-    current_row += 1
-    rec_map = {"Нет": "Требуется внедрение для минимизации рисков.", "Резервное копирование": "Критично! Настроить схему 3-2-1.", "NGFW": "Рекомендуется для защиты периметра."}
-
-    for k, v in results.items():
-        ws.cell(row=current_row, column=1, value=k).border = border
-        ws.cell(row=current_row, column=2, value=str(v)).border = border
-        status = "В норме"
-        recommendation = "Поддерживать текущее состояние."
-        if "Нет" in str(v) or v == 0 or v == []:
-            status = "РИСК"
-            recommendation = rec_map.get(k, "Рассмотреть возможность внедрения.")
-            st_cell = ws.cell(row=current_row, column=3, value=status)
-            st_cell.font = Font(color="FF0000", bold=True)
-        else:
-            ws.cell(row=current_row, column=3, value
+    bg_color = "92D
