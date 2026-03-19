@@ -42,20 +42,27 @@ with col_h1:
     site_input = st.text_input("Сайт компании:*", key="site_field", placeholder="example.kz")
     client_info['Сайт компании'] = site_input
 
-    # АВТОМАТИЧЕСКИЙ ЗАХВАТ ДОМЕНА ДЛЯ EMAIL
-    clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+    # ЛОГИКА EMAIL С ЧЕКБОКСОМ
+    custom_email_mode = st.checkbox("Email отличается от сайта (крайне не рекомендуется)")
     
-    if clean_domain and "." in clean_domain:
-        st.write("Email контактного лица (только логин до @):*")
-        e_col1, e_col2 = st.columns([2, 3])
-        with e_col1:
-            email_prefix = st.text_input("Логин", placeholder="info", label_visibility="collapsed", key="email_pre")
-        with e_col2:
-            st.markdown(f"<div style='padding-top: 5px; font-size: 16px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
-        client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
+    if custom_email_mode:
+        # Свободный ввод
+        client_info['Email'] = st.text_input("Email контактного лица:*", placeholder="info@other-domain.com")
     else:
-        st.warning("Введите корректный сайт для формирования Email")
-        client_info['Email'] = ""
+        # Автоматический захват домена
+        clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+        
+        if clean_domain and "." in clean_domain:
+            st.write("Email контактного лица (только логин до @):*")
+            e_col1, e_col2 = st.columns([2, 3])
+            with e_col1:
+                email_prefix = st.text_input("Логин", placeholder="info", label_visibility="collapsed", key="email_pre")
+            with e_col2:
+                st.markdown(f"<div style='padding-top: 5px; font-size: 16px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
+            client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
+        else:
+            st.warning("Введите корректный сайт для формирования Email")
+            client_info['Email'] = ""
 
 with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
@@ -79,7 +86,7 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
-# 1.2 Сетевая инфраструктура (Перенесено под 1.1)
+# 1.2 Сетевая инфраструктура
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -189,10 +196,7 @@ def make_expert_excel(c_info, results, final_score):
 
     ws.cell(row=current_row, column=1, value="ИНДЕКС ТЕХНИЧЕСКОЙ ЗРЕЛОСТИ:").font = Font(bold=True)
     score_cell = ws.cell(row=current_row, column=2, value=f"{final_score}%")
-    
-    # ИСПРАВЛЕННАЯ СТРОКА (Версия 1.5)
     bg_color = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
-    
     score_cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
     score_cell.font = Font(bold=True)
     current_row += 2
@@ -216,47 +220,4 @@ def make_expert_excel(c_info, results, final_score):
             status = "РИСК"
             recommendation = rec_map.get(k, "Рассмотреть возможность внедрения.")
             st_cell = ws.cell(row=current_row, column=3, value=status)
-            st_cell.font = Font(color="FF0000", bold=True)
-        else:
-            ws.cell(row=current_row, column=3, value=status)
-        
-        ws.cell(row=current_row, column=4, value=recommendation).border = border
-        ws.cell(row=current_row, column=3).border = border
-        current_row += 1
-
-    for col, width in {'A': 35, 'B': 30, 'C': 15, 'D': 60}.items():
-        ws.column_dimensions[col].width = width
-    
-    wb.save(output)
-    return output.getvalue(), auto_date
-
-# --- ФИНАЛ И ОТПРАВКА ---
-st.divider()
-if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
-    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица'], client_info['Сайт компании']]
-    if not all(mandatory):
-        st.error("⚠️ Заполните все обязательные поля (Город, Компанию, Сайт и ФИО)!")
-    elif "@" not in client_info.get('Email', "") or client_info['Email'].startswith("@"):
-        st.error("⚠️ Введите логин пользователя для формирования Email!")
-    else:
-        with st.spinner("Создаем отчет..."):
-            f_score = min(score, 100)
-            report_bytes, final_date = make_expert_excel(client_info, data, f_score)
-            try:
-                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                caption = (f"🚀 *Коллеги, у нас новый заказ. Давайте зарабатывать!*\n\n"
-                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
-                           f"📊 *Зрелость ИТ:* {f_score}%\n"
-                           f"📅 *Дата (авто):* {final_date}\n"
-                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
-                           f"📧 *Email:* {client_info['Email']}")
-                
-                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
-                requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
-                st.success("Отчет успешно отправлен в Telegram!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Ошибка связи: {e}")
-            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
-
-st.info("Khalil Audit System | Almaty 2026")
+            st_cell.font = Font(color="FF0000", bold=
