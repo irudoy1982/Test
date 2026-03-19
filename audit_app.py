@@ -38,7 +38,7 @@ with col_h1:
     client_info['Город'] = st.text_input("Город:*")
     client_info['Наименование компании'] = st.text_input("Наименование компании:*")
     
-    # Сайт компании — ОБЯЗАТЕЛЬНОЕ ПОЛЕ
+    # Сайт компании
     site_input = st.text_input("Сайт компании:*", key="site_field", placeholder="example.kz")
     client_info['Сайт компании'] = site_input
 
@@ -58,7 +58,7 @@ with col_h1:
                 st.markdown(f"<div style='padding-top: 5px; font-size: 16px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
             client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
         else:
-            st.warning("Введите корректный сайт для формирования Email")
+            st.warning("Введите сайт для формирования Email")
             client_info['Email'] = ""
 
 with col_h2:
@@ -68,7 +68,7 @@ with col_h2:
 
 st.divider()
 
-# --- БЛОКИ ОПРОСНИКА ---
+# --- БЛОК 1: ИНФОРМАЦИОННЫЕ ТЕХНОЛОГИИ ---
 st.header("Блок 1: Информационные технологии")
 
 # 1.1 Конечные точки
@@ -81,7 +81,7 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
-# 1.2 Сетевая инфраструктура
+# 1.2 Сетевая инфраструктура (ПЕРЕНЕСЕНО ПОД 1.1)
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -101,4 +101,61 @@ with col_s1:
     data['1.3. Физические серверы'] = phys_servers
 with col_s2:
     virt_servers = st.number_input("Количество виртуальных серверов:", min_value=0, step=1, key="virt_srv")
-    data['
+    data['1.3. Виртуальные серверы'] = virt_servers
+
+selected_os_srv = st.multiselect("Выберите ОС серверов:", ["Windows Server", "Linux", "Unix", "Другое"], key="ms_srv_list")
+if selected_os_srv:
+    for os_s in selected_os_srv:
+        count_srv = st.number_input(f"Количество серверов на {os_s}:", min_value=0, step=1, key=f"srv_cnt_{os_s}")
+        data[f"ОС Сервера ({os_s})"] = count_srv
+
+# 1.4 Виртуализация и 1.5 Почта
+st.write("---")
+col_v1, col_v2 = st.columns(2)
+with col_v1:
+    st.subheader("1.4. Виртуализация")
+    data['1.4. Виртуализация'] = st.multiselect("Системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys")
+with col_v2:
+    st.subheader("1.5. Почтовая система")
+    data['1.5. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
+
+st.subheader("1.6. Внутренние Информационные системы")
+has_is = st.checkbox("Есть ли внутренние ИС (1C, ERP, CRM)?", key="is_chk")
+data['1.6. Внутренние ИС'] = st.text_input("Перечислите:", key="is_input") if has_is else "Нет"
+
+st.subheader("1.7. Система мониторинга")
+has_mon = st.checkbox("Есть ли система мониторинга?", key="mon_chk")
+data['1.7. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
+
+st.divider()
+
+# Блок 2: Информационная Безопасность
+st.header("Блок 2: Информационная Безопасность")
+if st.toggle("Есть отдел ИБ", key="ib_toggle"):
+    ib_list = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15, "Резервное копирование": 20}
+    for label, pts in ib_list.items():
+        if st.checkbox(label, key=f"ib_{label}"):
+            v_n = st.text_input(f"Вендор {label}:", key=f"vn_{label}")
+            data[label] = f"Да ({v_n if v_n else 'не указан'})"
+            score += pts
+        else:
+            data[label] = "Нет"
+
+# Блок 3: Web-ресурсы
+st.header("Блок 3: Web-ресурсы")
+if st.toggle("Есть свои Web-ресурсы", key="web_toggle"):
+    data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако (KZ)", "Облако (Global)"], key="host")
+    data['3.2. Frontend'] = st.multiselect("Frontend серверы:", ["Nginx", "Apache", "IIS", "LiteSpeed", "Caddy", "Cloudflare"], key="fnt")
+
+# Блок 4: Разработка
+st.header("Блок 4: Разработка")
+if st.toggle("Своя разработка", key="dev_toggle"):
+    data['4.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0, key="dev_c")
+    data['4.2. CI/CD'] = st.checkbox("CI/CD используется", key="cicd_c")
+
+# --- ГЕНЕРАЦИЯ EXCEL ---
+def make_expert_excel(c_info, results, final_score):
+    output = BytesIO()
+    wb = Workbook()
+    ws = wb.active
+    ws.title =
