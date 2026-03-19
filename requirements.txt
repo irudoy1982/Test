@@ -2,3 +2,4 @@ streamlit
 pandas
 requests
 openpyxl
+streamlit-phone-number-input
