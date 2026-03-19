@@ -69,6 +69,7 @@ st.divider()
 # БЛОК 1: Информационные технологии
 st.header("Блок 1: Информационные технологии")
 
+# 1.1 Конечные точки
 st.subheader("1.1. Конечные точки (АРМ)")
 total_arm = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1, key="total_arm_val")
 data['1.1. Всего АРМ'] = total_arm
@@ -78,15 +79,27 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
+# 1.2 Сетевая инфраструктура (ПЕРЕНЕСЕНО СЮДА)
 st.write("---")
-st.subheader("1.2. Серверы")
+st.subheader("1.2. Сетевая инфраструктура")
+if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
+    net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink"]
+    data['1.2.1. Основной канал'] = st.selectbox("Тип канала:", net_types, key="net_type")
+    data['1.2.2. NGFW'] = st.text_input("Вендор NGFW:", key="ngfw_v")
+    if data['1.2.2. NGFW']: score += 20
+else:
+    data['1.2. Сетевая инфраструктура'] = "Не указана/Аренда"
+
+# 1.3 Серверы
+st.write("---")
+st.subheader("1.3. Серверы")
 col_s1, col_s2 = st.columns(2)
 with col_s1:
     phys_servers = st.number_input("Количество физических серверов:", min_value=0, step=1, key="phys_srv")
-    data['1.2. Физические серверы'] = phys_servers
+    data['1.3. Физические серверы'] = phys_servers
 with col_s2:
     virt_servers = st.number_input("Количество виртуальных серверов:", min_value=0, step=1, key="virt_srv")
-    data['1.2. Виртуальные серверы'] = virt_servers
+    data['1.3. Виртуальные серверы'] = virt_servers
 
 selected_os_srv = st.multiselect("Выберите ОС серверов:", ["Windows Server", "Linux", "Unix", "Другое"], key="ms_srv_list")
 if selected_os_srv:
@@ -94,33 +107,25 @@ if selected_os_srv:
         count_srv = st.number_input(f"Количество серверов на {os_s}:", min_value=0, step=1, key=f"srv_cnt_{os_s}")
         data[f"ОС Сервера ({os_s})"] = count_srv
 
+# 1.4 Виртуализация и 1.5 Почта
 st.write("---")
 col_v1, col_v2 = st.columns(2)
 with col_v1:
-    st.subheader("1.3. Виртуализация")
-    data['1.3. Виртуализация'] = st.multiselect("Системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys")
+    st.subheader("1.4. Виртуализация")
+    data['1.4. Виртуализация'] = st.multiselect("Системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys")
 with col_v2:
-    st.subheader("1.4. Почтовая система")
-    data['1.4. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
+    st.subheader("1.5. Почтовая система")
+    data['1.5. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
 
-st.subheader("1.5. Внутренние Информационные системы")
+# 1.6 Внутренние ИС
+st.subheader("1.6. Внутренние Информационные системы")
 has_is = st.checkbox("Есть ли внутренние ИС (1C, ERP, CRM)?", key="is_chk")
-data['1.5. Внутренние ИС'] = st.text_input("Перечислите:", key="is_input") if has_is else "Нет"
+data['1.6. Внутренние ИС'] = st.text_input("Перечислите:", key="is_input") if has_is else "Нет"
 
-st.subheader("1.6. Система мониторинга")
+# 1.7 Система мониторинга
+st.subheader("1.7. Система мониторинга")
 has_mon = st.checkbox("Есть ли система мониторинга?", key="mon_chk")
-data['1.6. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
-
-# Подпункт 1.7: Сетевая инфраструктура
-st.write("---")
-st.subheader("1.7. Сетевая инфраструктура")
-if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
-    net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink"]
-    data['1.7.1. Основной канал'] = st.selectbox("Тип канала:", net_types, key="net_type")
-    data['1.7.2. NGFW'] = st.text_input("Вендор NGFW:", key="ngfw_v")
-    if data['1.7.2. NGFW']: score += 20
-else:
-    data['1.7. Сетевая инфраструктура'] = "Не указана/Аренда"
+data['1.7. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
 
 st.divider()
 
@@ -208,45 +213,4 @@ def make_expert_excel(c_info, results, final_score):
             st_cell = ws.cell(row=current_row, column=3, value=status)
             st_cell.font = Font(color="FF0000", bold=True)
         else:
-            ws.cell(row=current_row, column=3, value=status)
-        ws.cell(row=current_row, column=4, value=recommendation).border = border
-        ws.cell(row=current_row, column=3).border = border
-        current_row += 1
-
-    for col, width in {'A': 35, 'B': 30, 'C': 15, 'D': 60}.items():
-        ws.column_dimensions[col].width = width
-    
-    wb.save(output)
-    return output.getvalue(), auto_date
-
-# --- ФИНАЛ И ОТПРАВКА ---
-st.divider()
-if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
-    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица'], client_info['Сайт компании']]
-    if not all(mandatory):
-        st.error("⚠️ Заполните все обязательные поля (Город, Компанию, Сайт и ФИО)!")
-    elif "@" not in client_info.get('Email', "") or client_info['Email'].startswith("@"):
-        st.error("⚠️ Введите логин пользователя для формирования Email!")
-    else:
-        with st.spinner("Создаем отчет..."):
-            f_score = min(score, 100)
-            report_bytes, final_date = make_expert_excel(client_info, data, f_score)
-            try:
-                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                # ИСПРАВЛЕННЫЙ БЛОК CAPTION (Версия 1.2)
-                caption = (f"🚀 *Коллеги, у нас новый заказ. Давайте зарабатывать!*\n\n"
-                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
-                           f"📊 *Зрелость ИТ:* {f_score}%\n"
-                           f"📅 *Дата (авто):* {final_date}\n"
-                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
-                           f"📧 *Email:* {client_info['Email']}")
-                
-                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
-                requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
-                st.success("Отчет успешно отправлен в Telegram!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Ошибка связи: {e}")
-            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
-
-st.info("Khalil Audit System | Almaty 2026")
+            ws.cell(row=current_row, column=3, value
