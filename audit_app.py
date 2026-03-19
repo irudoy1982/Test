@@ -24,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026)")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.1")
 
 data = {}
 client_info = {}
@@ -58,13 +58,24 @@ with col_h1:
                 st.markdown(f"<div style='padding-top: 5px; font-size: 16px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
             client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
         else:
-            st.warning("Введите сайт для формирования Email")
             client_info['Email'] = ""
 
 with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
     client_info['Должность'] = st.text_input("Должность:*")
-    client_info['Контактный телефон'] = st.text_input("Контактный телефон:*")
+    
+    # ВВОД НОМЕРА ТЕЛЕФОНА С ПРЕФИКСОМ (Версия 2.1)
+    st.write("Контактный телефон:*")
+    p_col1, p_col2 = st.columns([1, 2])
+    country_codes = [
+        ("🇰🇿 +7", "+7"), ("🇷🇺 +7", "+7"), ("🇺🇿 +998", "+998"),
+        ("🇰🇬 +996", "+996"), ("🇹🇯 +992", "+992"), ("🇦🇪 +971", "+971"),
+        ("🇹🇷 +90", "+90"), ("🇦🇿 +994", "+994"), ("🇧🇾 +375", "+375"),
+        ("🇬🇪 +995", "+995"), ("🇺🇸 +1", "+1"), ("🇬🇧 +44", "+44")
+    ]
+    selected_code = p_col1.selectbox("Код страны", country_codes, format_func=lambda x: x[0], label_visibility="collapsed")
+    phone_num = p_col2.text_input("Номер телефона", placeholder="777 777 77 77", label_visibility="collapsed")
+    client_info['Контактный телефон'] = f"{selected_code[1]} {phone_num}" if phone_num else ""
 
 st.divider()
 
@@ -129,7 +140,7 @@ data['1.7. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "
 
 st.divider()
 
-# Блок 2: Информационная Безопасность
+# --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
 st.header("Блок 2: Информационная Безопасность")
 if st.toggle("Есть отдел ИБ", key="ib_toggle"):
     ib_list = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15, "Резервное копирование": 20}
@@ -141,13 +152,13 @@ if st.toggle("Есть отдел ИБ", key="ib_toggle"):
         else:
             data[label] = "Нет"
 
-# Блок 3: Web-ресурсы
+# --- БЛОК 3: WEB-РЕСУРСЫ ---
 st.header("Блок 3: Web-ресурсы")
 if st.toggle("Есть свои Web-ресурсы", key="web_toggle"):
     data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако (KZ)", "Облако (Global)"], key="host")
     data['3.2. Frontend'] = st.multiselect("Frontend серверы:", ["Nginx", "Apache", "IIS", "LiteSpeed", "Caddy", "Cloudflare"], key="fnt")
 
-# Блок 4: Разработка
+# --- БЛОК 4: РАЗРАБОТКА ---
 st.header("Блок 4: Разработка")
 if st.toggle("Своя разработка", key="dev_toggle"):
     data['4.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0, key="dev_c")
@@ -225,9 +236,16 @@ def make_expert_excel(c_info, results, final_score):
 # --- ФИНАЛ И ОТПРАВКА ---
 st.divider()
 if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
-    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица'], client_info['Сайт компании'], client_info.get('Email')]
+    mandatory = [
+        client_info['Город'], 
+        client_info['Наименование компании'], 
+        client_info['ФИО контактного лица'], 
+        client_info['Сайт компании'], 
+        client_info.get('Email'),
+        client_info.get('Контактный телефон')
+    ]
     if not all(mandatory):
-        st.error("⚠️ Заполните все обязательные поля (включая Сайт и Email)!")
+        st.error("⚠️ Заполните все обязательные поля (включая Сайт, Email и Телефон)!")
     else:
         with st.spinner("Создаем отчет..."):
             f_score = min(score, 100)
@@ -239,7 +257,8 @@ if st.button("📊 Сформировать экспертный отчет", ke
                            f"📊 *Зрелость ИТ:* {f_score}%\n"
                            f"📅 *Дата:* {final_date}\n"
                            f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
-                           f"📧 *Email:* {client_info['Email']}")
+                           f"📧 *Email:* {client_info['Email']}\n"
+                           f"📞 *Тел:* {client_info['Контактный телефон']}")
                 
                 files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
                 requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
