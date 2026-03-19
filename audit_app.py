@@ -24,13 +24,13 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.5")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.6")
 
 data = {}
 client_info = {}
 score = 0
 
-# --- ШАПКА: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
+# --- ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
 st.header("📍 Общая информация")
 col_h1, col_h2 = st.columns(2)
 
@@ -92,14 +92,35 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
-# 1.2 Сетевая инфраструктура
+# 1.2 Сетевая инфраструктура (ОБНОВЛЕНО v2.6)
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
-    net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink"]
-    data['1.2.1. Основной канал'] = st.selectbox("Тип канала:", net_types, key="net_type")
-    data['1.2.2. NGFW'] = st.text_input("Вендор Межсетевого экрана (NGFW):", key="ngfw_v")
-    if data['1.2.2. NGFW']: score += 20
+    net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink", "ADSL/VDSL", "Нет"]
+    
+    col_net1, col_net2 = st.columns(2)
+    with col_net1:
+        st.write("**Основной канал:**")
+        main_type = st.selectbox("Тип (основной):", net_types, key="main_net_type")
+        main_speed = st.number_input("Скорость основного (Mbit/s):", min_value=0, step=10, key="main_net_speed")
+        data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
+        
+    with col_net2:
+        st.write("**Резервный канал:**")
+        back_type = st.selectbox("Тип (резервный):", net_types, key="back_net_type")
+        back_speed = st.number_input("Скорость резервного (Mbit/s):", min_value=0, step=10, key="back_net_speed")
+        data['1.2.2. Резервный канал'] = f"{back_type} ({back_speed} Mbit/s)"
+
+    st.write("**Дополнительные каналы:**")
+    col_add1, col_add2, col_add3 = st.columns(3)
+    add_channels = []
+    if col_add1.checkbox("ЕШДИ", key="chk_eshdi"): add_channels.append("ЕШДИ")
+    if col_add2.checkbox("ЕТСГО", key="chk_etsgo"): add_channels.append("ЕТСГО")
+    if col_add3.checkbox("VPN", key="chk_vpn"): add_channels.append("VPN")
+    data['1.2.3. Доп. каналы'] = ", ".join(add_channels) if add_channels else "Нет"
+
+    data['1.2.4. NGFW'] = st.text_input("Вендор Межсетевого экрана (NGFW):", key="ngfw_v")
+    if data['1.2.4. NGFW']: score += 20
 else:
     data['1.2. Сетевая инфраструктура'] = "Не указана/Аренда"
 
@@ -326,4 +347,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v2.5 | Almaty 2026")
+st.info("Khalil Audit System v2.6 | Almaty 2026")
