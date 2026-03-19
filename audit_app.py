@@ -56,13 +56,12 @@ with col_h2:
     client_info['Должность'] = st.text_input("Должность:*")
     st.write("Телефон:*")
     p1, p2 = st.columns([1, 2])
-    code = p1.selectbox("Код", [
+    codes = [
         ("🇰🇿 +7","+7"), ("🇷🇺 +7","+7"), ("🇺🇿 +998","+998"), 
-        ("🇰🇬 +996","+996"), ("🇹🇯 +992","+992"), ("🇹🇲 +993","+993"),
-        ("🇦🇿 +994","+994"), ("🇦🇲 +374","+374"), ("🇧🇾 +375","+375"),
-        ("🇬🇪 +995","+995"), ("🇹🇷 +90","+90"), ("🇦🇪 +971","+971"),
-        ("🇨🇳 +86","+86"), ("🇺🇸 +1","+1"), ("🇬🇧 +44","+44"), ("🇩🇪 +49","+49")
-    ], format_func=lambda x: x[0], label_visibility="collapsed")
+        ("🇰🇬 +996","+996"), ("🇹🇯 +992","+992"), ("🇦🇪 +971","+971"),
+        ("🇹🇷 +90","+90"), ("🇦🇿 +994","+994"), ("🇧🇾 +375","+375")
+    ]
+    code = p1.selectbox("Код", codes, format_func=lambda x: x[0], label_visibility="collapsed")
     num = p2.text_input("Номер", placeholder="701 123 45 67", label_visibility="collapsed")
     client_info['Телефон'] = f"{code[1]} {num}"
 
@@ -75,6 +74,7 @@ if st.toggle("Своя сеть"):
     data['Канал'] = st.selectbox("Связь:", ["Оптика", "Радио", "Спутник", "4G/5G"])
     data['NGFW'] = st.text_input("Вендор NGFW:")
     if data['NGFW']: score += 20
+
 data['Серверы (физ)'] = st.number_input("Физ. серверы:", min_value=0)
 data['Серверы (вирт)'] = st.number_input("Вирт. серверы:", min_value=0)
 data['Почта'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"])
@@ -90,24 +90,19 @@ if st.toggle("Системы ИБ"):
             score += v
         else: data[k] = "Нет"
 
-# --- EXCEL ---
+# --- EXCEL LOGIC ---
 def get_excel(c_info, res, sc):
     out = BytesIO()
     wb = Workbook()
     ws = wb.active
     ws.title = "Audit"
-    
-    # Стили
-    f_white = Font(color="FFFFFF", bold=True)
     f_bold = Font(bold=True)
-    fill = PatternFill("solid", start_color="1F4E78")
-    al = Alignment(horizontal='center', vertical='center')
     bd = Border(left=Side("thin"), right=Side("thin"), top=Side("thin"), bottom=Side("thin"))
 
     ws.merge_cells('A1:D2')
     ws['A1'] = "ОТЧЕТ ПО ИТ И ИБ 2026"
-    ws['A1'].font = Font(bold=True, size=14, color="1F4E78")
-    ws['A1'].alignment = al
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal='center')
 
     curr = 4
     for k, v in c_info.items():
@@ -118,25 +113,37 @@ def get_excel(c_info, res, sc):
     ws.cell(curr+1, 1, "ЗРЕЛОСТЬ ИТ:").font = f_bold
     ws.cell(curr+1, 2, f"{sc}%").font = f_bold
     
-    curr += 3
-    for i, h in enumerate(["Параметр", "Значение", "Статус", "Рекомендация"], 1):
-        c = ws.cell(curr, i, h)
-        c.font = f_white; c.fill = fill; c.alignment = al
-
-    curr += 1
+    curr += 4
     for k, v in res.items():
         ws.cell(curr, 1, k).border = bd
         ws.cell(curr, 2, str(v)).border = bd
-        ws.cell(curr, 3, "Проверено").border = bd
-        ws.cell(curr, 4, "В норме").border = bd
         curr += 1
-
-    for col, w in {'A': 25, 'B': 25, 'C': 15, 'D': 35}.items():
-        ws.column_dimensions[col].width = w
     
     wb.save(out)
     return out.getvalue()
 
-# --- ФИНАЛ ---
+# --- ФИНАЛЬНАЯ КНОПКА (БЕЗ ДЛИННЫХ СТРОК) ---
 st.divider()
-if st.button("📊 Сформи
+btn_label = "Сформировать отчет"
+if st.button(btn_label, type="primary"):
+    # Проверка данных
+    valid = all([client_info['Компания'], client_info['ФИО'], client_info['Email']])
+    if not valid or len(num) < 5:
+        st.error("Заполните обязательные поля и телефон!")
+    else:
+        with st.spinner("Работаем..."):
+            f_sc = min(score, 100)
+            ex_data = get_excel(client_info, data, f_sc)
+            try:
+                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+                cap = f"Новый аудит: {client_info['Компания']}\nЗрелость: {f_sc}%"
+                files = {'document': (f"Audit_{client_info['Компания']}.xlsx", ex_data)}
+                requests.post(url, data={"chat_id": CHAT_ID, "caption": cap}, files=files)
+                
+                st.success("Отправлено!")
+                st.balloons()
+                st.download_button("Скачать Excel", ex_data, f"Audit_{client_info['Компания']}.xlsx")
+            except Exception as e:
+                st.error(f"Ошибка: {e}")
+
+st.info("Khalil Audit | 2026")
