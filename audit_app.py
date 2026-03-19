@@ -24,13 +24,13 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.2")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.3")
 
 data = {}
 client_info = {}
 score = 0
 
-# --- ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
+# --- ШАПКА: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
 st.header("📍 Общая информация")
 col_h1, col_h2 = st.columns(2)
 
@@ -103,7 +103,7 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
 else:
     data['1.2. Сетевая инфраструктура'] = "Не указана/Аренда"
 
-# 1.3 Серверы и Виртуализация (Перенос по просьбе пользователя)
+# 1.3 Серверы и Виртуализация
 st.write("---")
 st.subheader("1.3. Серверы и Виртуализация")
 col_s1, col_s2 = st.columns(2)
@@ -114,15 +114,12 @@ with col_s2:
     virt_servers = st.number_input("Количество виртуальных серверов:", min_value=0, step=1, key="virt_srv")
     data['1.3.2. Виртуальные серверы'] = virt_servers
 
-# Выбор ОС серверов
 selected_os_srv = st.multiselect("Выберите ОС серверов:", ["Windows Server", "Linux", "Unix", "Другое"], key="ms_srv_list")
 if selected_os_srv:
     for os_s in selected_os_srv:
         count_srv = st.number_input(f"Количество серверов на {os_s}:", min_value=0, step=1, key=f"srv_cnt_{os_s}")
         data[f"ОС Сервера ({os_s})"] = count_srv
 
-# Выбор Систем Виртуализации (Логика как у ОС)
-st.write("---")
 selected_virt_sys = st.multiselect("Выберите системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys_list")
 if selected_virt_sys:
     if "Нет" in selected_virt_sys:
@@ -132,20 +129,40 @@ if selected_virt_sys:
             v_cnt = st.number_input(f"Количество хостов {v_sys}:", min_value=0, step=1, key=f"v_cnt_{v_sys}")
             data[f"Система виртуализации ({v_sys})"] = v_cnt
 
-# 1.4 Почта и мониторинг
+# 1.4 Системы хранения данных (СХД) - НОВЫЙ ПУНКТ
+st.write("---")
+st.subheader("1.4. Системы хранения данных (СХД)")
+if st.toggle("Есть собственная СХД", key="storage_toggle"):
+    data['1.4.1. Типы носителей'] = st.multiselect("Типы носителей:", ["HDD (NL-SAS / SATA)", "SSD (SATA / SAS)", "NVMe", "SCM (Storage Class Memory)"], key="st_media")
+    
+    col_pct1, col_pct2 = st.columns(2)
+    with col_pct1:
+        data['1.4.2. Доля HDD (%)'] = st.number_input("Процент HDD:", min_value=0, max_value=100, step=5, key="pct_hdd")
+    with col_pct2:
+        data['1.4.3. Доля SSD (%)'] = st.number_input("Процент SSD:", min_value=0, max_value=100, step=5, key="pct_ssd")
+    
+    col_chk1, col_chk2 = st.columns(2)
+    data['1.4.4. Гибридная СХД'] = col_chk1.checkbox("Используется гибридная СХД (Hybrid Storage)", key="hybrid_st")
+    data['1.4.5. All-Flash'] = col_chk2.checkbox("Есть All-Flash массивы", key="allflash_st")
+    
+    data['1.4.6. RAID-группы'] = st.multiselect("Используемые RAID-группы:", ["RAID 0", "RAID 1", "RAID 5", "RAID 6", "RAID 10", "RAID 50", "RAID 60", "JBOD"], key="raid_list")
+else:
+    data['1.4. СХД'] = "Не используется/Облако"
+
+# 1.5 Почта и мониторинг
 st.write("---")
 col_p1, col_p2 = st.columns(2)
 with col_p1:
-    st.subheader("1.4. Почтовая система")
-    data['1.4. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
+    st.subheader("1.5. Почтовая система")
+    data['1.5. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
 with col_p2:
-    st.subheader("1.5. Система мониторинга")
+    st.subheader("1.6. Система мониторинга")
     has_mon = st.checkbox("Есть ли система мониторинга?", key="mon_chk")
-    data['1.5. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
+    data['1.6. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
 
-st.subheader("1.6. Внутренние Информационные системы")
+st.subheader("1.7. Внутренние Информационные системы")
 has_is = st.checkbox("Есть ли внутренние ИС (1C, ERP, CRM)?", key="is_chk")
-data['1.6. Внутренние ИС'] = st.text_input("Перечислите:", key="is_input") if has_is else "Нет"
+data['1.7. Внутренние ИС'] = st.text_input("Перечислите:", key="is_input") if has_is else "Нет"
 
 st.divider()
 
@@ -277,4 +294,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v2.2 | Almaty 2026")
+st.info("Khalil Audit System v2.3 | Almaty 2026")
