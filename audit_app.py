@@ -24,13 +24,13 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.3")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.4")
 
 data = {}
 client_info = {}
 score = 0
 
-# --- ШАПКА: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
+# --- ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
 st.header("📍 Общая информация")
 col_h1, col_h2 = st.columns(2)
 
@@ -103,7 +103,7 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
 else:
     data['1.2. Сетевая инфраструктура'] = "Не указана/Аренда"
 
-# 1.3 Серверы и Виртуализация
+# 1.3 Серверы, Виртуализация и Резервное копирование
 st.write("---")
 st.subheader("1.3. Серверы и Виртуализация")
 col_s1, col_s2 = st.columns(2)
@@ -129,7 +129,16 @@ if selected_virt_sys:
             v_cnt = st.number_input(f"Количество хостов {v_sys}:", min_value=0, step=1, key=f"v_cnt_{v_sys}")
             data[f"Система виртуализации ({v_sys})"] = v_cnt
 
-# 1.4 Системы хранения данных (СХД) - НОВЫЙ ПУНКТ
+# ПЕРЕНЕСЕНО ИЗ БЛОКА 2 В КОНЕЦ 1.3
+st.write("---")
+if st.checkbox("Резервное копирование", key="ib_backup"):
+    v_n_b = st.text_input("Вендор Резервного копирования:", key="vn_backup")
+    data["Резервное копирование"] = f"Да ({v_n_b if v_n_b else 'не указан'})"
+    score += 20
+else:
+    data["Резервное копирование"] = "Нет"
+
+# 1.4 Системы хранения данных (СХД)
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Есть собственная СХД", key="storage_toggle"):
@@ -169,7 +178,7 @@ st.divider()
 # --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
 st.header("Блок 2: Информационная Безопасность")
 if st.toggle("Есть отдел ИБ", key="ib_toggle"):
-    ib_list = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15, "Резервное копирование": 20}
+    ib_list = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15}
     for label, pts in ib_list.items():
         if st.checkbox(label, key=f"ib_{label}"):
             v_n = st.text_input(f"Вендор {label}:", key=f"vn_{label}")
@@ -294,4 +303,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v2.3 | Almaty 2026")
+st.info("Khalil Audit System v2.4 | Almaty 2026")
