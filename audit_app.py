@@ -66,7 +66,7 @@ st.divider()
 
 # --- БЛОКИ ОПРОСНИКА ---
 
-# ОБЪЕДИНЕННЫЙ БЛОК 1: Информационные технологии
+# БЛОК 1: Информационные технологии
 st.header("Блок 1: Информационные технологии")
 
 st.subheader("1.1. Конечные точки (АРМ)")
@@ -111,7 +111,7 @@ st.subheader("1.6. Система мониторинга")
 has_mon = st.checkbox("Есть ли система мониторинга?", key="mon_chk")
 data['1.6. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
 
-# Бывший Блок 2 теперь подпункт 1.7
+# Подпункт 1.7: Сетевая инфраструктура
 st.write("---")
 st.subheader("1.7. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -124,7 +124,7 @@ else:
 
 st.divider()
 
-# Блок 2 (бывший 3): ИБ
+# Блок 2: Информационная Безопасность
 st.header("Блок 2: Информационная Безопасность")
 if st.toggle("Есть отдел ИБ", key="ib_toggle"):
     ib_list = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15, "Резервное копирование": 20}
@@ -136,13 +136,13 @@ if st.toggle("Есть отдел ИБ", key="ib_toggle"):
         else:
             data[label] = "Нет"
 
-# Блок 3 (бывший 4): Web
+# Блок 3: Web-ресурсы
 st.header("Блок 3: Web-ресурсы")
 if st.toggle("Есть свои Web-ресурсы", key="web_toggle"):
     data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако (KZ)", "Облако (Global)"], key="host")
     data['3.2. Frontend'] = st.multiselect("Frontend серверы:", ["Nginx", "Apache", "IIS", "LiteSpeed", "Caddy", "Cloudflare"], key="fnt")
 
-# Блок 4 (бывший 5): Разработка
+# Блок 4: Разработка
 st.header("Блок 4: Разработка")
 if st.toggle("Своя разработка", key="dev_toggle"):
     data['4.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0, key="dev_c")
@@ -195,11 +195,7 @@ def make_expert_excel(c_info, results, final_score):
         cell.fill = header_fill; cell.font = white_font
 
     current_row += 1
-    rec_map = {
-        "Нет": "Требуется внедрение для минимизации рисков.",
-        "Резервное копирование": "Критично! Настроить схему 3-2-1.",
-        "NGFW": "Рекомендуется для глубокого анализа трафика."
-    }
+    rec_map = {"Нет": "Требуется внедрение для минимизации рисков.", "Резервное копирование": "Критично! Настроить схему 3-2-1.", "NGFW": "Рекомендуется для защиты периметра."}
 
     for k, v in results.items():
         ws.cell(row=current_row, column=1, value=k).border = border
@@ -237,5 +233,20 @@ if st.button("📊 Сформировать экспертный отчет", ke
             report_bytes, final_date = make_expert_excel(client_info, data, f_score)
             try:
                 url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+                # ИСПРАВЛЕННЫЙ БЛОК CAPTION (Версия 1.2)
                 caption = (f"🚀 *Коллеги, у нас новый заказ. Давайте зарабатывать!*\n\n"
-                           f"🏢 *Компания:* {client_info
+                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
+                           f"📊 *Зрелость ИТ:* {f_score}%\n"
+                           f"📅 *Дата (авто):* {final_date}\n"
+                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
+                           f"📧 *Email:* {client_info['Email']}")
+                
+                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
+                requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
+                st.success("Отчет успешно отправлен в Telegram!")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Ошибка связи: {e}")
+            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
+
+st.info("Khalil Audit System | Almaty 2026")
