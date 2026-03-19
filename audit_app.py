@@ -24,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.1")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.2")
 
 data = {}
 client_info = {}
@@ -64,7 +64,7 @@ with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
     client_info['Должность'] = st.text_input("Должность:*")
     
-    # ВВОД НОМЕРА ТЕЛЕФОНА С ПРЕФИКСОМ (Версия 2.1)
+    # ВВОД НОМЕРА ТЕЛЕФОНА С ПРЕФИКСОМ
     st.write("Контактный телефон:*")
     p_col1, p_col2 = st.columns([1, 2])
     country_codes = [
@@ -103,40 +103,49 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
 else:
     data['1.2. Сетевая инфраструктура'] = "Не указана/Аренда"
 
-# 1.3 Серверы
+# 1.3 Серверы и Виртуализация (Перенос по просьбе пользователя)
 st.write("---")
-st.subheader("1.3. Серверы")
+st.subheader("1.3. Серверы и Виртуализация")
 col_s1, col_s2 = st.columns(2)
 with col_s1:
     phys_servers = st.number_input("Количество физических серверов:", min_value=0, step=1, key="phys_srv")
-    data['1.3. Физические серверы'] = phys_servers
+    data['1.3.1. Физические серверы'] = phys_servers
 with col_s2:
     virt_servers = st.number_input("Количество виртуальных серверов:", min_value=0, step=1, key="virt_srv")
-    data['1.3. Виртуальные серверы'] = virt_servers
+    data['1.3.2. Виртуальные серверы'] = virt_servers
 
+# Выбор ОС серверов
 selected_os_srv = st.multiselect("Выберите ОС серверов:", ["Windows Server", "Linux", "Unix", "Другое"], key="ms_srv_list")
 if selected_os_srv:
     for os_s in selected_os_srv:
         count_srv = st.number_input(f"Количество серверов на {os_s}:", min_value=0, step=1, key=f"srv_cnt_{os_s}")
         data[f"ОС Сервера ({os_s})"] = count_srv
 
-# 1.4 Виртуализация и 1.5 Почта
+# Выбор Систем Виртуализации (Логика как у ОС)
 st.write("---")
-col_v1, col_v2 = st.columns(2)
-with col_v1:
-    st.subheader("1.4. Виртуализация")
-    data['1.4. Виртуализация'] = st.multiselect("Системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys")
-with col_v2:
-    st.subheader("1.5. Почтовая система")
-    data['1.5. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
+selected_virt_sys = st.multiselect("Выберите системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys_list")
+if selected_virt_sys:
+    if "Нет" in selected_virt_sys:
+        data['1.3.3. Виртуализация'] = "Нет"
+    else:
+        for v_sys in selected_virt_sys:
+            v_cnt = st.number_input(f"Количество хостов {v_sys}:", min_value=0, step=1, key=f"v_cnt_{v_sys}")
+            data[f"Система виртуализации ({v_sys})"] = v_cnt
+
+# 1.4 Почта и мониторинг
+st.write("---")
+col_p1, col_p2 = st.columns(2)
+with col_p1:
+    st.subheader("1.4. Почтовая система")
+    data['1.4. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
+with col_p2:
+    st.subheader("1.5. Система мониторинга")
+    has_mon = st.checkbox("Есть ли система мониторинга?", key="mon_chk")
+    data['1.5. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
 
 st.subheader("1.6. Внутренние Информационные системы")
 has_is = st.checkbox("Есть ли внутренние ИС (1C, ERP, CRM)?", key="is_chk")
 data['1.6. Внутренние ИС'] = st.text_input("Перечислите:", key="is_input") if has_is else "Нет"
-
-st.subheader("1.7. Система мониторинга")
-has_mon = st.checkbox("Есть ли система мониторинга?", key="mon_chk")
-data['1.7. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
 
 st.divider()
 
@@ -268,4 +277,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System | Almaty 2026")
+st.info("Khalil Audit System v2.2 | Almaty 2026")
