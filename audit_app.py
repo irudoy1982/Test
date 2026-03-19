@@ -24,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.4")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.5")
 
 data = {}
 client_info = {}
@@ -86,7 +86,8 @@ st.header("Блок 1: Информационные технологии")
 st.subheader("1.1. Конечные точки (АРМ)")
 total_arm = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1, key="total_arm_val")
 data['1.1. Всего АРМ'] = total_arm
-selected_os_arm = st.multiselect("Выберите ОС на АРМ:", ["Windows", "Linux", "macOS", "Другое"], key="ms_arm_list")
+# ОБНОВЛЕННЫЙ СПИСОК ОС (v2.5)
+selected_os_arm = st.multiselect("Выберите ОС на АРМ:", ["Windows XP/Vista/7/8", "Windows 10", "Windows 11", "Linux", "macOS", "Другое"], key="ms_arm_list")
 if selected_os_arm:
     for os_item in selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
@@ -129,7 +130,6 @@ if selected_virt_sys:
             v_cnt = st.number_input(f"Количество хостов {v_sys}:", min_value=0, step=1, key=f"v_cnt_{v_sys}")
             data[f"Система виртуализации ({v_sys})"] = v_cnt
 
-# ПЕРЕНЕСЕНО ИЗ БЛОКА 2 В КОНЕЦ 1.3
 st.write("---")
 if st.checkbox("Резервное копирование", key="ib_backup"):
     v_n_b = st.text_input("Вендор Резервного копирования:", key="vn_backup")
@@ -239,22 +239,50 @@ def make_expert_excel(c_info, results, final_score):
         cell.fill = header_fill; cell.font = white_font
 
     current_row += 1
+    
+    # КАРТА РЕКОМЕНДАЦИЙ (v2.5)
     rec_map = {
         "Нет": "Требуется внедрение для минимизации рисков.", 
         "Резервное копирование": "Критично! Настроить схему 3-2-1.", 
-        "NGFW": "Рекомендуется для защиты периметра."
+        "NGFW": "Рекомендуется для защиты периметра.",
+        "Windows XP/Vista/7/8": "Критично! Устаревшие ОС, не получающие обновлений безопасности. Срочно заменить.",
+        "Windows 10": "Внимание! ОС требует планового обновления до актуальных версий.",
+        "Windows 11": "Нормально. Соблюдать график установки обновлений."
     }
 
     for k, v in results.items():
         ws.cell(row=current_row, column=1, value=k).border = border
         ws.cell(row=current_row, column=2, value=str(v)).border = border
-        status = "В норме"; recommendation = "Поддерживать текущее состояние."
+        
+        status = "В норме"
+        recommendation = "Поддерживать текущее состояние."
+        
+        # Логика определения статуса и рекомендации (v2.5)
+        is_risk = False
+        is_warning = False
         
         if "Нет" in str(v) or v == 0 or v == []:
-            status = "РИСК"
+            is_risk = True
             recommendation = rec_map.get(k, "Рассмотреть возможность внедрения.")
+        
+        # Специальная проверка версий Windows
+        if "Windows XP/Vista/7/8" in k and v > 0:
+            is_risk = True
+            recommendation = rec_map["Windows XP/Vista/7/8"]
+        elif "Windows 10" in k and v > 0:
+            is_warning = True
+            recommendation = rec_map["Windows 10"]
+        elif "Windows 11" in k and v > 0:
+            recommendation = rec_map["Windows 11"]
+
+        if is_risk:
+            status = "РИСК"
             st_cell = ws.cell(row=current_row, column=3, value=status)
             st_cell.font = Font(color="FF0000", bold=True)
+        elif is_warning:
+            status = "ПРЕДУПРЕЖДЕНИЕ"
+            st_cell = ws.cell(row=current_row, column=3, value=status)
+            st_cell.font = Font(color="FFC000", bold=True)
         else:
             ws.cell(row=current_row, column=3, value=status)
         
@@ -262,45 +290,4 @@ def make_expert_excel(c_info, results, final_score):
         ws.cell(row=current_row, column=3).border = border
         current_row += 1
 
-    for col, width in {'A': 35, 'B': 30, 'C': 15, 'D': 60}.items():
-        ws.column_dimensions[col].width = width
-    
-    wb.save(output)
-    return output.getvalue(), auto_date
-
-# --- ФИНАЛ И ОТПРАВКА ---
-st.divider()
-if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
-    mandatory = [
-        client_info['Город'], 
-        client_info['Наименование компании'], 
-        client_info['ФИО контактного лица'], 
-        client_info['Сайт компании'], 
-        client_info.get('Email'),
-        client_info.get('Контактный телефон')
-    ]
-    if not all(mandatory):
-        st.error("⚠️ Заполните все обязательные поля (включая Сайт, Email и Телефон)!")
-    else:
-        with st.spinner("Создаем отчет..."):
-            f_score = min(score, 100)
-            report_bytes, final_date = make_expert_excel(client_info, data, f_score)
-            try:
-                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-                caption = (f"🚀 *Новый заказ Khalil Trade*\n\n"
-                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
-                           f"📊 *Зрелость ИТ:* {f_score}%\n"
-                           f"📅 *Дата:* {final_date}\n"
-                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
-                           f"📧 *Email:* {client_info['Email']}\n"
-                           f"📞 *Тел:* {client_info['Контактный телефон']}")
-                
-                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
-                requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
-                st.success("Отчет успешно отправлен в Telegram!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Ошибка связи: {e}")
-            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
-
-st.info("Khalil Audit System v2.4 | Almaty 2026")
+    for col, width in {'A': 35, 'B': 30, 'C': 20, 'D': 65
