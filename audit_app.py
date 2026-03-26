@@ -24,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v3.0")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v4.0")
 
 data = {}
 client_info = {}
@@ -236,7 +236,7 @@ if st.toggle("Есть собственная СХД", key="storage_toggle"):
 else:
     data['1.4. СХД'] = "Не используется/Облако"
 
-# 1.5 Внутренние Информационные системы (ОБНОВЛЕНО v3.0)
+# 1.5 Внутренние Информационные системы (ОБНОВЛЕНО v4.0)
 st.write("---")
 st.subheader("1.5. Внутренние Информационные системы")
 if st.toggle("Используются внутренние ИС", key="is_block_toggle"):
@@ -247,18 +247,33 @@ if st.toggle("Используются внутренние ИС", key="is_block
         mail_sys = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
         data['1.5.1. Почтовая система'] = mail_sys
         
-        st.write("**Прикладные системы (1C, ERP, CRM):**")
-        has_is = st.checkbox("Есть прикладные системы?", key="is_chk")
-        data['1.5.2. Прикладные ИС'] = st.text_input("Перечислите системы:", key="is_input") if has_is else "Нет"
-
-    with col_is2:
         st.write("**Система мониторинга:**")
-        has_mon = st.checkbox("Есть система мониторинга?", key="mon_chk")
+        has_mon = st.checkbox("Используется мониторинг?", key="mon_chk")
         if has_mon:
             mon_type = st.selectbox("Выберите систему:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel")
             data['1.5.3. Мониторинг'] = mon_type
         else:
             data['1.5.3. Мониторинг'] = "Нет"
+
+    with col_is2:
+        st.write("**Прикладные системы (ERP/CRM/EDMS):**")
+        # Список востребованных систем
+        is_list = {
+            "1С (Бухгалтерия/ERP)": "1c", 
+            "Битрикс24": "b24", 
+            "Documentolog": "doc", 
+            "SAP": "sap", 
+            "Directum": "dir", 
+            "HelpDesk/ServiceDesk": "hd"
+        }
+        for label, ks in is_list.items():
+            if st.checkbox(label, key=f"c_{ks}"):
+                v_is = st.text_input(f"Версия/Модули {label}:", key=f"v_{ks}")
+                data[f"ИС: {label}"] = v_is if v_is else "Да"
+        
+        other_is = st.checkbox("Другие системы", key="other_is_chk")
+        if other_is:
+            data['1.5.4. Другие ИС'] = st.text_input("Укажите через запятую:", key="other_is_input")
 else:
     data['1.5. Внутренние ИС'] = "Не используются"
 
@@ -416,4 +431,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v3.0 | Almaty 2026")
+st.info("Khalil Audit System v4.0 | Almaty 2026")
