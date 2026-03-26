@@ -23,7 +23,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v3.6")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v3.7")
 
 data = {}
 client_info = {}
@@ -81,32 +81,28 @@ if selected_os_arm:
     for os_item in selected_os_arm:
         data[f"ОС АРМ ({os_item})"] = st.number_input(f"Кол-во АРМ на {os_item}:", min_value=0, step=1, key=f"arm_val_{os_item}")
 
-# 1.2 Сетевая инфраструктура (ВОССТАНОВЛЕНО ПОЛНОСТЬЮ)
+# 1.2 Сетевая инфраструктура
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_tgl"):
     net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink", "ADSL/VDSL", "Нет"]
-    
-    col_net1, col_net2 = st.columns(2)
-    with col_net1:
-        st.write("**Основной канал:**")
-        main_type = st.selectbox("Тип (основной):", net_types, key="main_net_type")
-        main_speed = st.number_input("Скорость основного (Mbit/s):", min_value=0, step=10, key="main_net_speed")
-        data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
-        
-    with col_net2:
-        st.write("**Резервный канал:**")
-        back_type = st.selectbox("Тип (резервный):", net_types, key="back_net_type")
-        back_speed = st.number_input("Скорость резервного (Mbit/s):", min_value=0, step=10, key="back_net_speed")
-        data['1.2.2. Резервный канал'] = f"{back_type} ({back_speed} Mbit/s)"
+    c_n1, c_n2 = st.columns(2)
+    with c_n1:
+        m_t = st.selectbox("Основной канал:", net_types, key="main_net_type")
+        m_s = st.number_input("Скорость осн. (Mbit/s):", min_value=0, step=10, key="main_net_speed")
+        data['1.2.1. Основной канал'] = f"{m_t} ({m_s} Mbps)"
+    with c_n2:
+        b_t = st.selectbox("Резервный канал:", net_types, key="back_net_type")
+        b_s = st.number_input("Скорость рез. (Mbit/s):", min_value=0, step=10, key="back_net_speed")
+        data['1.2.2. Резервный канал'] = f"{b_t} ({b_s} Mbps)"
 
     st.write("**Дополнительные каналы:**")
-    col_add1, col_add2, col_add3 = st.columns(3)
-    add_channels = []
-    if col_add1.checkbox("ЕШДИ", key="chk_eshdi"): add_channels.append("ЕШДИ")
-    if col_add2.checkbox("ЕТСГО", key="chk_etsgo"): add_channels.append("ЕТСГО")
-    if col_add3.checkbox("VPN", key="chk_vpn"): add_channels.append("VPN")
-    data['1.2.3. Доп. каналы'] = ", ".join(add_channels) if add_channels else "Нет"
+    cad1, cad2, cad3 = st.columns(3)
+    add_ch = []
+    if cad1.checkbox("ЕШДИ", key="chk_eshdi"): add_ch.append("ЕШДИ")
+    if cad2.checkbox("ЕТСГО", key="chk_etsgo"): add_ch.append("ЕТСГО")
+    if cad3.checkbox("VPN", key="chk_vpn"): add_ch.append("VPN")
+    data['1.2.3. Доп. каналы'] = ", ".join(add_ch) if add_ch else "Нет"
 
     st.write("**Активное сетевое оборудование (Уровни):**")
     l1, l2, l3 = st.columns(3)
@@ -130,9 +126,9 @@ st.write("---")
 st.subheader("1.3. Серверы и Виртуализация")
 cs1, cs2 = st.columns(2)
 with cs1:
-    data['1.3.1. Физ. серверы'] = st.number_input("Физ. серверы (шт):", min_value=0, step=1)
+    data['1.3.1. Физ. серверы'] = st.number_input("Физ. серверы (шт):", min_value=0, step=1, key="phys_srv_ni")
 with cs2:
-    data['1.3.2. Вирт. серверы'] = st.number_input("Вирт. серверы (шт):", min_value=0, step=1)
+    data['1.3.2. Вирт. серверы'] = st.number_input("Вирт. серверы (шт):", min_value=0, step=1, key="virt_srv_ni")
 
 os_srv = st.multiselect("ОС серверов:", ["Windows Server", "Linux", "Unix"], key="ms_srv")
 for o in os_srv:
@@ -148,12 +144,15 @@ if st.checkbox("Резервное копирование", key="chk_backup"):
     data["Резервное копирование"] = f"Да ({v_b if v_b else 'не указан'})"
     score += 20
 
-# 1.4 СХД
+# 1.4 СХД (ВОССТАНОВЛЕНО ПОЛНОСТЬЮ)
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Есть СХД", key="st_tgl"):
-    data['1.4.1. Носители'] = st.multiselect("Типы:", ["HDD", "SSD", "NVMe"], key="ms_media")
-    data['1.4.2. RAID'] = st.multiselect("RAID:", ["RAID 1", "5", "6", "10"], key="ms_raid")
+    data['1.4.1. Типы носителей'] = st.multiselect("Типы носителей в СХД:", ["HDD", "SSD", "NVMe"], key="ms_media")
+    data['1.4.2. Конфигурация RAID'] = st.multiselect("Используемые RAID:", ["RAID 1", "RAID 5", "RAID 6", "RAID 10"], key="ms_raid")
+    data['1.4.3. Вендор СХД'] = st.text_input("Производитель/Модель СХД:", key="v_storage")
+else:
+    data['1.4. СХД'] = "Нет"
 
 # 1.5 Информационные системы
 st.write("---")
@@ -173,7 +172,7 @@ if st.toggle("Используются ИС", key="is_tgl"):
 
 st.divider()
 
-# --- БЛОК 2: ИБ ---
+# --- ОСТАЛЬНЫЕ БЛОКИ ---
 st.header("Блок 2: Информационная Безопасность")
 if st.toggle("Инструменты ИБ", key="ib_tgl"):
     ib_tools = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15}
@@ -183,66 +182,26 @@ if st.toggle("Инструменты ИБ", key="ib_tgl"):
             data[l] = f"Да ({v if v else 'не указан'})"
             score += p
 
-# --- БЛОК 3: WEB ---
 st.header("Блок 3: Web-ресурсы")
 if st.toggle("Есть свои Web-ресурсы", key="web_tgl"):
     data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако KZ", "Облако Global"], key="sb_host")
     data['3.2. Frontend'] = st.multiselect("Frontend:", ["Nginx", "Apache", "Cloudflare", "IIS"], key="ms_front")
 
-# --- БЛОК 4: РАЗРАБОТКА ---
 st.header("Блок 4: Разработка")
 if st.toggle("Своя разработка", key="dev_tgl"):
     data['4.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0, key="ni_dev")
     data['4.2. CI/CD'] = st.checkbox("Используется CI/CD", key="chk_cicd")
 
-# --- EXCEL ---
+# --- EXCEL И ФИНАЛ ---
 def make_excel(c_info, results, f_score):
     out = BytesIO()
     wb = Workbook()
     ws = wb.active
     ws.merge_cells('A1:D2')
     ws['A1'] = "ОТЧЕТ ПО АУДИТУ Khalil Trade (2026)"
-    ws['A1'].font = Font(bold=True, size=14)
-    ws['A1'].alignment = Alignment(horizontal='center')
-    
+    ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
     r = 4
     for k, v in {**c_info, "Зрелость": f"{f_score}%"}.items():
         ws.cell(row=r, column=1, value=k).font = Font(bold=True)
         ws.cell(row=r, column=2, value=str(v))
-        r += 1
-    
-    r += 2
-    for i, h in enumerate(["Параметр", "Значение"], 1):
-        cell = ws.cell(row=r, column=i, value=h)
-        cell.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-        cell.font = Font(color="FFFFFF", bold=True)
-
-    r += 1
-    for k, v in results.items():
-        ws.cell(row=r, column=1, value=k)
-        ws.cell(row=r, column=2, value=str(v))
-        r += 1
-    wb.save(out)
-    return out.getvalue()
-
-# --- ФИНАЛ ---
-st.divider()
-if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
-    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['Сайт компании']]
-    if not all(mandatory):
-        st.error("Заполните город, название и сайт!")
-    else:
-        with st.spinner("Отправка..."):
-            f_score = min(score, 100)
-            rep = make_excel(client_info, data, f_score)
-            try:
-                caption = f"🚀 *Заказ Khalil Trade*\n🏢 {client_info['Наименование компании']}\n📊 Зрелость: {f_score}%"
-                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
-                              data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, 
-                              files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", rep)})
-                st.success("Отправлено в Telegram!")
-                st.balloons()
-            except: st.error("Ошибка связи с ботом")
-            st.download_button("📥 Скачать Excel", rep, f"Audit_{client_info['Наименование компании']}.xlsx")
-
-st.info("Khalil Audit System v3.6 | Almaty 2026")
+        r
