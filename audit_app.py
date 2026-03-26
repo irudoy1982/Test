@@ -24,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v2.9")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v3.0")
 
 data = {}
 client_info = {}
@@ -92,7 +92,7 @@ if selected_os_arm:
         count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
         data[f"ОС АРМ ({os_item})"] = count_arm
 
-# 1.2 Сетевая инфраструктура (ОБНОВЛЕНО v2.9)
+# 1.2 Сетевая инфраструктура
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -143,7 +143,6 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         else:
             data['1.2.6. Коммутаторы L3'] = "Нет"
 
-    # НОВОЕ В v2.9: Уровни сети
     st.write("**Уровни сети:**")
     l_col1, l_col2, l_col3 = st.columns(3)
     with l_col1:
@@ -159,7 +158,6 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
             acc_v = st.text_input("Основной производитель (Access):", key="acc_vendor")
             data['Уровень сети: Доступ'] = acc_v if acc_v else "Да"
 
-    # НОВОЕ В v2.9: Wi-Fi
     st.write("**Беспроводная сеть:**")
     if st.checkbox("Wi-Fi", key="wifi_toggle"):
         w_col1, w_col2, w_col3 = st.columns(3)
@@ -175,7 +173,6 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
             wf_sel = st.selectbox("Тип Wi-Fi:", wf_types, key="wf_type_sel")
             data['Wi-Fi Тип'] = wf_sel
 
-    # NGFW
     if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk"):
         ngfw_vendor = st.text_input("Производитель (NGFW):", key="ngfw_v")
         data['1.2.7. NGFW'] = f"Да ({ngfw_vendor if ngfw_vendor else 'не указан'})"
@@ -239,20 +236,31 @@ if st.toggle("Есть собственная СХД", key="storage_toggle"):
 else:
     data['1.4. СХД'] = "Не используется/Облако"
 
-# 1.5 Почта и мониторинг
+# 1.5 Внутренние Информационные системы (ОБНОВЛЕНО v3.0)
 st.write("---")
-col_p1, col_p2 = st.columns(2)
-with col_p1:
-    st.subheader("1.5. Почтовая система")
-    data['1.5. Почта'] = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
-with col_p2:
-    st.subheader("1.6. Система мониторинга")
-    has_mon = st.checkbox("Есть ли система мониторинга?", key="mon_chk")
-    data['1.6. Мониторинг'] = st.selectbox("Система:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel") if has_mon else "Нет"
+st.subheader("1.5. Внутренние Информационные системы")
+if st.toggle("Используются внутренние ИС", key="is_block_toggle"):
+    col_is1, col_is2 = st.columns(2)
+    
+    with col_is1:
+        st.write("**Почтовая система:**")
+        mail_sys = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
+        data['1.5.1. Почтовая система'] = mail_sys
+        
+        st.write("**Прикладные системы (1C, ERP, CRM):**")
+        has_is = st.checkbox("Есть прикладные системы?", key="is_chk")
+        data['1.5.2. Прикладные ИС'] = st.text_input("Перечислите системы:", key="is_input") if has_is else "Нет"
 
-st.subheader("1.7. Внутренние Информационные системы")
-has_is = st.checkbox("Есть ли внутренние ИС (1C, ERP, CRM)?", key="is_chk")
-data['1.7. Внутренние ИС'] = st.text_input("Перечислите:", key="is_input") if has_is else "Нет"
+    with col_is2:
+        st.write("**Система мониторинга:**")
+        has_mon = st.checkbox("Есть система мониторинга?", key="mon_chk")
+        if has_mon:
+            mon_type = st.selectbox("Выберите систему:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel")
+            data['1.5.3. Мониторинг'] = mon_type
+        else:
+            data['1.5.3. Мониторинг'] = "Нет"
+else:
+    data['1.5. Внутренние ИС'] = "Не используются"
 
 st.divider()
 
@@ -408,4 +416,4 @@ if st.button("📊 Сформировать экспертный отчет", ke
                 st.error(f"Ошибка связи: {e}")
             st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v2.9 | Almaty 2026")
+st.info("Khalil Audit System v3.0 | Almaty 2026")
