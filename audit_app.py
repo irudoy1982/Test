@@ -202,9 +202,9 @@ if st.toggle("Есть собственная СХД", key="storage_toggle"):
     data['1.4.1. Типы носителей'] = st.multiselect("Типы носителей:", ["HDD (NL-SAS / SATA)", "SSD (SATA / SAS)", "NVMe", "SCM (Storage Class Memory)"], key="st_media")
     col_pct1, col_pct2 = st.columns(2)
     with col_pct1:
-        data['1.4.2. Доля HDD (%)'] = st.number_input("Процент HDD:", min_value=0, max_value=100, step=5, key="pct_hdd")
+        data['1.4.2. Доля HDD (%)'] = st.number_input("Количество дисков HDD:", min_value=0, max_value=100, step=5, key="pct_hdd")
     with col_pct2:
-        data['1.4.3. Доля SSD (%)'] = st.number_input("Процент SSD:", min_value=0, max_value=100, step=5, key="pct_ssd")
+        data['1.4.3. Доля SSD (%)'] = st.number_input("Количество дисков SSD:", min_value=0, max_value=100, step=5, key="pct_ssd")
     col_chk1, col_chk2 = st.columns(2)
     data['1.4.4. Гибридная СХД'] = col_chk1.checkbox("Используется гибридная СХД", key="hybrid_st")
     data['1.4.5. All-Flash'] = col_chk2.checkbox("Есть All-Flash массивы", key="allflash_st")
