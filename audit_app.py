@@ -23,7 +23,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v3.4")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v3.5")
 
 data = {}
 client_info = {}
@@ -99,18 +99,18 @@ if st.toggle("Своя сетевая инфраструктура", key="net_tg
     st.write("**Оборудование:**")
     l1, l2, l3 = st.columns(3)
     with l1:
-        if st.checkbox("Ядро (Core)"):
+        if st.checkbox("Ядро (Core)", key="chk_core"):
             data['Сеть: Ядро'] = st.text_input("Вендор (Core):", key="v_core")
     with l2:
-        if st.checkbox("Распределение"):
+        if st.checkbox("Распределение", key="chk_dist"):
             data['Сеть: Распределение'] = st.text_input("Вендор (Dist):", key="v_dist")
     with l3:
-        if st.checkbox("Доступ"):
+        if st.checkbox("Доступ", key="chk_acc"):
             data['Сеть: Доступ'] = st.text_input("Вендор (Access):", key="v_acc")
 
-    if st.checkbox("Межсетевой экран (NGFW)"):
-        v_ng = st.text_input("Вендор NGFW:")
-        data['1.2.7. NGFW'] = f"Да ({v_ng})"
+    if st.checkbox("Межсетевой экран (NGFW)", key="chk_ngfw"):
+        v_ng = st.text_input("Вендор NGFW:", key="v_ngfw")
+        data['1.2.7. NGFW'] = f"Да ({v_ng if v_ng else 'не указан'})"
         score += 20
 
 # 1.3 Серверы и Виртуализация
@@ -124,34 +124,34 @@ with cs2:
 
 os_srv = st.multiselect("ОС серверов:", ["Windows Server", "Linux", "Unix"], key="ms_srv")
 for o in os_srv:
-    data[f"ОС Сервер ({o})"] = st.number_input(f"Кол-во {o}:", min_value=0, step=1)
+    data[f"ОС Сервер ({o})"] = st.number_input(f"Кол-во {o}:", min_value=0, step=1, key=f"cnt_{o}")
 
 virt_srv = st.multiselect("Системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Нет"], key="ms_virt")
 if "Нет" not in virt_srv:
     for v in virt_srv:
-        data[f"Виртуализация ({v})"] = st.number_input(f"Кол-во хостов {v}:", min_value=0, step=1)
+        data[f"Виртуализация ({v})"] = st.number_input(f"Кол-во хостов {v}:", min_value=0, step=1, key=f"h_cnt_{v}")
 
-if st.checkbox("Резервное копирование"):
-    v_b = st.text_input("Вендор Бэкапа:")
-    data["Резервное копирование"] = f"Да ({v_b})"
+if st.checkbox("Резервное копирование", key="chk_backup"):
+    v_b = st.text_input("Вендор Бэкапа:", key="v_backup")
+    data["Резервное копирование"] = f"Да ({v_b if v_b else 'не указан'})"
     score += 20
 
 # 1.4 СХД
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Есть СХД", key="st_tgl"):
-    data['1.4.1. Носители'] = st.multiselect("Типы:", ["HDD", "SSD", "NVMe"])
-    data['1.4.2. RAID'] = st.multiselect("RAID:", ["RAID 1", "5", "6", "10"])
+    data['1.4.1. Носители'] = st.multiselect("Типы:", ["HDD", "SSD", "NVMe"], key="ms_media")
+    data['1.4.2. RAID'] = st.multiselect("RAID:", ["RAID 1", "5", "6", "10"], key="ms_raid")
 
-# 1.5 Внутренние Информационные системы (Чекбоксы KZ)
+# 1.5 Внутренние Информационные системы
 st.write("---")
 st.subheader("1.5. Внутренние Информационные системы")
 if st.toggle("Используются ИС", key="is_tgl"):
     cis1, cis2 = st.columns(2)
     with cis1:
-        data['1.5.1. Почта'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"])
-        if st.checkbox("Мониторинг (Zabbix/PRTG/etc)"):
-            data['1.5.2. Мониторинг'] = st.text_input("Система мониторинга:")
+        data['1.5.1. Почта'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"], key="sb_mail")
+        if st.checkbox("Мониторинг (Zabbix/PRTG/etc)", key="chk_mon"):
+            data['1.5.2. Мониторинг'] = st.text_input("Система мониторинга:", key="v_mon")
     with cis2:
         st.write("**Информационные системы (РК):**")
         is_list = {"1С": "1c", "Битрикс24": "b24", "Documentolog": "doc", "SAP": "sap", "Directum": "dir", "HelpDesk": "hd"}
@@ -166,22 +166,22 @@ st.header("Блок 2: Информационная Безопасность")
 if st.toggle("Есть инструменты ИБ", key="ib_tgl"):
     ib_tools = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15}
     for l, p in ib_tools.items():
-        if st.checkbox(l):
-            v = st.text_input(f"Вендор {l}:")
-            data[l] = f"Да ({v})"
+        if st.checkbox(l, key=f"ib_chk_{l}"):
+            v = st.text_input(f"Вендор {l}:", key=f"ib_v_{l}")
+            data[l] = f"Да ({v if v else 'не указан'})"
             score += p
 
-# --- БЛОК 3: WEB-РЕСУРСЫ (ВОССТАНОВЛЕНО) ---
+# --- БЛОК 3: WEB-РЕСУРСЫ ---
 st.header("Блок 3: Web-ресурсы")
 if st.toggle("Есть свои Web-ресурсы", key="web_tgl"):
-    data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако KZ", "Облако Global"])
-    data['3.2. Frontend'] = st.multiselect("Frontend:", ["Nginx", "Apache", "Cloudflare", "IIS"])
+    data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако KZ", "Облако Global"], key="sb_host")
+    data['3.2. Frontend'] = st.multiselect("Frontend:", ["Nginx", "Apache", "Cloudflare", "IIS"], key="ms_front")
 
-# --- БЛОК 4: РАЗРАБОТКА (ВОССТАНОВЛЕНО) ---
+# --- БЛОК 4: РАЗРАБОТКА ---
 st.header("Блок 4: Разработка")
 if st.toggle("Своя разработка", key="dev_tgl"):
-    data['4.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0)
-    data['4.2. CI/CD'] = st.checkbox("Используется CI/CD")
+    data['4.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0, key="ni_dev")
+    data['4.2. CI/CD'] = st.checkbox("Используется CI/CD", key="chk_cicd")
 
 # --- EXCEL ---
 def make_excel(c_info, results, f_score):
@@ -216,7 +216,22 @@ def make_excel(c_info, results, f_score):
 
 # --- ФИНАЛ ---
 st.divider()
-if st.button("📊 Сформировать экспертный отчет"):
+if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
     mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['Сайт компании']]
     if not all(mandatory):
-        st.
+        st.error("Заполните город, название и сайт!")
+    else:
+        with st.spinner("Отправка..."):
+            f_score = min(score, 100)
+            rep = make_excel(client_info, data, f_score)
+            try:
+                caption = f"🚀 *Заказ Khalil Trade*\n🏢 {client_info['Наименование компании']}\n📊 Зрелость: {f_score}%"
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
+                              data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, 
+                              files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", rep)})
+                st.success("Отправлено в Telegram!")
+                st.balloons()
+            except: st.error("Ошибка связи")
+            st.download_button("📥 Скачать Excel", rep, f"Audit_{client_info['Наименование компании']}.xlsx")
+
+st.info("Khalil Audit System v3.5 | Almaty 2026")
