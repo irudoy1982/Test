@@ -5,6 +5,7 @@ import requests
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.drawing.image import Image as OpenpyxlImage
 from datetime import datetime
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
@@ -23,7 +24,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v3.7")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v3.0")
 
 data = {}
 client_info = {}
@@ -37,13 +38,15 @@ with col_h1:
     client_info['Город'] = st.text_input("Город:*")
     client_info['Наименование компании'] = st.text_input("Наименование компании:*")
     
+    # Сайт компании
     site_input = st.text_input("Сайт компании:*", key="site_field", placeholder="example.kz")
     client_info['Сайт компании'] = site_input
 
-    custom_email_mode = st.checkbox("Email отличается от сайта")
+    # ЛОГИКА EMAIL С ЧЕКБОКСОМ
+    custom_email_mode = st.checkbox("Email отличается от сайта (не рекомендуется)")
     
     if custom_email_mode:
-        client_info['Email'] = st.text_input("Email контактного лица:*", placeholder="info@domain.com")
+        client_info['Email'] = st.text_input("Email контактного лица:*", placeholder="info@other-domain.com")
     else:
         clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
         if clean_domain and "." in clean_domain:
@@ -61,10 +64,16 @@ with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
     client_info['Должность'] = st.text_input("Должность:*")
     
+    # ВВОД НОМЕРА ТЕЛЕФОНА С ПРЕФИКСОМ
     st.write("Контактный телефон:*")
     p_col1, p_col2 = st.columns([1, 2])
-    country_codes = [("🇰🇿 +7", "+7"), ("🇷🇺 +7", "+7"), ("🇺🇿 +998", "+998"), ("🇦🇪 +971", "+971")]
-    selected_code = p_col1.selectbox("Код", country_codes, format_func=lambda x: x[0], label_visibility="collapsed")
+    country_codes = [
+        ("🇰🇿 +7", "+7"), ("🇷🇺 +7", "+7"), ("🇺🇿 +998", "+998"),
+        ("🇰🇬 +996", "+996"), ("🇹🇯 +992", "+992"), ("🇦🇪 +971", "+971"),
+        ("🇹🇷 +90", "+90"), ("🇦🇿 +994", "+994"), ("🇧🇾 +375", "+375"),
+        ("🇬🇪 +995", "+995"), ("🇺🇸 +1", "+1"), ("🇬🇧 +44", "+44")
+    ]
+    selected_code = p_col1.selectbox("Код страны", country_codes, format_func=lambda x: x[0], label_visibility="collapsed")
     phone_num = p_col2.text_input("Номер телефона", placeholder="777 777 77 77", label_visibility="collapsed")
     client_info['Контактный телефон'] = f"{selected_code[1]} {phone_num}" if phone_num else ""
 
@@ -75,133 +84,336 @@ st.header("Блок 1: Информационные технологии")
 
 # 1.1 Конечные точки
 st.subheader("1.1. Конечные точки (АРМ)")
-data['1.1. Всего АРМ'] = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1)
-selected_os_arm = st.multiselect("Выберите ОС на АРМ:", ["Windows XP/7/8", "Windows 10", "Windows 11", "Linux", "macOS"], key="ms_arm")
+total_arm = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1, key="total_arm_val")
+data['1.1. Всего АРМ'] = total_arm
+selected_os_arm = st.multiselect("Выберите ОС на АРМ:", ["Windows XP/Vista/7/8", "Windows 10", "Windows 11", "Linux", "macOS", "Другое"], key="ms_arm_list")
 if selected_os_arm:
     for os_item in selected_os_arm:
-        data[f"ОС АРМ ({os_item})"] = st.number_input(f"Кол-во АРМ на {os_item}:", min_value=0, step=1, key=f"arm_val_{os_item}")
+        count_arm = st.number_input(f"Количество АРМ на {os_item}:", min_value=0, step=1, key=f"arm_cnt_{os_item}")
+        data[f"ОС АРМ ({os_item})"] = count_arm
 
 # 1.2 Сетевая инфраструктура
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
-if st.toggle("Своя сетевая инфраструктура", key="net_tgl"):
+if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
     net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink", "ADSL/VDSL", "Нет"]
-    c_n1, c_n2 = st.columns(2)
-    with c_n1:
-        m_t = st.selectbox("Основной канал:", net_types, key="main_net_type")
-        m_s = st.number_input("Скорость осн. (Mbit/s):", min_value=0, step=10, key="main_net_speed")
-        data['1.2.1. Основной канал'] = f"{m_t} ({m_s} Mbps)"
-    with c_n2:
-        b_t = st.selectbox("Резервный канал:", net_types, key="back_net_type")
-        b_s = st.number_input("Скорость рез. (Mbit/s):", min_value=0, step=10, key="back_net_speed")
-        data['1.2.2. Резервный канал'] = f"{b_t} ({b_s} Mbps)"
+    
+    col_net1, col_net2 = st.columns(2)
+    with col_net1:
+        st.write("**Основной канал:**")
+        main_type = st.selectbox("Тип (основной):", net_types, key="main_net_type")
+        main_speed = st.number_input("Скорость основного (Mbit/s):", min_value=0, step=10, key="main_net_speed")
+        data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
+        
+    with col_net2:
+        st.write("**Резервный канал:**")
+        back_type = st.selectbox("Тип (резервный):", net_types, key="back_net_type")
+        back_speed = st.number_input("Скорость резервного (Mbit/s):", min_value=0, step=10, key="back_net_speed")
+        data['1.2.2. Резервный канал'] = f"{back_type} ({back_speed} Mbit/s)"
 
     st.write("**Дополнительные каналы:**")
-    cad1, cad2, cad3 = st.columns(3)
-    add_ch = []
-    if cad1.checkbox("ЕШДИ", key="chk_eshdi"): add_ch.append("ЕШДИ")
-    if cad2.checkbox("ЕТСГО", key="chk_etsgo"): add_ch.append("ЕТСГО")
-    if cad3.checkbox("VPN", key="chk_vpn"): add_ch.append("VPN")
-    data['1.2.3. Доп. каналы'] = ", ".join(add_ch) if add_ch else "Нет"
+    col_add1, col_add2, col_add3 = st.columns(3)
+    add_channels = []
+    if col_add1.checkbox("ЕШДИ", key="chk_eshdi"): add_channels.append("ЕШДИ")
+    if col_add2.checkbox("ЕТСГО", key="chk_etsgo"): add_channels.append("ЕТСГО")
+    if col_add3.checkbox("VPN", key="chk_vpn"): add_channels.append("VPN")
+    data['1.2.3. Доп. каналы'] = ", ".join(add_channels) if add_channels else "Нет"
 
-    st.write("**Активное сетевое оборудование (Уровни):**")
-    l1, l2, l3 = st.columns(3)
-    with l1:
-        if st.checkbox("Ядро (Core)", key="chk_core"):
-            data['Сеть: Ядро'] = st.text_input("Вендор (Core):", key="v_core")
-    with l2:
-        if st.checkbox("Распределение", key="chk_dist"):
-            data['Сеть: Распределение'] = st.text_input("Вендор (Dist):", key="v_dist")
-    with l3:
-        if st.checkbox("Доступ", key="chk_acc"):
-            data['Сеть: Доступ'] = st.text_input("Вендор (Access):", key="v_acc")
+    st.write("**Активное сетевое оборудование:**")
+    c_net1, c_net2, c_net3 = st.columns(3)
+    
+    with c_net1:
+        if st.checkbox("Маршрутизаторы", key="router_chk"):
+            r_count = st.number_input("Кол-во маршрутизаторов:", min_value=0, step=1, key="router_cnt")
+            data['1.2.4. Маршрутизаторы'] = f"Да ({r_count} шт)"
+        else:
+            data['1.2.4. Маршрутизаторы'] = "Нет"
 
-    if st.checkbox("Межсетевой экран (NGFW)", key="chk_ngfw"):
-        v_ng = st.text_input("Производитель NGFW:", key="v_ngfw")
-        data['1.2.7. NGFW'] = f"Да ({v_ng if v_ng else 'не указан'})"
+    with c_net2:
+        if st.checkbox("Коммутаторы L2", key="swl2_chk"):
+            sw2_count = st.number_input("Кол-во коммутаторов L2:", min_value=0, step=1, key="swl2_cnt")
+            data['1.2.5. Коммутаторы L2'] = f"Да ({sw2_count} шт)"
+        else:
+            data['1.2.5. Коммутаторы L2'] = "Нет"
+
+    with c_net3:
+        if st.checkbox("Коммутаторы L3", key="swl3_chk"):
+            sw3_count = st.number_input("Кол-во коммутаторов L3:", min_value=0, step=1, key="swl3_cnt")
+            data['1.2.6. Коммутаторы L3'] = f"Да ({sw3_count} шт)"
+        else:
+            data['1.2.6. Коммутаторы L3'] = "Нет"
+
+    st.write("**Уровни сети:**")
+    l_col1, l_col2, l_col3 = st.columns(3)
+    with l_col1:
+        if st.checkbox("Ядро (Core)", key="net_core"):
+            core_v = st.text_input("Основной производитель (Core):", key="core_vendor")
+            data['Уровень сети: Ядро'] = core_v if core_v else "Да"
+    with l_col2:
+        if st.checkbox("Уровень распределения", key="net_dist"):
+            dist_v = st.text_input("Основной производитель (Dist):", key="dist_vendor")
+            data['Уровень сети: Распределение'] = dist_v if dist_v else "Да"
+    with l_col3:
+        if st.checkbox("Уровень доступа", key="net_acc"):
+            acc_v = st.text_input("Основной производитель (Access):", key="acc_vendor")
+            data['Уровень сети: Доступ'] = acc_v if acc_v else "Да"
+
+    st.write("**Беспроводная сеть:**")
+    if st.checkbox("Wi-Fi", key="wifi_toggle"):
+        w_col1, w_col2, w_col3 = st.columns(3)
+        with w_col1:
+            if st.checkbox("Контроллер", key="wifi_ctrl"):
+                wc_v = st.text_input("Производитель/модель контроллера:", key="wc_vendor")
+                data['Wi-Fi Контроллер'] = wc_v if wc_v else "Да"
+        with w_col2:
+            ap_count = st.number_input("Количество точек доступа (шт):", min_value=0, step=1, key="ap_cnt")
+            data['Wi-Fi Точки доступа'] = ap_count
+        with w_col3:
+            wf_types = ["Wi-Fi 6/6E (802.11ax)", "Wi-Fi 5 (802.11ac)", "Wi-Fi 4 (802.11n)", "Другое"]
+            wf_sel = st.selectbox("Тип Wi-Fi:", wf_types, key="wf_type_sel")
+            data['Wi-Fi Тип'] = wf_sel
+
+    if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk"):
+        ngfw_vendor = st.text_input("Производитель (NGFW):", key="ngfw_v")
+        data['1.2.7. NGFW'] = f"Да ({ngfw_vendor if ngfw_vendor else 'не указан'})"
         score += 20
+    else:
+        data['1.2.7. NGFW'] = "Нет"
+else:
+    data['1.2. Сетевая инфраструктура'] = "Не указана/Аренда"
 
-# 1.3 Серверы и Виртуализация
+# 1.3 Серверы, Виртуализация и Резервное копирование
 st.write("---")
 st.subheader("1.3. Серверы и Виртуализация")
-cs1, cs2 = st.columns(2)
-with cs1:
-    data['1.3.1. Физ. серверы'] = st.number_input("Физ. серверы (шт):", min_value=0, step=1, key="phys_srv_ni")
-with cs2:
-    data['1.3.2. Вирт. серверы'] = st.number_input("Вирт. серверы (шт):", min_value=0, step=1, key="virt_srv_ni")
+col_s1, col_s2 = st.columns(2)
+with col_s1:
+    phys_servers = st.number_input("Количество физических серверов:", min_value=0, step=1, key="phys_srv")
+    data['1.3.1. Физические серверы'] = phys_servers
+with col_s2:
+    virt_servers = st.number_input("Количество виртуальных серверов:", min_value=0, step=1, key="virt_srv")
+    data['1.3.2. Виртуальные серверы'] = virt_servers
 
-os_srv = st.multiselect("ОС серверов:", ["Windows Server", "Linux", "Unix"], key="ms_srv")
-for o in os_srv:
-    data[f"ОС Сервер ({o})"] = st.number_input(f"Кол-во {o}:", min_value=0, step=1, key=f"srv_cnt_{o}")
+selected_os_srv = st.multiselect("Выберите ОС серверов:", ["Windows Server", "Linux", "Unix", "Другое"], key="ms_srv_list")
+if selected_os_srv:
+    for os_s in selected_os_srv:
+        count_srv = st.number_input(f"Количество серверов на {os_s}:", min_value=0, step=1, key=f"srv_cnt_{os_s}")
+        data[f"ОС Сервера ({os_s})"] = count_srv
 
-virt_srv = st.multiselect("Системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Нет"], key="ms_virt")
-if "Нет" not in virt_srv:
-    for v in virt_srv:
-        data[f"Виртуализация ({v})"] = st.number_input(f"Кол-во хостов {v}:", min_value=0, step=1, key=f"h_cnt_{v}")
+selected_virt_sys = st.multiselect("Выберите системы виртуализации:", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys_list")
+if selected_virt_sys:
+    if "Нет" in selected_virt_sys:
+        data['1.3.3. Виртуализация'] = "Нет"
+    else:
+        for v_sys in selected_virt_sys:
+            v_cnt = st.number_input(f"Количество хостов {v_sys}:", min_value=0, step=1, key=f"v_cnt_{v_sys}")
+            data[f"Система виртуализации ({v_sys})"] = v_cnt
 
-if st.checkbox("Резервное копирование", key="chk_backup"):
-    v_b = st.text_input("Вендор Бэкапа:", key="v_backup")
-    data["Резервное копирование"] = f"Да ({v_b if v_b else 'не указан'})"
+st.write("---")
+if st.checkbox("Резервное копирование", key="ib_backup"):
+    v_n_b = st.text_input("Вендор Резервного копирования:", key="vn_backup")
+    data["Резервное копирование"] = f"Да ({v_n_b if v_n_b else 'не указан'})"
     score += 20
+else:
+    data["Резервное копирование"] = "Нет"
 
-# 1.4 СХД (ВОССТАНОВЛЕНО ПОЛНОСТЬЮ)
+# 1.4 Системы хранения данных (СХД)
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
-if st.toggle("Есть СХД", key="st_tgl"):
-    data['1.4.1. Типы носителей'] = st.multiselect("Типы носителей в СХД:", ["HDD", "SSD", "NVMe"], key="ms_media")
-    data['1.4.2. Конфигурация RAID'] = st.multiselect("Используемые RAID:", ["RAID 1", "RAID 5", "RAID 6", "RAID 10"], key="ms_raid")
-    data['1.4.3. Вендор СХД'] = st.text_input("Производитель/Модель СХД:", key="v_storage")
+if st.toggle("Есть собственная СХД", key="storage_toggle"):
+    data['1.4.1. Типы носителей'] = st.multiselect("Типы носителей:", ["HDD (NL-SAS / SATA)", "SSD (SATA / SAS)", "NVMe", "SCM (Storage Class Memory)"], key="st_media")
+    
+    col_pct1, col_pct2 = st.columns(2)
+    with col_pct1:
+        data['1.4.2. Доля HDD (%)'] = st.number_input("Процент HDD:", min_value=0, max_value=100, step=5, key="pct_hdd")
+    with col_pct2:
+        data['1.4.3. Доля SSD (%)'] = st.number_input("Процент SSD:", min_value=0, max_value=100, step=5, key="pct_ssd")
+    
+    col_chk1, col_chk2 = st.columns(2)
+    data['1.4.4. Гибридная СХД'] = col_chk1.checkbox("Используется гибридная СХД (Hybrid Storage)", key="hybrid_st")
+    data['1.4.5. All-Flash'] = col_chk2.checkbox("Есть All-Flash массивы", key="allflash_st")
+    
+    data['1.4.6. RAID-группы'] = st.multiselect("Используемые RAID-группы:", ["RAID 0", "RAID 1", "RAID 5", "RAID 6", "RAID 10", "RAID 50", "RAID 60", "JBOD"], key="raid_list")
 else:
-    data['1.4. СХД'] = "Нет"
+    data['1.4. СХД'] = "Не используется/Облако"
 
-# 1.5 Информационные системы
+# 1.5 Внутренние Информационные системы (ОБНОВЛЕНО v3.0)
 st.write("---")
 st.subheader("1.5. Внутренние Информационные системы")
-if st.toggle("Используются ИС", key="is_tgl"):
-    cis1, cis2 = st.columns(2)
-    with cis1:
-        data['1.5.1. Почта'] = st.selectbox("Почта:", ["Exchange", "M365", "Google", "Yandex", "Свой", "Нет"], key="sb_mail")
-        if st.checkbox("Мониторинг", key="chk_mon"):
-            data['1.5.2. Мониторинг'] = st.text_input("Система мониторинга:", key="v_mon")
-    with cis2:
-        st.write("**Информационные системы (РК):**")
-        is_list = {"1С": "1c", "Битрикс24": "b24", "Documentolog": "doc", "SAP": "sap", "Directum": "dir", "HelpDesk": "hd"}
-        for lab, ks in is_list.items():
-            if st.checkbox(lab, key=f"c_{ks}"):
-                data[f"ИС: {lab}"] = st.text_input(f"Версия {lab}:", key=f"v_{ks}")
+if st.toggle("Используются внутренние ИС", key="is_block_toggle"):
+    col_is1, col_is2 = st.columns(2)
+    
+    with col_is1:
+        st.write("**Почтовая система:**")
+        mail_sys = st.selectbox("Тип почты:", ["Exchange (On-Prem)", "Microsoft 365", "Google Workspace", "Yandex/Mail.ru Cloud", "Собственный сервер", "Нет"], key="mail_sys")
+        data['1.5.1. Почтовая система'] = mail_sys
+        
+        st.write("**Прикладные системы (1C, ERP, CRM):**")
+        has_is = st.checkbox("Есть прикладные системы?", key="is_chk")
+        data['1.5.2. Прикладные ИС'] = st.text_input("Перечислите системы:", key="is_input") if has_is else "Нет"
+
+    with col_is2:
+        st.write("**Система мониторинга:**")
+        has_mon = st.checkbox("Есть система мониторинга?", key="mon_chk")
+        if has_mon:
+            mon_type = st.selectbox("Выберите систему:", ["Zabbix", "Nagios", "PRTG", "Prometheus", "Другое"], key="mon_sel")
+            data['1.5.3. Мониторинг'] = mon_type
+        else:
+            data['1.5.3. Мониторинг'] = "Нет"
+else:
+    data['1.5. Внутренние ИС'] = "Не используются"
 
 st.divider()
 
-# --- ОСТАЛЬНЫЕ БЛОКИ ---
+# --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
 st.header("Блок 2: Информационная Безопасность")
-if st.toggle("Инструменты ИБ", key="ib_tgl"):
-    ib_tools = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15}
-    for l, p in ib_tools.items():
-        if st.checkbox(l, key=f"ib_chk_{l}"):
-            v = st.text_input(f"Вендор {l}:", key=f"ib_v_{l}")
-            data[l] = f"Да ({v if v else 'не указан'})"
-            score += p
+if st.toggle("Есть отдел ИБ", key="ib_toggle"):
+    ib_list = {"DLP": 15, "PAM": 10, "SIEM": 20, "WAF": 10, "EDR": 15}
+    for label, pts in ib_list.items():
+        if st.checkbox(label, key=f"ib_{label}"):
+            v_n = st.text_input(f"Вендор {label}:", key=f"vn_{label}")
+            data[label] = f"Да ({v_n if v_n else 'не указан'})"
+            score += pts
+        else:
+            data[label] = "Нет"
 
+# --- БЛОК 3: WEB-РЕСУРСЫ ---
 st.header("Блок 3: Web-ресурсы")
-if st.toggle("Есть свои Web-ресурсы", key="web_tgl"):
-    data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако KZ", "Облако Global"], key="sb_host")
-    data['3.2. Frontend'] = st.multiselect("Frontend:", ["Nginx", "Apache", "Cloudflare", "IIS"], key="ms_front")
+if st.toggle("Есть свои Web-ресурсы", key="web_toggle"):
+    data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако (KZ)", "Облако (Global)"], key="host")
+    data['3.2. Frontend'] = st.multiselect("Frontend серверы:", ["Nginx", "Apache", "IIS", "LiteSpeed", "Caddy", "Cloudflare"], key="fnt")
 
+# --- БЛОК 4: РАЗРАБОТКА ---
 st.header("Блок 4: Разработка")
-if st.toggle("Своя разработка", key="dev_tgl"):
-    data['4.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0, key="ni_dev")
-    data['4.2. CI/CD'] = st.checkbox("Используется CI/CD", key="chk_cicd")
+if st.toggle("Своя разработка", key="dev_toggle"):
+    data['4.1. Разработчики'] = st.number_input("Кол-во разработчиков:", min_value=0, key="dev_c")
+    data['4.2. CI/CD'] = st.checkbox("CI/CD используется", key="cicd_c")
 
-# --- EXCEL И ФИНАЛ ---
-def make_excel(c_info, results, f_score):
-    out = BytesIO()
+# --- ГЕНЕРАЦИЯ EXCEL ---
+def make_expert_excel(c_info, results, final_score):
+    output = BytesIO()
     wb = Workbook()
     ws = wb.active
+    ws.title = "Khalil Audit Report"
+
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    white_font = Font(color="FFFFFF", bold=True)
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
     ws.merge_cells('A1:D2')
-    ws['A1'] = "ОТЧЕТ ПО АУДИТУ Khalil Trade (2026)"
-    ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
-    r = 4
-    for k, v in {**c_info, "Зрелость": f"{f_score}%"}.items():
-        ws.cell(row=r, column=1, value=k).font = Font(bold=True)
-        ws.cell(row=r, column=2, value=str(v))
-        r
+    ws['A1'] = "ЭКСПЕРТНЫЙ ОТЧЕТ ПО ИТ И ИБ (2026)"
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
+
+    current_row = 4
+    for k, v in c_info.items():
+        ws.cell(row=current_row, column=1, value=k).font = Font(bold=True)
+        ws.cell(row=current_row, column=2, value=str(v))
+        current_row += 1
+    
+    auto_date = datetime.now().strftime("%d.%m.%Y %H:%M")
+    ws.cell(row=current_row, column=1, value="Дата генерации отчета:").font = Font(bold=True)
+    ws.cell(row=current_row, column=2, value=auto_date)
+    current_row += 2
+
+    ws.cell(row=current_row, column=1, value="ИНДЕКС ТЕХНИЧЕСКОЙ ЗРЕЛОСТИ:").font = Font(bold=True)
+    score_cell = ws.cell(row=current_row, column=2, value=f"{final_score}%")
+    bg_color = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
+    score_cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+    score_cell.font = Font(bold=True)
+    current_row += 2
+
+    headers = ["Параметр", "Значение", "Статус", "Рекомендация эксперта Khalil Trade"]
+    for i, h in enumerate(headers, 1):
+        cell = ws.cell(row=current_row, column=i, value=h)
+        cell.fill = header_fill; cell.font = white_font
+
+    current_row += 1
+    
+    rec_map = {
+        "Нет": "Требуется внедрение для минимизации рисков.", 
+        "Резервное копирование": "Критично! Настроить схему 3-2-1.", 
+        "NGFW": "Рекомендуется для защиты периметра.",
+        "Windows XP/Vista/7/8": "Критично! Устаревшие ОС, не получающие обновлений безопасности. Срочно заменить.",
+        "Windows 10": "Внимание! ОС требует планового обновления до актуальных версий.",
+        "Windows 11": "Нормально. Соблюдать график установки обновлений."
+    }
+
+    for k, v in results.items():
+        ws.cell(row=current_row, column=1, value=k).border = border
+        ws.cell(row=current_row, column=2, value=str(v)).border = border
+        
+        status = "В норме"
+        recommendation = "Поддерживать текущее состояние."
+        is_risk = False
+        is_warning = False
+        
+        if "Нет" in str(v) or v == 0 or v == []:
+            is_risk = True
+            recommendation = rec_map.get(k, "Рассмотреть возможность внедрения.")
+        
+        if "Windows XP/Vista/7/8" in k and v > 0:
+            is_risk = True
+            recommendation = rec_map["Windows XP/Vista/7/8"]
+        elif "Windows 10" in k and v > 0:
+            is_warning = True
+            recommendation = rec_map["Windows 10"]
+        elif "Windows 11" in k and v > 0:
+            recommendation = rec_map["Windows 11"]
+
+        if is_risk:
+            status = "РИСК"
+            st_cell = ws.cell(row=current_row, column=3, value=status)
+            st_cell.font = Font(color="FF0000", bold=True)
+        elif is_warning:
+            status = "ПРЕДУПРЕЖДЕНИЕ"
+            st_cell = ws.cell(row=current_row, column=3, value=status)
+            st_cell.font = Font(color="FFC000", bold=True)
+        else:
+            ws.cell(row=current_row, column=3, value=status)
+        
+        ws.cell(row=current_row, column=4, value=recommendation).border = border
+        ws.cell(row=current_row, column=3).border = border
+        current_row += 1
+
+    for col, width in {'A': 35, 'B': 30, 'C': 20, 'D': 65}.items():
+        ws.column_dimensions[col].width = width
+    
+    wb.save(output)
+    return output.getvalue(), auto_date
+
+# --- ФИНАЛ И ОТПРАВКА ---
+st.divider()
+if st.button("📊 Сформировать экспертный отчет", key="btn_final"):
+    mandatory = [
+        client_info['Город'], 
+        client_info['Наименование компании'], 
+        client_info['ФИО контактного лица'], 
+        client_info['Сайт компании'], 
+        client_info.get('Email'),
+        client_info.get('Контактный телефон')
+    ]
+    if not all(mandatory):
+        st.error("⚠️ Заполните все обязательные поля (включая Сайт, Email и Телефон)!")
+    else:
+        with st.spinner("Создаем отчет..."):
+            f_score = min(score, 100)
+            report_bytes, final_date = make_expert_excel(client_info, data, f_score)
+            try:
+                url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+                caption = (f"🚀 *Новый заказ Khalil Trade*\n\n"
+                           f"🏢 *Компания:* {client_info['Наименование компании']}\n"
+                           f"📊 *Зрелость ИТ:* {f_score}%\n"
+                           f"📅 *Дата:* {final_date}\n"
+                           f"👤 *Контакт:* {client_info['ФИО контактного лица']}\n"
+                           f"📧 *Email:* {client_info['Email']}\n"
+                           f"📞 *Тел:* {client_info['Контактный телефон']}")
+                
+                files = {'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)}
+                requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files=files)
+                st.success("Отчет успешно отправлен в Telegram!")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Ошибка связи: {e}")
+            st.download_button(f"📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
+
+st.info("Khalil Audit System v3.0 | Almaty 2026")
