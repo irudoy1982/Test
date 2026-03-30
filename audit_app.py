@@ -43,7 +43,7 @@ client_info = {}
 validation_errors = []
 score = 0
 
-# --- ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
+# --- ШАПКА: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
 st.header("📍 Общая информация")
 col_h1, col_h2 = st.columns(2)
 
@@ -81,7 +81,7 @@ with col_h2:
 
 st.divider()
 
-# Вспомогательная функция для вопросов
+# Вспомогательная функция для вопросов (с логикой обоснования)
 def audit_question(category, question, weight, justification):
     global score
     st.write(f"**{question}**")
@@ -95,6 +95,7 @@ def audit_question(category, question, weight, justification):
         score += weight
     elif ans == "Нет":
         status = "КРИТИЧЕСКИЙ РИСК"
+        # Добавляем обоснование, как ты просил
         rec = f"Рекомендуется внедрение решения. Обоснование: {justification}"
         is_risk = True
     else:
@@ -134,9 +135,11 @@ st.header("Блок 2: Информационная безопасность")
 col_ib1, col_ib2 = st.columns(2)
 
 with col_ib1:
+    # Добавлен MFA
     audit_question("ИБ", "Внедрена ли многофакторная аутентификация (MFA)?", 20, 
                    "MFA предотвращает 99% атак на учетные данные, защищая доступ даже в случае кражи пароля.")
     
+    # Добавлен Anti-DDoS
     audit_question("ИБ", "Используется ли защита от DDoS-атак (Anti-DDoS)?", 15, 
                    "Защита от DDoS необходима для обеспечения доступности публичных ресурсов и предотвращения простоев из-за внешних атак.")
 
