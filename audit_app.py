@@ -26,171 +26,192 @@ st.divider()
 st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.2")
 
 # --- ИНСТРУКЦИЯ ДЛЯ ПОЛЬЗОВАТЕЛЯ ---
-with st.expander("📖 Руководство по проведению экспресс-аудита"):
+with st.expander("📖 Инструкция по заполнению (нажмите, чтобы развернуть)"):
     st.markdown("""
-    ### Инструкция
-    1. Заполните данные о компании.
-    2. Ответьте на вопросы в каждом техническом блоке.
-    3. Нажмите кнопку внизу для формирования экспертного отчета.
-    4. Отчет будет автоматически направлен администратору и доступен вам для скачивания.
+    ### Руководство по проведению экспресс-аудита
+    
+    Данный инструмент предназначен для сбора технических данных об ИТ-ландшафте и уровне защищенности вашей организации.
+
+    1.  **Общая информация:** Укажите корректные контактные данные.
+    2.  **Заполнение блоков:** Пройдите по разделам (ИТ, ИБ).
+    3.  **Логический контроль (v6.2):** * Следите за совпадением количества АРМ и указанных ОС.
+        * При отсутствии критических решений ИБ система автоматически сформирует обоснование для руководства.
+    4.  **Результат:** После заполнения нажмите кнопку «Сформировать экспертный отчет». Вы получите файл Excel с анализом рисков и рекомендациями.
     """)
 
-# --- 3. СБОР ДАННЫХ О КЛИЕНТЕ ---
-st.sidebar.header("🏢 Данные заказчика")
-client_info = {
-    "Город": st.sidebar.text_input("Город"),
-    "Наименование компании": st.sidebar.text_input("Наименование компании"),
-    "ФИО контактного лица": st.sidebar.text_input("ФИО контактного лица"),
-    "Сайт компании": st.sidebar.text_input("Сайт компании (URL)"),
-    "Email": st.sidebar.text_input("Email"),
-    "Контактный телефон": st.sidebar.text_input("Контактный телефон")
-}
-
-# --- 4. ОСНОВНЫЕ ВОПРОСЫ АУДИТА ---
-data = []
-score = 0
+data_results = []
+client_info = {}
 validation_errors = []
+score = 0
 
-# Валидация Email (простая)
-if client_info['Email'] and "@" not in client_info['Email']:
-    validation_errors.append("Некорректный Email")
+# --- ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
+st.header("📍 Общая информация")
+col_h1, col_h2 = st.columns(2)
 
-def ask_question(category, question, weight=10, justification=""):
+with col_h1:
+    client_info['Город'] = st.text_input("Город:*")
+    client_info['Наименование компании'] = st.text_input("Наименование компании:*")
+    site_input = st.text_input("Сайт компании:*", key="site_field", placeholder="example.kz")
+    client_info['Сайт компании'] = site_input
+    
+    custom_email_mode = st.checkbox("Email отличается от сайта")
+    if custom_email_mode:
+        client_info['Email'] = st.text_input("Email контактного лица:*")
+    else:
+        clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+        if clean_domain and "." in clean_domain:
+            st.write("Email контактного лица (логин):*")
+            e_col1, e_col2 = st.columns([2, 3])
+            with e_col1:
+                email_prefix = st.text_input("Логин", placeholder="info", label_visibility="collapsed", key="email_pre")
+            with e_col2:
+                st.markdown(f"<div style='padding-top: 5px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
+            client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
+        else:
+            client_info['Email'] = ""
+
+with col_h2:
+    client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
+    client_info['Должность'] = st.text_input("Должность:*")
+    st.write("Контактный телефон:*")
+    p_col1, p_col2 = st.columns([1, 2])
+    country_codes = [("🇰🇿 +7", "+7"), ("🇷🇺 +7", "+7"), ("🇺🇿 +998", "+998"), ("🇰🇬 +996", "+996")]
+    selected_code = p_col1.selectbox("Код", country_codes, format_func=lambda x: x[0], label_visibility="collapsed")
+    phone_num = p_col2.text_input("Номер", placeholder="777 777 77 77", label_visibility="collapsed")
+    client_info['Контактный телефон'] = f"{selected_code[1]} {phone_num}" if phone_num else ""
+
+st.divider()
+
+# Вспомогательная функция для вопросов
+def audit_question(category, question, weight, justification):
     global score
     st.write(f"**{question}**")
-    ans = st.radio(f"Выбор для: {question}", ["Да", "Нет", "В процессе внедрения"], key=question, label_visibility="collapsed")
+    ans = st.radio(f"Выбор для: {question}", ["Да", "Нет", "В процессе"], key=question, label_visibility="collapsed", horizontal=True)
     
-    rec = ""
     status = "OK"
+    rec = ""
     is_risk = False
     
     if ans == "Да":
         score += weight
     elif ans == "Нет":
         status = "КРИТИЧЕСКИЙ РИСК"
+        rec = f"Рекомендуется внедрение решения. Обоснование: {justification}"
         is_risk = True
-        # Добавляем обоснование в рекомендацию
-        rec = f"НЕОБХОДИМО ВНЕДРИТЬ. Обоснование: {justification}"
     else:
         score += (weight / 2)
         status = "ВНИМАНИЕ"
-        rec = "Требуется ускорить завершение проекта и провести финальное тестирование."
-    
-    data.append({"Категория": category, "Вопрос": question, "Статус": status, "Рекомендация": rec, "is_risk": is_risk})
+        rec = "Требуется завершить внедрение и провести аудит настроек."
+        
+    data_results.append({
+        "Категория": category,
+        "Объект": question,
+        "Статус": status,
+        "Рекомендация": rec,
+        "is_risk": is_risk
+    })
 
-# --- БЛОК 1: ИНФРАСТРУКТУРА ---
-with st.container():
-    st.header("🌐 ИТ-Инфраструктура и Сервисы")
-    col1, col2 = st.columns(2)
-    with col1:
-        ask_question("Почта", "Используется ли актуальная версия почтового сервера (напр. Exchange 2019+ или HCL Domino)?", 15, 
-                     "Использование устаревших версий (напр. Exchange 2013/2016) несет риски эксплуатации неисправленных уязвимостей, на которые более не выпускаются патчи безопасности.")
-    with col2:
-        ask_question("Периметр", "Используется ли современный NGFW (напр. Check Point) вместо базовых роутеров?", 15, 
-                     "Базовые роутеры не обеспечивают глубокую фильтрацию трафика (IPS/IDS) и защиту от современных угроз уровня приложений.")
+# --- БЛОК 1: ИТ-ИНФРАСТРУКТУРА ---
+st.header("Блок 1: Информационные технологии")
+col_it1, col_it2 = st.columns(2)
+with col_it1:
+    total_arm = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1)
+    selected_os = st.multiselect("ОС на АРМ:", ["Windows 10/11", "Linux", "macOS", "Legacy (XP/7)"])
+    sum_os = 0
+    for os_item in selected_os:
+        val = st.number_input(f"Кол-во {os_item}:", min_value=0, step=1)
+        sum_os += val
+    if total_arm > 0 and sum_os != total_arm:
+        st.warning(f"⚠️ Несовпадение: всего {total_arm}, указано {sum_os}")
+        validation_errors.append("Ошибка баланса АРМ")
+
+with col_it2:
+    audit_question("ИТ", "Используется ли лицензионное ПО на критических узлах?", 10, "Использование нелицензионного ПО ведет к отсутствию обновлений безопасности и юридическим рискам.")
+    audit_question("ИТ", "Проводится ли регулярное резервное копирование?", 15, "Без актуальных копий восстановление бизнеса после сбоя или атаки невозможно.")
 
 # --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ (ОБНОВЛЕННЫЙ) ---
 st.divider()
-with st.container():
-    st.header("🛡️ Информационная безопасность")
-    c1, c2 = st.columns(2)
-    with c1:
-        ask_question("Доступ", "Внедрена ли многофакторная аутентификация (MFA) для внешних доступов?", 20, 
-                     "Пароли могут быть похищены через фишинг или перебор. MFA — единственный эффективный барьер, предотвращающий 99% атак на учетные данные.")
-        ask_question("Привилегии", "Используется ли PAM-система для контроля действий администраторов?", 15, 
-                     "Административные аккаунты — главная цель хакеров. Без PAM невозможно контролировать действия ИТ-персонала и подрядчиков внутри сети.")
-    with c2:
-        ask_question("Веб-защита", "Защищены ли веб-ресурсы и API с помощью WAAP/WAF решений?", 15, 
-                     "Традиционные антивирусы и фаерволы не видят атаки на логику веб-приложения и попытки инъекций в базу данных.")
-        ask_question("Антивирус", "Используется ли централизованный EDR/Antivirus на всех рабочих станциях?", 10, 
-                     "Локальные антивирусы без центрального управления не позволяют вовремя обнаружить распространение вируса-шифровщика по сети.")
+st.header("Блок 2: Информационная безопасность")
+col_ib1, col_ib2 = st.columns(2)
 
-# --- 5. ГЕНЕРАЦИЯ EXCEL ОТЧЕТА ---
-def make_expert_excel(c_info, audit_data, final_score):
+with col_ib1:
+    audit_question("ИБ", "Внедрена ли многофакторная аутентификация (MFA)?", 20, 
+                   "MFA предотвращает 99% атак на учетные данные, защищая доступ даже в случае кражи пароля.")
+    
+    audit_question("ИБ", "Используется ли система PAM для контроля администраторов?", 15, 
+                   "Системы Privileged Access Management минимизируют риск злоупотребления высокими правами доступа и утечки данных через привилегированных пользователей.")
+
+with col_ib2:
+    audit_question("ИБ", "Используется ли защита рабочих станций класса EDR/XDR?", 15, 
+                   "Обычные антивирусы не справляются с современными шифровальщиками. EDR позволяет обнаружить атаку на ранней стадии.")
+    
+    audit_question("ИБ", "Внедрены ли неизменяемые (Immutable) бэкапы?", 10, 
+                   "Современные вирусы-шифровальщики сначала удаляют бэкапы. Неизменяемые хранилища делают удаление невозможным.")
+
+# --- 3. ГЕНЕРАЦИЯ EXCEL ---
+def make_expert_excel(c_info, results, final_score):
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Результаты аудита"
+    ws.title = "Аудит ИТ и ИБ 2026"
     
     # Стили
-    header_font = Font(bold=True, color="FFFFFF", size=12)
+    header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     
-    # Шапка данных клиента
-    ws.append(["ОТЧЕТ ПО ТЕХНИЧЕСКОМУ АУДИТУ 2026"])
-    ws.append([f"Компания: {c_info['Наименование компании']}"])
-    ws.append([f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}"])
-    ws.append([f"Общий уровень зрелости ИТ/ИБ: {final_score}%"])
+    # Шапка
+    ws.append(["ОТЧЕТ ПО ТЕХНИЧЕСКОМУ АУДИТУ (v6.2)"])
+    ws.append([f"Компания: {c_info.get('Наименование компании')}"])
+    ws.append([f"Уровень зрелости: {final_score}%"])
     ws.append([])
-
-    # Заголовки таблицы
-    headers = ["Категория", "Объект аудита", "Текущий статус", "Экспертная рекомендация"]
+    
+    headers = ["Категория", "Объект аудита", "Текущий статус", "Экспертная рекомендация и Обоснование"]
     ws.append(headers)
-    for cell in ws[6]:
+    for cell in ws[5]:
         cell.font = header_font
         cell.fill = header_fill
         cell.border = border
 
     # Данные
-    curr_row = 7
-    for item in audit_data:
-        is_risk = item.pop('is_risk', False)
-        ws.append(list(item.values()))
+    for i, item in enumerate(results, 6):
+        is_risk = item.pop("is_risk", False)
+        row_data = list(item.values())
+        ws.append(row_data)
         
-        # Подсветка рисков
-        st_cell = ws.cell(row=curr_row, column=3)
-        if is_risk: st_cell.font = Font(color="FF0000", bold=True)
-        
-        # Рамки для всех ячеек строки
-        for col_idx in range(1, 5):
-            ws.cell(row=curr_row, column=col_idx).border = border
-            ws.cell(row=curr_row, column=col_idx).alignment = Alignment(wrap_text=True, vertical='top')
-        curr_row += 1
+        # Оформление ячеек
+        for col in range(1, 5):
+            cell = ws.cell(row=i, column=col)
+            cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical='top')
+            if is_risk and col == 3:
+                cell.font = Font(color="FF0000", bold=True)
 
-    # Настройка ширины колонок
-    for col, width in {'A': 20, 'B': 40, 'C': 20, 'D': 60}.items():
+    # Ширина колонок
+    for col, width in {'A': 15, 'B': 35, 'C': 20, 'D': 65}.items():
         ws.column_dimensions[col].width = width
     
     wb.save(output)
     return output.getvalue()
 
-# --- 6. ФИНАЛЬНОЕ ДЕЙСТВИЕ ---
+# --- ФИНАЛ ---
 st.divider()
-
-if validation_errors:
-    st.error(f"🚨 Формирование отчета недоступно. Обнаружено ошибок: {len(validation_errors)}")
-
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
-    mandatory = [client_info['Город'], client_info['Наименование компании'], client_info['ФИО контактного лица'], client_info['Email']]
-    if not all(mandatory):
-        st.error("⚠️ Пожалуйста, заполните все обязательные поля в боковой панели (Город, Компания, Контактное лицо, Email)!")
+    if not all([client_info['Город'], client_info['Наименование компании'], client_info['Email']]):
+        st.error("⚠️ Заполните обязательные поля (Город, Компания, Email)!")
     else:
-        with st.spinner("Анализируем данные и формируем отчет..."):
-            f_score = min(int(score), 100)
-            report_bytes = make_expert_excel(client_info, data, f_score)
+        with st.spinner("Формируем отчет..."):
+            f_score = min(score, 100)
+            report_bytes = make_expert_excel(client_info, data_results, f_score)
             
-            # Отправка в Telegram
             try:
-                caption = (f"🚀 *Новый аудит Khalil Trade*\n"
-                           f"🏢 *{client_info['Наименование компании']}*\n"
-                           f"📍 {client_info['Город']}\n"
-                           f"📊 Зрелость: {f_score}%\n"
-                           f"👤 {client_info['ФИО контактного лица']}")
+                # Отправка в Telegram
+                caption = f"🛡️ *Новый аудит (v6.2)*\n🏢 {client_info['Наименование компании']}\n📊 Зрелость: {f_score}%"
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
+                              data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"},
+                              files={"document": ("Audit_Report.xlsx", report_bytes)})
                 
-                requests.post(
-                    f"https://api.telegram.org/bot{TOKEN}/sendDocument",
-                    data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"},
-                    files={"document": ("Audit_Report.xlsx", report_bytes)}
-                )
-                st.success("✅ Отчет успешно сформирован и отправлен эксперту!")
-                
-                # Кнопка скачивания для пользователя
-                st.download_button(
-                    label="📥 Скачать ваш отчет (Excel)",
-                    data=report_bytes,
-                    file_name=f"Audit_{client_info['Наименование компании']}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                st.success("✅ Отчет сформирован!")
+                st.download_button("📥 Скачать отчет (Excel)", report_bytes, "Audit_2026.xlsx")
             except Exception as e:
-                st.error(f"Ошибка при отправке отчета: {e}")
+                st.error(f"Ошибка отправки: {e}")
