@@ -23,7 +23,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.4")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.5")
 
 data = {}
 client_info = {}
@@ -61,8 +61,11 @@ st.header("Блок 1: Информационные технологии")
 st.subheader("1.1. Конечные точки (АРМ)")
 total_arm = st.number_input("Общее количество АРМ (шт):", min_value=0, step=1)
 data['1.1. Всего АРМ'] = total_arm
+selected_os_arm = st.multiselect("ОС на АРМ:", ["Windows XP/7/8", "Windows 10", "Windows 11", "Linux", "macOS"])
+for os_item in selected_os_arm:
+    data[f"ОС АРМ ({os_item})"] = st.number_input(f"Кол-во на {os_item}:", min_value=0, step=1)
 
-# 1.2 Сеть (ИСПРАВЛЕНО: Резервный канал в "Нет" по дефолту)
+# 1.2 Сетевая инфраструктура (ПОЛНЫЙ СПИСОК)
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сеть", key="net_t", value=True):
@@ -70,47 +73,59 @@ if st.toggle("Своя сеть", key="net_t", value=True):
     col_n1, col_n2 = st.columns(2)
     with col_n1:
         data['1.2.1. Основной канал'] = st.selectbox("Основной канал:", net_types[1:])
+        data['main_speed'] = st.number_input("Скорость осн. канала (Mbit/s):", min_value=0)
     with col_n2:
-        # По умолчанию "Нет"
+        # Резервный канал по умолчанию "Нет"
         data['1.2.2. Резервный канал'] = st.selectbox("Резервный канал:", net_types, index=0)
+        data['back_speed'] = st.number_input("Скорость рез. канала (Mbit/s):", min_value=0)
 
-    st.write("**Оборудование:**")
+    st.write("**Активное оборудование:**")
     c1, c2, c3 = st.columns(3)
     with c1:
         if st.checkbox("Ядро сети (Core)"): data['Core'] = st.text_input("Производитель Core:")
+        if st.checkbox("Маршрутизаторы"): data['Routers'] = st.number_input("Кол-во Routers:", min_value=0)
     with c2:
-        if st.checkbox("Коммутаторы L2/L3"): data['Switches'] = st.number_input("Кол-во:", min_value=0)
+        if st.checkbox("Коммутаторы L3"): data['L3 Switches'] = st.number_input("Кол-во L3:", min_value=0)
+        if st.checkbox("Коммутаторы L2"): data['L2 Switches'] = st.number_input("Кол-во L2:", min_value=0)
     with c3:
-        if st.checkbox("Wi-Fi"): data['Wi-Fi'] = st.text_input("Производитель AP:")
+        if st.checkbox("Wi-Fi Инфраструктура"):
+            data['Wi-Fi Vendor'] = st.text_input("Производитель Wi-Fi:")
+            data['Wi-Fi AP Count'] = st.number_input("Кол-во точек доступа:", min_value=0)
 
     if st.checkbox("Межсетевой экран (NGFW)"):
-        v_ng = st.text_input("Производитель NGFW:")
+        v_ng = st.text_input("Производитель NGFW (Fortigate, CheckPoint и т.д.):")
         data['1.2.7. NGFW'] = f"Да ({v_ng})"
         score += 20
 
-# 1.3 Серверы
+# 1.3 Серверы (ПОЛНЫЙ СПИСОК)
 st.write("---")
-st.subheader("1.3. Серверы")
-data['1.3.1. Физические серверы'] = st.number_input("Физические серверы:", min_value=0)
-data['1.3.2. Виртуальные серверы'] = st.number_input("Виртуальные серверы:", min_value=0)
+st.subheader("1.3. Серверы и Виртуализация")
+col_s1, col_s2 = st.columns(2)
+with col_s1:
+    data['1.3.1. Физические серверы'] = st.number_input("Физические серверы (шт):", min_value=0)
+    data['Виртуализация'] = st.selectbox("Платформа:", ["VMware", "Hyper-V", "Proxmox", "KVM/R-Virtualization", "Нет"])
+with col_s2:
+    data['1.3.2. Виртуальные серверы'] = st.number_input("Виртуальные серверы (шт):", min_value=0)
+    data['ОС Серверов'] = st.multiselect("Операционные системы:", ["Win Server 2012/R2", "Win Server 2016/19/22", "Linux (RHEL/CentOS/Ubuntu)", "Debian/Astra"])
 
-# 1.4 СХД (ПОЛНОЕ ВОССТАНОВЛЕНИЕ)
+# 1.4 СХД (ВСЕ ПУНКТЫ: ALL-FLASH, HYBRID, ПРОТОКОЛЫ)
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Наличие СХД", key="storage_toggle"):
-    s_col1, s_col2 = st.columns(2)
-    with s_col1:
-        st_arch = st.selectbox("Архитектура:", ["All-Flash (NVMe/SSD)", "Hybrid", "HDD Only"])
-        st_vendor = st.text_input("Производитель СХД:")
-    with s_col2:
-        st_cap = st.number_input("Емкость (ТБ):", min_value=0)
-        st_prot = st.multiselect("Протоколы:", ["FC", "iSCSI", "NFS", "SMB", "S3"])
-    data['1.4. СХД'] = f"{st_vendor} | {st_arch} ({st_cap} TB)"
+    st_col1, st_col2 = st.columns(2)
+    with st_col1:
+        st_arch = st.selectbox("Тип массива:", ["All-Flash (NVMe/SSD)", "Hybrid (Flash + HDD)", "HDD Only"])
+        st_vendor = st.text_input("Производитель СХД (Dell, HP, Huawei, NetApp):")
+        st_conn = st.selectbox("Подключение:", ["FC (Fibre Channel)", "iSCSI", "SAS (Direct)", "NFS/SMB"])
+    with st_col2:
+        st_cap = st.number_input("Полезная емкость (ТБ):", min_value=0)
+        st_redundancy = st.checkbox("Дублирование контроллеров (HA)")
+    data['1.4. СХД'] = f"{st_vendor} | {st_arch} | {st_conn} ({st_cap} TB)"
 else:
     data['1.4. СХД'] = "Нет"
 
 if st.checkbox("Резервное копирование"):
-    v_b = st.text_input("Производитель системы резервного копирования:")
+    v_b = st.text_input("Производитель системы резервного копирования (Veeam, Veritas, Кибербекап):")
     data["Резервное копирование"] = f"Да ({v_b})"
     score += 20
 
@@ -119,9 +134,9 @@ st.divider()
 # --- БЛОК 2: ИБ ---
 st.header("Блок 2: Информационная Безопасность")
 ib_tools = {
-    "EPP (Антивирус)": 10, "DLP (Утечки)": 15, "PAM (Привилегии)": 10,
-    "SIEM (Мониторинг)": 20, "VM (Уязвимости)": 10, "EDR/XDR": 15,
-    "WAF (Защита Web)": 10, "MFA (2FA)": 15
+    "EPP (Антивирус)": 10, "DLP (Защита от утечек)": 15, "PAM (Управление доступом)": 10,
+    "SIEM (Мониторинг событий)": 20, "VM (Сканер уязвимостей)": 10, "EDR/XDR": 15,
+    "WAF (Защита Web-приложений)": 10, "MFA (2FA)": 15
 }
 col_ib1, col_ib2 = st.columns(2)
 for i, (name, pts) in enumerate(ib_tools.items()):
@@ -135,37 +150,35 @@ for i, (name, pts) in enumerate(ib_tools.items()):
 
 st.divider()
 
-# --- БЛОК 4: РАЗРАБОТКА (РАСШИРЕНО) ---
+# --- БЛОК 4: РАЗРАБОТКА (ПОЛНЫЙ ЦИКЛ) ---
 st.header("Блок 4: Разработка и DevOps")
 if st.toggle("Внутренняя разработка", key="dev_toggle"):
     d1, d2 = st.columns(2)
     with d1:
-        data['4.1. Кол-во разработчиков'] = st.number_input("Штат (чел):", min_value=0)
-        data['4.2. Стек'] = st.text_input("Языки/Фреймворки:")
-        data['4.3. Хранение кода'] = st.selectbox("Git-сервис:", ["GitLab", "GitHub", "Bitbucket", "Локальный Git", "Нет"])
+        data['4.1. Штат разработки'] = st.number_input("Кол-во разработчиков (чел):", min_value=0)
+        data['4.2. Стек'] = st.text_input("Основные языки (Python, Java, PHP и т.д.):")
+        data['4.3. Репозиторий'] = st.selectbox("Хранение кода:", ["GitLab", "GitHub", "Bitbucket", "Локальный Git", "Нет"])
     with d2:
-        data['4.4. CI/CD'] = st.selectbox("Автоматизация сборок:", ["Jenkins", "GitLab CI", "GitHub Actions", "Нет"])
-        data['4.5. Контейнеризация'] = st.multiselect("Технологии:", ["Docker", "Kubernetes", "Docker Swarm"])
-        data['4.6. Среды'] = st.multiselect("Наличие окружений:", ["Dev", "Stage/Test", "Prod (Изолирован)"])
+        data['4.4. CI/CD Pipeline'] = st.selectbox("Автоматизация:", ["Jenkins", "GitLab CI", "GitHub Actions", "TeamCity", "Нет"])
+        data['4.5. Контейнеризация'] = st.multiselect("Среда исполнения:", ["Docker", "Kubernetes (K8s)", "OpenShift"])
+        data['4.6. Среды разработки'] = st.multiselect("Наличие сред:", ["Development", "Staging/Testing", "Production"])
     
-    if st.checkbox("Документация кода (Swagger/Wiki)"): data['4.7. Документация'] = "Да"
+    if st.checkbox("Используется статический анализ кода (SAST)"): data['SAST'] = "Да"
 else:
     data['4.1. Разработка'] = "Нет"
 
-# --- ГЕНЕРАЦИЯ EXCEL (НОВАЯ ЛОГИКА) ---
+# --- ГЕНЕРАЦИЯ EXCEL ---
 def generate_report(c_info, results, total_score):
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Audit 2026"
+    ws.title = "Audit"
     
-    # Стили
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-    # Шапка
-    ws.merge_cells('A1:D2'); ws['A1'] = "ЭКСПЕРТНЫЙ ТЕХНИЧЕСКИЙ АУДИТ (2026)"; ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.merge_cells('A1:D2'); ws['A1'] = "ЭКСПЕРТНЫЙ ТЕХНИЧЕСКИЙ АУДИТ 2026"; ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
     ws['A1'].font = Font(bold=True, size=14)
 
     row = 4
@@ -173,7 +186,7 @@ def generate_report(c_info, results, total_score):
         ws.cell(row=row, column=1, value=k).font = Font(bold=True)
         ws.cell(row=row, column=2, value=str(v)); row += 1
     
-    ws.cell(row=row, column=1, value="ЗРЕЛОСТЬ ИТ/ИБ:").font = Font(bold=True)
+    ws.cell(row=row, column=1, value="ИНДЕКС ЗРЕЛОСТИ:").font = Font(bold=True)
     ws.cell(row=row, column=2, value=f"{min(total_score, 100)}%"); row += 3
 
     cols = ["Параметр", "Значение", "Статус", "Рекомендация / Обоснование"]
@@ -182,35 +195,34 @@ def generate_report(c_info, results, total_score):
         cell.fill = header_fill; cell.font = white_font; cell.border = border
     
     row += 1
-    
     n_arm = results.get('1.1. Всего АРМ', 0)
     n_srv = results.get('1.3.1. Физические серверы', 0) + results.get('1.3.2. Виртуальные серверы', 0)
     has_edr = results.get('EDR/XDR') != "Нет"
 
     for k, v in results.items():
-        if "ОС" in k or "speed" in k: continue
+        if any(x in k for x in ["ОС", "speed", "Виртуализация"]): continue
         ws.cell(row=row, column=1, value=k).border = border
         ws.cell(row=row, column=2, value=str(v)).border = border
         
-        status, rec, color = "В норме", "Риски под контролем.", "000000"
+        status, rec, color = "В норме", "Поддерживать текущее состояние.", "000000"
 
-        # ЛОГИКА ПРОВЕРОК
+        # ЛОГИКА
         if k == '1.2.2. Резервный канал' and v == "Нет":
-            status, rec, color = "КРИТИЧНО", "Единая точка отказа. Требуется резервный канал связи.", "FF0000"
+            status, rec, color = "КРИТИЧНО", "Высокий риск простоя бизнеса при аварии на линии связи.", "FF0000"
         
         elif v == "Нет":
-            if k == "SIEM (Мониторинг)":
+            if k == "SIEM (Мониторинг событий)":
                 if n_arm < 100 and n_srv < 20 and not has_edr:
-                    status, rec, color = "ВНИМАНИЕ", "Малый масштаб. Рекомендуется к приобретению при росте инфраструктуры.", "FFC000"
+                    status, rec, color = "ВНИМАНИЕ", "Для малого бизнеса рекомендуется рассмотреть на этапе роста.", "FFC000"
                 else:
-                    status, rec, color = "КРИТИЧНО", "Необходим централизованный контроль инцидентов.", "FF0000"
+                    status, rec, color = "КРИТИЧНО", "Необходим автоматизированный мониторинг инцидентов.", "FF0000"
             elif k == "1.4. СХД":
-                if n_srv > 10: status, rec, color = "КРИТИЧНО", "Без СХД невозможна высокая доступность сервисов.", "FF0000"
-                else: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению для надежности хранения.", "FFC000"
-            elif k == "MFA (2FA)":
-                status, rec, color = "КРИТИЧНО", "Рекомендуется к приобретению для защиты доступа.", "FF0000"
+                if n_srv > 10: status, rec, color = "КРИТИЧНО", "При 10+ серверах отсутствие СХД мешает высокой доступности (HA).", "FF0000"
+                else: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению для централизации данных.", "FFC000"
+            elif k == "EDR/XDR":
+                status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Для защиты от современных шифровальщиков.", "00B050"
             else:
-                status, rec, color = "РИСК", "Рекомендуется к приобретению для усиления ИБ.", "FF0000"
+                status, rec, color = "РИСК", "Рекомендуется к приобретению для минимизации угроз.", "FF0000"
 
         st_cell = ws.cell(row=row, column=3, value=status)
         st_cell.font = Font(color=color, bold=True); st_cell.border = border
@@ -220,20 +232,18 @@ def generate_report(c_info, results, total_score):
     for c, w in {'A': 30, 'B': 25, 'C': 15, 'D': 55}.items(): ws.column_dimensions[c].width = w
     wb.save(output); return output.getvalue()
 
-# --- ВЫВОД ---
+# --- ФИНАЛ ---
 st.divider()
 if st.button("📊 Сформировать экспертный отчет"):
-    if not client_info['Наименование компании'] or not client_info['Email']:
-        st.error("Заполните обязательные поля!")
+    if not all([client_info['Наименование компании'], client_info['Email']]):
+        st.error("Пожалуйста, заполните обязательные поля (Название компании и Email)!")
     else:
-        with st.spinner("Анализ..."):
+        with st.spinner("Генерация отчета..."):
             report = generate_report(client_info, data, score)
-            # Отправка в ТГ
             try:
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
-                              data={"chat_id": CHAT_ID, "caption": f"Аудит: {client_info['Наименование компании']}"}, 
+                              data={"chat_id": CHAT_ID, "caption": f"Новый аудит: {client_info['Наименование компании']}"}, 
                               files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report)})
             except: pass
-            
-            st.success("Отчет готов!")
-            st.download_button("📥 Скачать Excel", report, f"Audit_{client_info['Наименование компании']}.xlsx")
+            st.success("Отчет успешно сформирован!")
+            st.download_button("📥 Скачать экспертный Excel", report, f"Audit_{client_info['Наименование компании']}.xlsx")
