@@ -23,7 +23,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.3")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.4")
 
 data = {}
 client_info = {}
@@ -68,13 +68,13 @@ with col_h2:
     phone_num = p_col2.text_input("Номер", placeholder="777 777 77 77", label_visibility="collapsed")
     client_info['Контактный телефон'] = f"{selected_code[1]} {phone_num}" if phone_num else ""
 
-# Валидация обязательных полей
+# Валидация
 mandatory = ['Город', 'Наименование компании', 'Сайт компании', 'Email', 'ФИО контактного лица', 'Должность']
 for field in mandatory:
     if not client_info.get(field) or client_info[field].strip() == "":
-        validation_errors.append(f"Поле '{field}' не заполнено")
+        validation_errors.append(f"Не заполнено поле: {field}")
 if not phone_num:
-    validation_errors.append("Контактный телефон не заполнен")
+    validation_errors.append("Не указан номер телефона")
 
 st.divider()
 
@@ -96,7 +96,7 @@ if total_arm > 0 and sum_os_arm != total_arm:
     st.warning(f"⚠️ Ошибка: Сумма ОС ({sum_os_arm}) != Всего АРМ ({total_arm})")
     validation_errors.append("Ошибка баланса АРМ")
 
-# 1.2 Сеть (ПОЛНЫЙ СПИСОК)
+# 1.2 Сеть (ВОССТАНОВЛЕНО: WIFI + ВЕНДОРЫ)
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -108,35 +108,40 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         m_s = st.number_input("Скорость основного (Mbit/s)", min_value=0, key="main_net_s")
         data['1.2.1. Основной канал'] = f"{m_t} ({m_s} Mbps)"
     with col_n2:
-        # Резервный канал по умолчанию "Нет" (index=6)
         b_t = st.selectbox("Тип (резервный канал)", net_types, index=6, key="back_net_t")
         b_s = st.number_input("Скорость резервного (Mbit/s)", min_value=0, key="back_net_s")
         data['1.2.2. Резервный канал'] = b_t if b_t == "Нет" else f"{b_t} ({b_s} Mbps)"
+
+    # WIFI СЕКЦИЯ
+    st.write("**Беспроводная сеть (Wi-Fi)**")
+    if st.checkbox("Наличие Wi-Fi"):
+        c_wf1, c_wf2 = st.columns(2)
+        with c_wf1:
+            wf_v = st.text_input("Вендор Wi-Fi (Aruba, Cisco, UniFi и др.)")
+            wf_q = st.number_input("Кол-во точек доступа", min_value=1, step=1)
+        with c_wf2:
+            wf_c = st.selectbox("Контроллер Wi-Fi", ["Аппаратный", "Программный", "Облачный", "Без контроллера"])
+        data['1.2.3. Wi-Fi'] = f"{wf_v}, {wf_q} шт, {wf_c}"
+    else:
+        data['1.2.3. Wi-Fi'] = "Нет"
 
     st.write("**Активное сетевое оборудование**")
     c_eq1, c_eq2, c_eq3 = st.columns(3)
     with c_eq1:
         if st.checkbox("Маршрутизаторы"):
-            v = st.text_input("Вендор (Router)", key="v_r")
-            q = st.number_input("Кол-во (Router)", min_value=1, key="q_r")
-            data['1.2.3. Маршрутизаторы'] = f"{v} ({q} шт)"
+            v_r = st.text_input("Вендор (Router)")
+            q_r = st.number_input("Кол-во (Router)", min_value=1)
+            data['1.2.4. Маршрутизаторы'] = f"{v_r} ({q_r} шт)"
     with c_eq2:
         if st.checkbox("Коммутаторы L2"):
-            v = st.text_input("Вендор (L2)", key="v_l2")
-            q = st.number_input("Кол-во (L2)", min_value=1, key="q_l2")
-            data['1.2.4. Коммутаторы L2'] = f"{v} ({q} шт)"
+            v_l2 = st.text_input("Вендор (L2)")
+            q_l2 = st.number_input("Кол-во (L2)", min_value=1)
+            data['1.2.5. Коммутаторы L2'] = f"{v_l2} ({q_l2} шт)"
     with c_eq3:
         if st.checkbox("Коммутаторы L3"):
-            v = st.text_input("Вендор (L3)", key="v_l3")
-            q = st.number_input("Кол-во (L3)", min_value=1, key="q_l3")
-            data['1.2.5. Коммутаторы L3'] = f"{v} ({q} шт)"
-
-    if st.checkbox("Межсетевой экран (NGFW)", key="chk_ngfw"):
-        v_ngfw = st.text_input("Производитель NGFW")
-        data['1.2.6. NGFW'] = f"Да ({v_ngfw if v_ngfw else 'не указан'})"
-        score += 20
-    else:
-        data['1.2.6. NGFW'] = "Нет"
+            v_l3 = st.text_input("Вендор (L3)")
+            q_l3 = st.number_input("Кол-во (L3)", min_value=1)
+            data['1.2.6. Коммутаторы L3'] = f"{v_l3} ({q_l3} шт)"
 
 # 1.3 Серверы
 st.write("---")
@@ -156,21 +161,21 @@ if st.checkbox("Резервное копирование"):
 else:
     data['1.3.3. Резервное копирование'] = "Нет"
 
-# 1.4 СХД (ПОЛНЫЙ СПИСОК)
+# 1.4 СХД (ПОЛНЫЙ СПИСОК: ПРОИЗВОДИТЕЛЬ, ОБЪЕМ, ПРОТОКОЛЫ, НОСИТЕЛИ)
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Есть выделенная СХД", key="storage_toggle"):
     col_st1, col_st2 = st.columns(2)
     with col_st1:
-        st_v = st.text_input("Производитель СХД (HP, Dell, Huawei и др.)")
+        st_v = st.text_input("Производитель СХД")
         st_c = st.number_input("Полезная емкость (TB)", min_value=0)
         data['1.4.1. СХД Производитель'] = st_v if st_v else "не указан"
         data['1.4.2. СХД Емкость'] = f"{st_c} TB"
     with col_st2:
-        st_conn = st.multiselect("Протоколы доступа", ["FC (Fiber Channel)", "iSCSI", "NFS/SMB", "SAS"])
+        st_conn = st.multiselect("Протоколы доступа", ["FC", "iSCSI", "NFS", "SMB/CIFS", "SAS"])
         data['1.4.3. Протоколы СХД'] = ", ".join(st_conn) if st_conn else "не указаны"
     
-    st_media = st.multiselect("Типы дисков", ["All-Flash (SSD/NVMe)", "Hybrid", "HDD Only"])
+    st_media = st.multiselect("Типы дисков", ["NVMe", "SSD (SATA/SAS)", "HDD (SAS 10k/15k)", "HDD (NL-SAS/SATA)"])
     data['1.4.4. Типы носителей'] = ", ".join(st_media) if st_media else "не указаны"
 else:
     data['1.4. СХД'] = "Нет"
@@ -181,11 +186,11 @@ st.header("Блок 2: Информационная Безопасность")
 ib_tools = {
     "EPP (Антивирус)": 10, "DLP (Утечки)": 15, "PAM (Привилегии)": 10,
     "SIEM (Мониторинг)": 20, "VM (Уязвимости)": 10, "EDR/XDR": 15,
-    "MFA (Аутентификация)": 15, "WAF (Защита Web)": 10
+    "MFA (Аутентификация)": 15, "WAF (Защита Web)": 10, "NGFW (Межсетевой экран)": 15
 }
 col_ib1, col_ib2 = st.columns(2)
 for i, (name, pts) in enumerate(ib_tools.items()):
-    with (col_ib1 if i < 4 else col_ib2):
+    with (col_ib1 if i < 5 else col_ib2):
         if st.checkbox(name):
             v_ib = st.text_input(f"Вендор {name}", key=f"v_{name}")
             data[name] = f"Да ({v_ib if v_ib else 'не указан'})"
@@ -193,25 +198,22 @@ for i, (name, pts) in enumerate(ib_tools.items()):
         else:
             data[name] = "Нет"
 
-# --- ГЕНЕРАЦИЯ ОТЧЕТА ---
-def generate_excel(c_info, results, f_score):
+# --- ГЕНЕРАЦИЯ EXCEL ---
+def make_excel(c_info, results, f_score):
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
     ws.title = "Audit_Report"
     
-    # Стили
     blue_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-    # Заголовок
     ws.merge_cells('A1:D1')
-    ws['A1'] = "ТЕХНИЧЕСКИЙ АУДИТ 2026 - ЭКСПЕРТНЫЙ ОТЧЕТ"
+    ws['A1'] = "ОТЧЕТ ПО АУДИТУ ИТ И ИБ (2026)"
     ws['A1'].font = Font(bold=True, size=14)
     ws['A1'].alignment = Alignment(horizontal='center')
 
-    # Данные клиента
     row = 3
     for k, v in c_info.items():
         ws.cell(row=row, column=1, value=k).font = Font(bold=True)
@@ -219,59 +221,45 @@ def generate_excel(c_info, results, f_score):
         row += 1
     
     ws.cell(row=row, column=1, value="ИНДЕКС ЗРЕЛОСТИ").font = Font(bold=True)
-    ws.cell(row=row, column=2, value=f"{f_score}%").font = Font(bold=True)
+    ws.cell(row=row, column=2, value=f"{f_score}%")
 
-    # Таблица результатов
     row += 2
-    headers = ["Параметр", "Значение", "Статус", "Рекомендация"]
-    for i, h in enumerate(headers, 1):
+    for i, h in enumerate(["Параметр", "Значение", "Статус", "Рекомендация"], 1):
         cell = ws.cell(row=row, column=i, value=h)
-        cell.fill = blue_fill
-        cell.font = white_font
+        cell.fill = blue_fill; cell.font = white_font
     
     row += 1
     for k, v in results.items():
-        if "ОС" in k: continue # Скрываем детальную разбивку ОС в таблице
+        if "ОС" in k: continue
         ws.cell(row=row, column=1, value=k).border = border
         ws.cell(row=row, column=2, value=str(v)).border = border
-        
-        status = "В норме"
-        rec = "Соответствует базовым требованиям"
-        if v == "Нет" or "0 TB" in str(v):
-            status = "РИСК"
-            rec = "Требуется анализ необходимости внедрения"
-        
-        ws.cell(row=row, column=3, value=status).border = border
-        ws.cell(row=row, column=4, value=rec).border = border
+        ws.cell(row=row, column=3, value="Анализ").border = border
+        ws.cell(row=row, column=4, value="Ожидает экспертной оценки").border = border
         row += 1
 
-    ws.column_dimensions['A'].width = 30
-    ws.column_dimensions['B'].width = 30
-    ws.column_dimensions['D'].width = 50
+    for col in ['A', 'B', 'C', 'D']: ws.column_dimensions[col].width = 30
     wb.save(output)
     return output.getvalue()
 
 st.divider()
 
-# ФИНАЛЬНАЯ КНОПКА
 if validation_errors:
-    st.error("🚨 Пожалуйста, исправьте ошибки для формирования отчета:")
+    st.error("🚨 Заполните обязательные поля для генерации отчета:")
     for err in validation_errors:
         st.write(f"- {err}")
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
-    with st.spinner("Создание отчета..."):
+    with st.spinner("Создание документа..."):
         final_score = min(score, 100)
-        excel_data = generate_excel(client_info, data, final_score)
+        excel_data = make_excel(client_info, data, final_score)
         
-        # Отправка в TG
         try:
             requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
                           data={'chat_id': CHAT_ID, 'caption': f"🏢 {client_info['Наименование компании']}\n📊 Зрелость: {final_score}%"},
                           files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", excel_data)})
         except: pass
         
-        st.success("Отчет успешно сформирован!")
+        st.success("Готово!")
         st.download_button("📥 Скачать Excel", excel_data, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v6.3 | Almaty 2026")
+st.info("Khalil Audit System v6.4 | Almaty 2026")
