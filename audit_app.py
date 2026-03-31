@@ -58,20 +58,21 @@ with col_h1:
 
     custom_email_mode = st.checkbox("Email отличается от сайта")
     
+    # Исправленная логика отображения Email
+    clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+    
     if custom_email_mode:
-        client_info['Email'] = st.text_input("Email контактного лица")
+        client_info['Email'] = st.text_input("Email контактного лица", key="email_manual")
+    elif clean_domain and "." in clean_domain:
+        st.write("Email контактного лица")
+        e_col1, e_col2 = st.columns([2, 3])
+        with e_col1:
+            email_prefix = st.text_input("Логин (до @)", placeholder="info", label_visibility="collapsed", key="email_pre")
+        with e_col2:
+            st.markdown(f"<div style='padding-top: 5px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
+        client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
     else:
-        clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
-        if clean_domain and "." in clean_domain:
-            st.write("Email контактного лица (логин)")
-            e_col1, e_col2 = st.columns([2, 3])
-            with e_col1:
-                email_prefix = st.text_input("Логин", placeholder="info", label_visibility="collapsed", key="email_pre")
-            with e_col2:
-                st.markdown(f"<div style='padding-top: 5px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
-            client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
-        else:
-            client_info['Email'] = ""
+        client_info['Email'] = st.text_input("Email контактного лица", key="email_default")
 
 with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица")
@@ -261,8 +262,7 @@ def make_expert_excel(c_info, results, final_score):
     # 1. Предварительный расчет масштаба (Pre-analysis)
     n_arm = results.get('1.1. Всего АРМ', 0)
     n_srv = results.get('1.3.1. Физические серверы', 0) + results.get('1.3.2. Виртуальные серверы', 0)
-    has_edr = results.get('EDR/XDR') != "Нет"
-
+    
     curr_row = 4
     for k, v in c_info.items():
         ws.cell(row=curr_row, column=1, value=k).font = Font(bold=True)
