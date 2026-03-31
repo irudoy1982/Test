@@ -23,14 +23,14 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.5")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.6")
 
 data = {}
 client_info = {}
 validation_errors = []
 score = 0
 
-# --- ШАПКА: ОБЩАЯ ИНФОРМАЦИЯ ---
+# --- ШАПКА: ОБЩАЯ ИНФОРМАЦИЯ (ИСПРАВЛЕНА ЛОГИКА EMAIL) ---
 st.header("📍 Общая информация")
 col_h1, col_h2 = st.columns(2)
 
@@ -40,12 +40,26 @@ with col_h1:
     site_input = st.text_input("Сайт компании:*", placeholder="example.kz")
     client_info['Сайт компании'] = site_input
     
-    if st.checkbox("Email отличается от домена сайта"):
-        client_info['Email'] = st.text_input("Email контактного лица:*")
+    # Логика Email
+    custom_email = st.checkbox("Email отличается от домена сайта")
+    
+    if custom_email:
+        client_info['Email'] = st.text_input("Email контактного лица:*", placeholder="info@other-domain.com")
     else:
+        # Очистка домена для сборки email
         clean_domain = site_input.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
-        prefix = st.text_input("Логин (email):", placeholder="info")
-        client_info['Email'] = f"{prefix}@{clean_domain}" if prefix and clean_domain else ""
+        
+        if clean_domain and "." in clean_domain:
+            st.write("Email контактного лица:*")
+            e_col1, e_col2 = st.columns([1, 2])
+            with e_col1:
+                email_prefix = st.text_input("Логин", placeholder="info", label_visibility="collapsed")
+            with e_col2:
+                st.markdown(f"<div style='padding-top: 5px; font-size: 16px; font-weight: bold; color: #1F4E78;'>@{clean_domain}</div>", unsafe_allow_html=True)
+            client_info['Email'] = f"{email_prefix}@{clean_domain}" if email_prefix else ""
+        else:
+            st.info("Введите корректный сайт, чтобы сформировать Email")
+            client_info['Email'] = ""
 
 with col_h2:
     client_info['ФИО контактного лица'] = st.text_input("ФИО контактного лица:*")
@@ -63,9 +77,9 @@ total_arm = st.number_input("Общее количество АРМ (шт):", mi
 data['1.1. Всего АРМ'] = total_arm
 selected_os_arm = st.multiselect("ОС на АРМ:", ["Windows XP/7/8", "Windows 10", "Windows 11", "Linux", "macOS"])
 for os_item in selected_os_arm:
-    data[f"ОС АРМ ({os_item})"] = st.number_input(f"Кол-во на {os_item}:", min_value=0, step=1)
+    data[f"ОС АРМ ({os_item})"] = st.number_input(f"Кол-во на {os_item}:", min_value=0, step=1, key=f"os_{os_item}")
 
-# 1.2 Сетевая инфраструктура (ПОЛНЫЙ СПИСОК)
+# 1.2 Сетевая инфраструктура
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сеть", key="net_t", value=True):
@@ -93,11 +107,11 @@ if st.toggle("Своя сеть", key="net_t", value=True):
             data['Wi-Fi AP Count'] = st.number_input("Кол-во точек доступа:", min_value=0)
 
     if st.checkbox("Межсетевой экран (NGFW)"):
-        v_ng = st.text_input("Производитель NGFW (Fortigate, CheckPoint и т.д.):")
+        v_ng = st.text_input("Производитель NGFW:")
         data['1.2.7. NGFW'] = f"Да ({v_ng})"
         score += 20
 
-# 1.3 Серверы (ПОЛНЫЙ СПИСОК)
+# 1.3 Серверы
 st.write("---")
 st.subheader("1.3. Серверы и Виртуализация")
 col_s1, col_s2 = st.columns(2)
@@ -108,24 +122,23 @@ with col_s2:
     data['1.3.2. Виртуальные серверы'] = st.number_input("Виртуальные серверы (шт):", min_value=0)
     data['ОС Серверов'] = st.multiselect("Операционные системы:", ["Win Server 2012/R2", "Win Server 2016/19/22", "Linux (RHEL/CentOS/Ubuntu)", "Debian/Astra"])
 
-# 1.4 СХД (ВСЕ ПУНКТЫ: ALL-FLASH, HYBRID, ПРОТОКОЛЫ)
+# 1.4 СХД
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Наличие СХД", key="storage_toggle"):
     st_col1, st_col2 = st.columns(2)
     with st_col1:
         st_arch = st.selectbox("Тип массива:", ["All-Flash (NVMe/SSD)", "Hybrid (Flash + HDD)", "HDD Only"])
-        st_vendor = st.text_input("Производитель СХД (Dell, HP, Huawei, NetApp):")
+        st_vendor = st.text_input("Производитель СХД:")
         st_conn = st.selectbox("Подключение:", ["FC (Fibre Channel)", "iSCSI", "SAS (Direct)", "NFS/SMB"])
     with st_col2:
         st_cap = st.number_input("Полезная емкость (ТБ):", min_value=0)
-        st_redundancy = st.checkbox("Дублирование контроллеров (HA)")
-    data['1.4. СХД'] = f"{st_vendor} | {st_arch} | {st_conn} ({st_cap} TB)"
+        data['1.4. СХД'] = f"{st_vendor} | {st_arch} | {st_conn} ({st_cap} TB)"
 else:
     data['1.4. СХД'] = "Нет"
 
 if st.checkbox("Резервное копирование"):
-    v_b = st.text_input("Производитель системы резервного копирования (Veeam, Veritas, Кибербекап):")
+    v_b = st.text_input("Производитель системы резервного копирования:")
     data["Резервное копирование"] = f"Да ({v_b})"
     score += 20
 
@@ -150,20 +163,18 @@ for i, (name, pts) in enumerate(ib_tools.items()):
 
 st.divider()
 
-# --- БЛОК 4: РАЗРАБОТКА (ПОЛНЫЙ ЦИКЛ) ---
+# --- БЛОК 4: РАЗРАБОТКА ---
 st.header("Блок 4: Разработка и DevOps")
 if st.toggle("Внутренняя разработка", key="dev_toggle"):
     d1, d2 = st.columns(2)
     with d1:
-        data['4.1. Штат разработки'] = st.number_input("Кол-во разработчиков (чел):", min_value=0)
-        data['4.2. Стек'] = st.text_input("Основные языки (Python, Java, PHP и т.д.):")
+        data['4.1. Штат разработки'] = st.number_input("Кол-во разработчиков:", min_value=0)
+        data['4.2. Стек'] = st.text_input("Стек технологий:")
         data['4.3. Репозиторий'] = st.selectbox("Хранение кода:", ["GitLab", "GitHub", "Bitbucket", "Локальный Git", "Нет"])
     with d2:
-        data['4.4. CI/CD Pipeline'] = st.selectbox("Автоматизация:", ["Jenkins", "GitLab CI", "GitHub Actions", "TeamCity", "Нет"])
-        data['4.5. Контейнеризация'] = st.multiselect("Среда исполнения:", ["Docker", "Kubernetes (K8s)", "OpenShift"])
-        data['4.6. Среды разработки'] = st.multiselect("Наличие сред:", ["Development", "Staging/Testing", "Production"])
-    
-    if st.checkbox("Используется статический анализ кода (SAST)"): data['SAST'] = "Да"
+        data['4.4. CI/CD Pipeline'] = st.selectbox("Автоматизация:", ["Jenkins", "GitLab CI", "GitHub Actions", "Нет"])
+        data['4.5. Контейнеризация'] = st.multiselect("Технологии:", ["Docker", "Kubernetes", "OpenShift"])
+        data['4.6. Среды'] = st.multiselect("Окружения:", ["Dev", "Test", "Prod"])
 else:
     data['4.1. Разработка'] = "Нет"
 
@@ -189,8 +200,8 @@ def generate_report(c_info, results, total_score):
     ws.cell(row=row, column=1, value="ИНДЕКС ЗРЕЛОСТИ:").font = Font(bold=True)
     ws.cell(row=row, column=2, value=f"{min(total_score, 100)}%"); row += 3
 
-    cols = ["Параметр", "Значение", "Статус", "Рекомендация / Обоснование"]
-    for i, name in enumerate(cols, 1):
+    headers = ["Параметр", "Значение", "Статус", "Рекомендация"]
+    for i, name in enumerate(headers, 1):
         cell = ws.cell(row=row, column=i, value=name)
         cell.fill = header_fill; cell.font = white_font; cell.border = border
     
@@ -204,46 +215,43 @@ def generate_report(c_info, results, total_score):
         ws.cell(row=row, column=1, value=k).border = border
         ws.cell(row=row, column=2, value=str(v)).border = border
         
-        status, rec, color = "В норме", "Поддерживать текущее состояние.", "000000"
+        status, rec, color = "В норме", "Ок.", "000000"
 
-        # ЛОГИКА
         if k == '1.2.2. Резервный канал' and v == "Нет":
-            status, rec, color = "КРИТИЧНО", "Высокий риск простоя бизнеса при аварии на линии связи.", "FF0000"
+            status, rec, color = "КРИТИЧНО", "Отсутствие резерва — риск остановки бизнеса.", "FF0000"
         
         elif v == "Нет":
             if k == "SIEM (Мониторинг событий)":
                 if n_arm < 100 and n_srv < 20 and not has_edr:
-                    status, rec, color = "ВНИМАНИЕ", "Для малого бизнеса рекомендуется рассмотреть на этапе роста.", "FFC000"
+                    status, rec, color = "ВНИМАНИЕ", "Рекомендуется при росте компании.", "FFC000"
                 else:
-                    status, rec, color = "КРИТИЧНО", "Необходим автоматизированный мониторинг инцидентов.", "FF0000"
+                    status, rec, color = "КРИТИЧНО", "Необходим мониторинг при текущем масштабе.", "FF0000"
             elif k == "1.4. СХД":
-                if n_srv > 10: status, rec, color = "КРИТИЧНО", "При 10+ серверах отсутствие СХД мешает высокой доступности (HA).", "FF0000"
-                else: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению для централизации данных.", "FFC000"
-            elif k == "EDR/XDR":
-                status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Для защиты от современных шифровальщиков.", "00B050"
+                if n_srv > 10: status, rec, color = "КРИТИЧНО", "Риск потери данных или простоя.", "FF0000"
+                else: status, rec, color = "ВНИМАНИЕ", "Рекомендована централизация.", "FFC000"
             else:
-                status, rec, color = "РИСК", "Рекомендуется к приобретению для минимизации угроз.", "FF0000"
+                status, rec, color = "РИСК", "Рекомендуется внедрение.", "FF0000"
 
         st_cell = ws.cell(row=row, column=3, value=status)
         st_cell.font = Font(color=color, bold=True); st_cell.border = border
         ws.cell(row=row, column=4, value=rec).border = border
         row += 1
 
-    for c, w in {'A': 30, 'B': 25, 'C': 15, 'D': 55}.items(): ws.column_dimensions[c].width = w
+    for c, w in {'A': 30, 'B': 30, 'C': 15, 'D': 50}.items(): ws.column_dimensions[c].width = w
     wb.save(output); return output.getvalue()
 
 # --- ФИНАЛ ---
 st.divider()
 if st.button("📊 Сформировать экспертный отчет"):
-    if not all([client_info['Наименование компании'], client_info['Email']]):
-        st.error("Пожалуйста, заполните обязательные поля (Название компании и Email)!")
+    if not all([client_info['Наименование компании'], client_info['Email'], client_info['Город']]):
+        st.error("Заполните обязательные поля (Город, Компания, Email)!")
     else:
-        with st.spinner("Генерация отчета..."):
+        with st.spinner("Создание файла..."):
             report = generate_report(client_info, data, score)
             try:
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
-                              data={"chat_id": CHAT_ID, "caption": f"Новый аудит: {client_info['Наименование компании']}"}, 
+                              data={"chat_id": CHAT_ID, "caption": f"Аудит: {client_info['Наименование компании']}"}, 
                               files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report)})
             except: pass
-            st.success("Отчет успешно сформирован!")
-            st.download_button("📥 Скачать экспертный Excel", report, f"Audit_{client_info['Наименование компании']}.xlsx")
+            st.success("Отчет готов!")
+            st.download_button("📥 Скачать Excel", report, f"Audit_{client_info['Наименование компании']}.xlsx")
