@@ -85,7 +85,7 @@ with col_h2:
     phone_num = p_col2.text_input("Номер", placeholder="777 777 77 77", label_visibility="collapsed")
     client_info['Контактный телефон'] = f"{selected_code[1]} {phone_num}" if phone_num else ""
 
-# --- ВАЛИДАЦИЯ ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ ---
+# Валидация обязательных полей
 mandatory_fields = {
     'Город': client_info['Город'],
     'Наименование компании': client_info['Наименование компании'],
@@ -95,7 +95,6 @@ mandatory_fields = {
     'Должность': client_info['Должность'],
     'Контактный телефон': phone_num
 }
-
 for field_name, value in mandatory_fields.items():
     if not value or str(value).strip() == "":
         validation_errors.append(f"Не заполнено обязательное поле: {field_name}")
@@ -135,7 +134,6 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
     with col_net2:
         st.write("Резервный канал")
-        # Установлен index=6, чтобы по умолчанию было выбрано "Нет" (7-й элемент списка)
         back_type = st.selectbox("Тип (резервный)", net_types, index=6, key="back_net_type")
         back_speed = st.number_input("Скорость резервного (Mbit/s)", min_value=0, step=10, key="back_net_speed")
         data['1.2.2. Резервный канал'] = back_type if back_type == "Нет" else f"{back_type} ({back_speed} Mbit/s)"
@@ -147,21 +145,6 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
     if col_add2.checkbox("ЕТСГО", key="chk_etsgo"): add_channels.append("ЕТСГО")
     if col_add3.checkbox("VPN", key="chk_vpn"): add_channels.append("VPN")
     data['1.2.3. Доп. каналы'] = ", ".join(add_channels) if add_channels else "Нет"
-
-    st.write("Активное сетевое оборудование")
-    c_net1, c_net2, c_net3 = st.columns(3)
-    with c_net1:
-        if st.checkbox("Маршрутизаторы", key="router_chk"):
-            r_count = st.number_input("Кол-во маршрутизаторов", min_value=0, step=1, key="router_cnt")
-            data['1.2.4. Маршрутизаторы'] = f"Да ({r_count} шт)"
-    with c_net2:
-        if st.checkbox("Коммутаторы L2", key="swl2_chk"):
-            sw2_count = st.number_input("Кол-во коммутаторов L2", min_value=0, step=1, key="swl2_cnt")
-            data['1.2.5. Коммутаторы L2'] = f"Да ({sw2_count} шт)"
-    with c_net3:
-        if st.checkbox("Коммутаторы L3", key="swl3_chk"):
-            sw3_count = st.number_input("Кол-во коммутаторов L3", min_value=0, step=1, key="swl3_cnt")
-            data['1.2.6. Коммутаторы L3'] = f"Да ({sw3_count} шт)"
 
     if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk"):
         ngfw_vendor = st.text_input("Производитель (NGFW)", key="ngfw_v")
@@ -201,13 +184,21 @@ if st.checkbox("Резервное копирование", key="ib_backup"):
 else:
     data['Резервное копирование'] = "Нет"
 
-# 1.4 СХД
+# 1.4 СХД (ВОССТАНОВЛЕНО)
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Есть собственная СХД", key="storage_toggle"):
     data['1.4. СХД'] = "Да"
+    col_st1, col_st2 = st.columns(2)
+    with col_st1:
+        st_vendor = st.text_input("Производитель СХД", key="st_vendor_in")
+        data['1.4.1. Производитель СХД'] = st_vendor if st_vendor else "не указан"
+    with col_st2:
+        st_capacity = st.number_input("Общая полезная емкость (TB)", min_value=0, step=1, key="st_cap_in")
+        data['1.4.2. Полезная емкость (TB)'] = st_capacity
+
     st_media_sel = st.multiselect("Типы носителей", ["HDD (NL-SAS / SATA)", "SSD (SATA / SAS)", "NVMe", "SCM"], key="st_media")
-    data['1.4.1. Типы носителей'] = st_media_sel
+    data['1.4.3. Типы носителей'] = ", ".join(st_media_sel) if st_media_sel else "Нет"
 else:
     data['1.4. СХД'] = "Нет"
 
@@ -221,7 +212,7 @@ if st.toggle("ИС организации", key="is_toggle"):
 
     is_list = {"1С": "1c", "Битрикс24": "b24", "Documentolog": "doc", "SAP": "sap"}
     for label, ks in is_list.items():
-        if st.checkbox(label):
+        if st.checkbox(label, key=f"is_chk_{ks}"):
             data[f"ИС {label}"] = "Да"
 
 # --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
@@ -229,7 +220,7 @@ st.header("Блок 2: Информационная Безопасность")
 if st.toggle("Средства защиты", key="ib_toggle"):
     ib_systems = {
         "EPP (Антивирус)": 10, "DLP (Утечки)": 15, "PAM (Привилегии)": 10,
-        "SIEM (Мониториринг)": 20, "VM (Уязвимости)": 10, "EDR/XDR": 15,
+        "SIEM (Мониторинг)": 20, "VM (Уязвимости)": 10, "EDR/XDR": 15,
         "WAF (Веб)": 10, "Sandbox (Песочница)": 5, "IDS/IPS (Атаки)": 5, "IDM/IGA (Доступ)": 5,
         "MFA (Аутентификация)": 15, "Anti-DDoS": 15
     }
