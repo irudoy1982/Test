@@ -93,7 +93,7 @@ mandatory_fields = {
     'Email': client_info['Email'],
     'ФИО контактного лица': client_info['ФИО контактного лица'],
     'Должность': client_info['Должность'],
-    'Контактный телефон': phone_num # Проверяем именно введенную часть номера
+    'Контактный телефон': phone_num
 }
 
 for field_name, value in mandatory_fields.items():
@@ -135,7 +135,8 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
     with col_net2:
         st.write("Резервный канал")
-        back_type = st.selectbox("Тип (резервный)", net_types, key="back_net_type")
+        # Установлен index=6, чтобы по умолчанию было выбрано "Нет" (7-й элемент списка)
+        back_type = st.selectbox("Тип (резервный)", net_types, index=6, key="back_net_type")
         back_speed = st.number_input("Скорость резервного (Mbit/s)", min_value=0, step=10, key="back_net_speed")
         data['1.2.2. Резервный канал'] = back_type if back_type == "Нет" else f"{back_type} ({back_speed} Mbit/s)"
 
@@ -228,7 +229,7 @@ st.header("Блок 2: Информационная Безопасность")
 if st.toggle("Средства защиты", key="ib_toggle"):
     ib_systems = {
         "EPP (Антивирус)": 10, "DLP (Утечки)": 15, "PAM (Привилегии)": 10,
-        "SIEM (Мониторинг)": 20, "VM (Уязвимости)": 10, "EDR/XDR": 15,
+        "SIEM (Мониториринг)": 20, "VM (Уязвимости)": 10, "EDR/XDR": 15,
         "WAF (Веб)": 10, "Sandbox (Песочница)": 5, "IDS/IPS (Атаки)": 5, "IDM/IGA (Доступ)": 5,
         "MFA (Аутентификация)": 15, "Anti-DDoS": 15
     }
