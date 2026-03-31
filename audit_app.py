@@ -23,7 +23,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.2")
+st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.3")
 
 data = {}
 client_info = {}
@@ -154,26 +154,25 @@ selected_os_srv = st.multiselect("ОС серверов:", s_os_list)
 for os_s in selected_os_srv:
     data[f"ОС Сервера ({os_s})"] = st.number_input(f"Кол-во на {os_s}:", min_value=0, key=f"srv_{os_s}")
 
-# 1.4 СХД (ПОЛНОЕ ВОССТАНОВЛЕНИЕ)
+# 1.4 СХД (ПОЛНОЕ ВОССТАНОВЛЕНИЕ + ALL-FLASH)
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Наличие СХД", key="storage_toggle"):
-    st_col1, st_col2, st_col3 = st.columns(3)
+    st_col1, st_col2 = st.columns(2)
     with st_col1:
+        st_arch = st.selectbox("Архитектура массива:", ["All-Flash (NVMe/SSD)", "Hybrid (SSD+HDD)", "HDD Only"])
         st_type = st.selectbox("Тип подключения:", ["SAN (FC/iSCSI)", "NAS (NFS/SMB)", "DAS (Direct)", "Облачное"])
         st_vendor = st.text_input("Производитель СХД:")
     with st_col2:
-        st_cap = st.number_input("Общая емкость (ТБ):", min_value=0)
-        st_drive = st.multiselect("Тип дисков:", ["SSD/NVMe", "SAS", "SATA"])
-    with st_col3:
-        st_prot = st.multiselect("Протоколы:", ["FC", "iSCSI", "NFS", "SMB/CIFS"])
+        st_cap = st.number_input("Общая полезная емкость (ТБ):", min_value=0)
+        st_prot = st.multiselect("Используемые протоколы:", ["FC (Fibre Channel)", "iSCSI", "NFS", "SMB/CIFS", "NVMe-oF", "S3"])
     
-    data['1.4. СХД'] = f"{st_vendor} {st_type} ({st_cap} TB, {', '.join(st_drive)})"
+    data['1.4. СХД'] = f"{st_vendor} | {st_arch} | {st_type} ({st_cap} TB)"
 else:
     data['1.4. СХД'] = "Нет"
 
-if st.checkbox("Резервное копирование (СРК)"):
-    v_n_b = st.text_input("Производитель СРК:")
+if st.checkbox("Резервное копирование"):
+    v_n_b = st.text_input("Производитель системы резервного копирования:")
     data["Резервное копирование"] = f"Да ({v_n_b})"
     score += 20
 
@@ -226,12 +225,9 @@ if web_active:
 st.header("Блок 4: Разработка")
 dev_active = st.toggle("Наличие Разработки", key="d_t")
 if dev_active:
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        data['4.1. Разработчики'] = st.number_input("Количество разработчиков:", min_value=0)
-        data['4.3. CI/CD'] = st.checkbox("Используется CI/CD")
-    with col_d2:
-        data['4.2. Стек'] = st.text_input("Стек технологий (языки):")
+    data['4.1. Разработчики'] = st.number_input("Количество разработчиков:", min_value=0)
+    data['4.3. CI/CD'] = st.checkbox("Используется CI/CD")
+    data['4.2. Стек'] = st.text_input("Стек технологий:")
 
 # --- ГЕНЕРАЦИЯ EXCEL (УМНАЯ ЛОГИКА) ---
 def make_expert_excel(c_info, results, final_score):
@@ -276,23 +272,22 @@ def make_expert_excel(c_info, results, final_score):
 
         if v == "Нет":
             if k == "1.4. СХД":
-                if n_srv > 20 or results.get('1.3.1. Физические серверы', 0) > 5:
-                    status, rec, color = "КРИТИЧНО", "Отсутствие СХД при таком кол-ве серверов блокирует HA и масштабируемость.", "FF0000"
+                if n_srv > 15: status, rec, color = "КРИТИЧНО", "При 15+ серверах отсутствие выделенной СХД критически снижает надежность.", "FF0000"
                 else: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению для централизации данных.", "FFC000"
             elif k == "SIEM (Мониторинг)":
                 if n_arm < 100 and n_srv < 20 and not has_edr:
-                    status, rec, color = "ВНИМАНИЕ", "Малый масштаб и отсутствие EDR. SIEM нецелесообразен.", "FFC000"
+                    status, rec, color = "ВНИМАНИЕ", "Малый масштаб и отсутствие EDR. SIEM нецелесообразен на данном этапе.", "FFC000"
                 else:
-                    status, rec, color = "КРИТИЧНО", "Необходим автоматизированный сбор событий.", "FF0000"
+                    status, rec, color = "КРИТИЧНО", "Необходим автоматизированный сбор и корреляция событий.", "FF0000"
             elif k == "EDR/XDR (Точки)":
-                if n_arm < 50: status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Для защиты от Ransomware.", "00B050"
+                if n_arm < 50: status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Для защиты от Ransomware и сложных угроз.", "00B050"
                 else: status, rec, color = "КРИТИЧНО", "Классический антивирус неэффективен при текущем масштабе.", "FF0000"
             elif k == "MFA (Аутентификация)":
-                if n_arm < 20: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению для защиты доступа.", "FFC000"
-                else: status, rec, color = "КРИТИЧНО", "Второй фактор обязателен при 20+ сотрудниках.", "FF0000"
+                if n_arm < 20: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению для защиты удаленного доступа.", "FFC000"
+                else: status, rec, color = "КРИТИЧНО", "Второй фактор обязателен для защиты учетных записей.", "FF0000"
             elif k == "WAF (Веб)":
-                if not has_web: status, rec, color = "НЕ ТРЕБУЕТСЯ", "Внешние веб-сервисы отсутствуют.", "000000"
-                else: status, rec, color = "КРИТИЧНО", "Веб-ресурсы открыты для внешних атак.", "FF0000"
+                if not has_web: status, rec, color = "НЕ ТРЕБУЕТСЯ", "Внешние веб-сервисы не обнаружены.", "000000"
+                else: status, rec, color = "КРИТИЧНО", "Веб-ресурсы открыты для SQL-инъекций и XSS атак.", "FF0000"
             else:
                 status, rec, color = "РИСК", "Рекомендуется к приобретению для усиления ИБ.", "FF0000"
 
@@ -309,10 +304,10 @@ if st.button("📊 Сформировать экспертный отчет", di
     if not all([client_info['Город'], client_info['Наименование компании'], client_info['Email']]):
         st.error("⚠️ Заполните все поля со звездочкой!")
     else:
-        with st.spinner("Анализ..."):
+        with st.spinner("Генерация..."):
             f_score = min(score, 100); r_bytes = make_expert_excel(client_info, data, f_score)
             try:
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"Аудит: {client_info['Наименование компании']}"}, files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", r_bytes)})
             except: pass
-            st.success("Отчет сформирован успешно!")
+            st.success("Отчет готов!")
             st.download_button("📥 Скачать Excel", r_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
