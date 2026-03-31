@@ -85,7 +85,7 @@ if total_arm > 0 and sum_os_arm != total_arm:
     st.warning(f"⚠️ Ошибка: Всего АРМ {total_arm}, по ОС {sum_os_arm}.")
     validation_errors.append("Несовпадение АРМ")
 
-# 1.2 Сетевая инфраструктура (ПОЛНОЕ ВОССТАНОВЛЕНИЕ)
+# 1.2 Сетевая инфраструктура
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -118,11 +118,11 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
     st.write("**Уровни сети:**")
     l_col1, l_col2, l_col3 = st.columns(3)
     with l_col1:
-        if st.checkbox("Ядро (Core)"): data['Уровень сети: Ядро'] = st.text_input("Вендор Core:")
+        if st.checkbox("Ядро (Core)"): data['Уровень сети: Ядро'] = st.text_input("Производитель Core:")
     with l_col2:
-        if st.checkbox("Распределение"): data['Уровень сети: Распределение'] = st.text_input("Вендор Dist:")
+        if st.checkbox("Распределение"): data['Уровень сети: Распределение'] = st.text_input("Производитель Dist:")
     with l_col3:
-        if st.checkbox("Доступ"): data['Уровень сети: Доступ'] = st.text_input("Вендор Access:")
+        if st.checkbox("Доступ"): data['Уровень сети: Доступ'] = st.text_input("Производитель Access:")
 
     if st.checkbox("Wi-Fi"):
         w_col1, w_col2, w_col3 = st.columns(3)
@@ -154,22 +154,26 @@ selected_os_srv = st.multiselect("ОС серверов:", s_os_list)
 for os_s in selected_os_srv:
     data[f"ОС Сервера ({os_s})"] = st.number_input(f"Кол-во на {os_s}:", min_value=0, key=f"srv_{os_s}")
 
-# 1.4 СХД
+# 1.4 СХД (ПОЛНОЕ ВОССТАНОВЛЕНИЕ)
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
 if st.toggle("Наличие СХД", key="storage_toggle"):
-    st_col1, st_col2 = st.columns(2)
+    st_col1, st_col2, st_col3 = st.columns(3)
     with st_col1:
-        st_type = st.selectbox("Тип подключения:", ["SAN (FC/iSCSI)", "NAS (NFS/SMB)", "DAS", "Облачное"])
-        st_vendor = st.text_input("Вендор СХД:")
+        st_type = st.selectbox("Тип подключения:", ["SAN (FC/iSCSI)", "NAS (NFS/SMB)", "DAS (Direct)", "Облачное"])
+        st_vendor = st.text_input("Производитель СХД:")
     with st_col2:
         st_cap = st.number_input("Общая емкость (ТБ):", min_value=0)
-        data['1.4. СХД'] = f"{st_vendor} {st_type} ({st_cap} TB)"
+        st_drive = st.multiselect("Тип дисков:", ["SSD/NVMe", "SAS", "SATA"])
+    with st_col3:
+        st_prot = st.multiselect("Протоколы:", ["FC", "iSCSI", "NFS", "SMB/CIFS"])
+    
+    data['1.4. СХД'] = f"{st_vendor} {st_type} ({st_cap} TB, {', '.join(st_drive)})"
 else:
     data['1.4. СХД'] = "Нет"
 
-if st.checkbox("Резервное копирование"):
-    v_n_b = st.text_input("Вендор СРК:")
+if st.checkbox("Резервное копирование (СРК)"):
+    v_n_b = st.text_input("Производитель СРК:")
     data["Резервное копирование"] = f"Да ({v_n_b})"
     score += 20
 
@@ -203,7 +207,7 @@ if st.toggle("Средства защиты", key="ib_toggle"):
     for i, (label, pts) in enumerate(items):
         with (col1 if i < 6 else col2):
             if st.checkbox(label):
-                v_n = st.text_input(f"Вендор {label}:", key=f"vn_{label}")
+                v_n = st.text_input(f"Производитель {label}:", key=f"vn_{label}")
                 data[label] = f"Да ({v_n if v_n else 'не указан'})"
                 score += pts
             else:
@@ -222,9 +226,12 @@ if web_active:
 st.header("Блок 4: Разработка")
 dev_active = st.toggle("Наличие Разработки", key="d_t")
 if dev_active:
-    data['4.1. Разработчики'] = st.number_input("Кол-во:", min_value=0)
-    data['4.3. CI/CD'] = st.checkbox("Используется CI/CD")
-    data['4.2. Стек'] = st.text_input("Стек (языки):")
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        data['4.1. Разработчики'] = st.number_input("Количество разработчиков:", min_value=0)
+        data['4.3. CI/CD'] = st.checkbox("Используется CI/CD")
+    with col_d2:
+        data['4.2. Стек'] = st.text_input("Стек технологий (языки):")
 
 # --- ГЕНЕРАЦИЯ EXCEL (УМНАЯ ЛОГИКА) ---
 def make_expert_excel(c_info, results, final_score):
@@ -259,7 +266,6 @@ def make_expert_excel(c_info, results, final_score):
     n_srv = results.get('1.3.1. Физические серверы', 0) + results.get('1.3.2. Виртуальные серверы', 0)
     has_edr = results.get('EDR/XDR (Точки)') != "Нет"
     has_web = web_active or dev_active
-    has_old_os = results.get('ОС АРМ (Windows XP/Vista/7/8)', 0) > 0 or results.get('ОС Сервера (Windows Server 2008/2012 R2)', 0) > 0
     
     for k, v in results.items():
         if any(x in k for x in ["ОС АРМ", "ОС Сервера", "speed", "mail_type"]): continue
@@ -270,7 +276,8 @@ def make_expert_excel(c_info, results, final_score):
 
         if v == "Нет":
             if k == "1.4. СХД":
-                if n_srv > 5: status, rec, color = "КРИТИЧНО", "При 5+ серверах отсутствие СХД блокирует высокую доступность.", "FF0000"
+                if n_srv > 20 or results.get('1.3.1. Физические серверы', 0) > 5:
+                    status, rec, color = "КРИТИЧНО", "Отсутствие СХД при таком кол-ве серверов блокирует HA и масштабируемость.", "FF0000"
                 else: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению для централизации данных.", "FFC000"
             elif k == "SIEM (Мониторинг)":
                 if n_arm < 100 and n_srv < 20 and not has_edr:
@@ -278,8 +285,8 @@ def make_expert_excel(c_info, results, final_score):
                 else:
                     status, rec, color = "КРИТИЧНО", "Необходим автоматизированный сбор событий.", "FF0000"
             elif k == "EDR/XDR (Точки)":
-                if n_arm < 50 and not has_old_os: status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Для защиты от Ransomware.", "00B050"
-                else: status, rec, color = "КРИТИЧНО", "Классический антивирус неэффективен при текущем масштабе или наличии старых ОС.", "FF0000"
+                if n_arm < 50: status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Для защиты от Ransomware.", "00B050"
+                else: status, rec, color = "КРИТИЧНО", "Классический антивирус неэффективен при текущем масштабе.", "FF0000"
             elif k == "MFA (Аутентификация)":
                 if n_arm < 20: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению для защиты доступа.", "FFC000"
                 else: status, rec, color = "КРИТИЧНО", "Второй фактор обязателен при 20+ сотрудниках.", "FF0000"
