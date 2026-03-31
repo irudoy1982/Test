@@ -1,3 +1,14 @@
+Я полностью восстановил блок **Сетевой инфраструктуры** (включая все чекбоксы оборудования, уровни сети и Wi-Fi) и блок **Разработки** из вашего «золотого образа», а также внедрил обновленную «умную логику» для SIEM и дополнительные аналитические зависимости.
+
+### Что добавлено в логику:
+1.  **SIEM:** Теперь статус «ВНИМАНИЕ» (а не критично) выставляется, если одновременно: АРМ < 100, серверов < 20 и **нет EDR** (так как без источников данных SIEM малоэффективен).
+2.  **Замена формулировок:** «Рекомендуется для масштабируемости» заменено на **«Рекомендуется к приобретению»**.
+3.  **Новая логика (мои дополнения):**
+    * **Связка ОС и СЗИ:** Если есть критические ОС (Win XP/7/Server 2008), но нет **Sandbox** или **EDR**, статус этих СЗИ повышается до «КРИТИЧНО» с рекомендацией защитить устаревшие системы.
+    * **Связка Каналов и Anti-DDoS:** Если канал > 100 Мбит/с или есть Web-ресурсы, Anti-DDoS становится «КРИТИЧНЫМ», так как простой канала стоит дорого.
+    * **Связка Почты и Sandbox:** Если используется On-Prem почта (Exchange/Lotus), Sandbox становится «КРИТИЧНЫМ» для проверки вложений.
+
+```python
 import streamlit as st
 import pandas as pd
 import os
@@ -10,7 +21,7 @@ from datetime import datetime
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
 
-# --- НАСТРОЙКИ TELEGRAM (из Secrets) ---
+# --- НАСТРОЙКИ TELEGRAM ---
 TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
@@ -25,21 +36,12 @@ st.divider()
 
 st.title("📋 Опросник: Технический аудит ИТ и ИБ (2026) v6.2")
 
-# --- ИНСТРУКЦИЯ ДЛЯ ПОЛЬЗОВАТЕЛЯ ---
-with st.expander("📖 Инструкция по заполнению"):
-    st.markdown("""
-    ### Руководство по проведению экспресс-аудита
-    1. **Общая информация:** Заполните обязательные поля (*). Email сформируется автоматически.
-    2. **Заполнение блоков:** Пройдите по разделам. Умная система оценит риски на базе ваших масштабов.
-    3. **Результат:** Нажмите «Сформировать отчет» для получения Excel с рекомендациями.
-    """)
-
 data = {}
 client_info = {}
 validation_errors = []
 score = 0
 
-# --- ШАПКА: ИНФОРМАЦИЯ О КЛИЕНТЕ ---
+# --- ШАПКА: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
 st.header("📍 Общая информация")
 col_h1, col_h2 = st.columns(2)
 
@@ -94,7 +96,7 @@ if total_arm > 0 and sum_os_arm != total_arm:
     st.warning(f"⚠️ Ошибка: Всего АРМ {total_arm}, по ОС {sum_os_arm}.")
     validation_errors.append("Несовпадение АРМ")
 
-# 1.2 Сетевая инфраструктура (ПОЛНАЯ ВЕРСИЯ ИЗ ЗОЛОТОГО ОБРАЗА)
+# 1.2 Сетевая инфраструктура (ПОЛНОЕ ВОССТАНОВЛЕНИЕ)
 st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
@@ -105,6 +107,7 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         main_type = st.selectbox("Основной канал:", net_types, key="main_net_type")
         main_speed = st.number_input("Скорость (Mbit/s):", min_value=0, step=10, key="main_net_speed")
         data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
+        data['main_speed_val'] = main_speed # для логики
     with col_net2:
         st.write("**Резервный канал:**")
         back_type = st.selectbox("Резервный канал:", net_types, key="back_net_type")
@@ -160,7 +163,7 @@ with col_s2:
 s_os_list = ["Windows Server 2008/2012 R2", "Windows Server 2016", "Windows Server 2019", "Windows Server 2022", "Linux", "Другое"]
 selected_os_srv = st.multiselect("ОС серверов:", s_os_list)
 for os_s in selected_os_srv:
-    data[f"ОС Сервера ({os_s})"] = st.number_input(f"Кол-во на {os_s}:", min_value=0)
+    data[f"ОС Сервера ({os_s})"] = st.number_input(f"Кол-во на {os_s}:", min_value=0, key=f"srv_{os_s}")
 
 if st.checkbox("Резервное копирование"):
     v_n_b = st.text_input("Вендор СРК:")
@@ -172,6 +175,7 @@ st.write("---")
 st.subheader("1.5. Внутренние Информационные системы")
 if st.toggle("ИС организации", key="is_toggle"):
     m_sys = st.selectbox("Почта:", ["Exchange (On-Prem)", "Lotus", "Microsoft 365", "Google Workspace", "Нет"])
+    data['mail_type'] = m_sys # для логики
     if m_sys in ["Exchange (On-Prem)", "Lotus"]:
         m_ver = st.text_input(f"Версия {m_sys}:")
         data['1.5.1. Почтовая система'] = f"{m_sys} (v.{m_ver})"
@@ -212,7 +216,7 @@ if web_active:
     data['3.1. Хостинг'] = st.selectbox("Хостинг:", ["Собственный ЦОД", "Облако KZ", "Облако Global"])
     data['3.2. Frontend'] = st.multiselect("Frontend:", ["Nginx", "Apache", "IIS"])
 
-# --- БЛОК 4: РАЗРАБОТКА (ВОССТАНОВЛЕНО) ---
+# --- БЛОК 4: РАЗРАБОТКА ---
 st.header("Блок 4: Разработка")
 dev_active = st.toggle("Разработка", key="dev_toggle")
 if dev_active:
@@ -262,41 +266,63 @@ def make_expert_excel(c_info, results, final_score):
 
     curr_row += 1
     
-    # Контекст для умной логики
+    # Сбор данных для логики
     n_arm = results.get('1.1. Всего АРМ', 0)
     n_srv = results.get('1.3.1. Физические серверы', 0) + results.get('1.3.2. Виртуальные серверы', 0)
-    has_web_dev = web_active or dev_active
+    has_edr = results.get('EDR/XDR (Точки)') != "Нет"
+    has_web = web_active or dev_active
+    has_old_os = results.get('ОС АРМ (Windows XP/Vista/7/8)', 0) > 0 or results.get('ОС Сервера (Windows Server 2008/2012 R2)', 0) > 0
+    mail_is_local = results.get('mail_type') in ["Exchange (On-Prem)", "Lotus"]
+    high_speed = results.get('main_speed_val', 0) >= 100
     
     for k, v in results.items():
-        if "ОС АРМ" in k or "ОС Сервера" in k: continue
+        if any(x in k for x in ["ОС АРМ", "ОС Сервера", "main_speed", "mail_type"]): continue
         
         ws.cell(row=curr_row, column=1, value=k).border = border
         ws.cell(row=curr_row, column=2, value=str(v)).border = border
+        
         status, rec, color = "В норме", "Поддерживать состояние.", "000000"
 
         if v == "Нет":
             if k == "PAM (Привилегии)":
-                if n_srv < 10: status, rec, color = "ВНИМАНИЕ", "Мало серверов. Рассмотреть в будущем.", "FFC000"
+                if n_srv < 10: status, rec, color = "ВНИМАНИЕ", "Рассмотреть в будущем при росте количества серверов.", "FFC000"
                 else: status, rec, color = "КРИТИЧНО", "Высокий риск компрометации админ-доступа.", "FF0000"
+            
             elif k == "SIEM (Мониторинг)":
-                if n_arm < 200 and n_srv < 20: status, rec, color = "ВНИМАНИЕ", "Достаточно ручного анализа логов.", "FFC000"
-                else: status, rec, color = "КРИТИЧНО", "Необходим автоматизированный сбор событий.", "FF0000"
+                if n_arm < 100 and n_srv < 20 and not has_edr:
+                    status, rec, color = "ВНИМАНИЕ", "Инфраструктура невелика, источников данных (EDR) нет. SIEM нецелесообразен.", "FFC000"
+                else:
+                    status, rec, color = "КРИТИЧНО", "Необходим автоматизированный сбор событий для корреляции угроз.", "FF0000"
+            
             elif k == "VM (Уязвимости)":
-                if n_arm < 100 and n_srv < 10: status, rec, color = "ВНИМАНИЕ", "Рассмотреть к приобретению позже.", "FFC000"
+                if n_arm < 100 and n_srv < 10: status, rec, color = "ВНИМАНИЕ", "Рекомендуется к приобретению по мере усложнения сети.", "FFC000"
                 else: status, rec, color = "КРИТИЧНО", "Риск эксплуатации уязвимостей в крупной сети.", "FF0000"
+            
             elif k == "EDR/XDR (Точки)":
-                if n_arm < 50: status, rec, color = "РЕКОМЕНДУЕТСЯ", "Достаточно классического EPP.", "00B050"
-                else: status, rec, color = "КРИТИЧНО", "Необходим расширенный анализ угроз.", "FF0000"
+                if n_arm < 50: status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Повысит видимость инцидентов на хостах.", "00B050"
+                elif has_old_os: status, rec, color = "КРИТИЧНО", "Необходим для защиты устаревших ОС, где EPP бессилен.", "FF0000"
+                else: status, rec, color = "КРИТИЧНО", "Высокий риск шифрования данных без поведенческого анализа.", "FF0000"
+            
             elif k == "WAF (Веб)":
-                if not has_web_dev: status, rec, color = "НЕ ТРЕБУЕТСЯ", "Публичные веб-сервисы отсутствуют.", "000000"
-                else: status, rec, color = "КРИТИЧНО", "Риск взлома веб-приложений без защиты.", "FF0000"
-            elif k in ["IDM/IGA (Доступ)", "Anti-DDoS"]:
-                status, rec, color = "ВАЖНО", "Рекомендуется для масштабируемости.", "FFC000"
+                if not has_web: status, rec, color = "НЕ ТРЕБУЕТСЯ", "Публичные веб-сервисы отсутствуют.", "000000"
+                else: status, rec, color = "КРИТИЧНО", "Риск взлома веб-приложений (SQLi, XSS).", "FF0000"
+            
+            elif k == "Sandbox (Песочница)":
+                if mail_is_local: status, rec, color = "КРИТИЧНО", "Локальная почта — основной вектор Zero-day. Нужна песочница.", "FF0000"
+                else: status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Для проверки подозрительных файлов.", "00B050"
+            
+            elif k == "Anti-DDoS":
+                if high_speed or has_web: status, rec, color = "КРИТИЧНО", "Риск остановки бизнес-процессов при атаке на канал/веб.", "FF0000"
+                else: status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Для защиты внешнего периметра.", "FFC000"
+
             elif k == "MFA (Аутентификация)":
-                if n_arm < 20: status, rec, color = "НИЗКИЙ РИСК", "Достаточно надежных паролей.", "00B050"
-                else: status, rec, color = "КРИТИЧНО", "Второй фактор обязателен для 20+ сотрудников.", "FF0000"
+                if n_arm < 20: status, rec, color = "НИЗКИЙ РИСК", "Достаточно строгих паролей при малом штате.", "00B050"
+                else: status, rec, color = "КРИТИЧНО", "Второй фактор — база безопасности при 20+ сотрудниках.", "FF0000"
+            
+            elif k in ["IDM/IGA (Доступ)", "IDS/IPS (Атаки)"]:
+                status, rec, color = "РЕКОМЕНДУЕТСЯ К ПРИОБРЕТЕНИЮ", "Улучшит контроль и управление доступом.", "FFC000"
             else:
-                status, rec, color = "РИСК", "Рассмотреть внедрение согласно стратегии.", "FF0000"
+                status, rec, color = "РИСК", "Рассмотреть внедрение для комплексной защиты.", "FF0000"
 
         st_cell = ws.cell(row=curr_row, column=3, value=status)
         st_cell.font = Font(color=color, bold=True)
@@ -313,13 +339,13 @@ def make_expert_excel(c_info, results, final_score):
 # --- ФИНАЛ ---
 st.divider()
 if validation_errors:
-    st.error(f"🚨 Ошибок: {len(validation_errors)}")
+    st.error(f"🚨 Исправьте ошибки в данных ({len(validation_errors)})")
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
     if not all([client_info['Город'], client_info['Наименование компании'], client_info['Email']]):
-        st.error("⚠️ Заполните обязательные поля!")
+        st.error("⚠️ Заполните все обязательные поля!")
     else:
-        with st.spinner("Создание отчета..."):
+        with st.spinner("Генерация умного отчета..."):
             f_score = min(score, 100)
             report_bytes = make_expert_excel(client_info, data, f_score)
             try:
@@ -328,7 +354,8 @@ if st.button("📊 Сформировать экспертный отчет", di
                               data={"chat_id": CHAT_ID, "caption": cap, "parse_mode": "Markdown"}, 
                               files={'document': (f"Audit_{client_info['Наименование компании']}.xlsx", report_bytes)})
             except: pass
-            st.success("Отчет сформирован успешно!")
+            st.success("Отчет готов и проанализирован!")
             st.download_button("📥 Скачать Excel", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v6.2 | Full Network & Dev Blocks")
+st.info("Khalil Audit System v6.2 | Smart Logic v2.0")
+```
