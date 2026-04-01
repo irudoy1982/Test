@@ -10,6 +10,9 @@ from datetime import datetime
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
 
+# Якорь для возврата в начало страницы
+st.markdown("<div id='link_to_top'></div>", unsafe_allow_html=True)
+
 # --- НАСТРОЙКИ TELEGRAM (из Secrets) ---
 TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
@@ -120,7 +123,6 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
     with col_net2:
         st.write("Резервный канал")
-        # 1. Тип резервного канала в дефолте стоит "Нет" (индекс 6)
         back_type = st.selectbox("Тип (резервный)", net_types, index=6, key="back_net_type")
         back_speed = st.number_input("Скорость резервного (Mbit/s)", min_value=0, step=10, key="back_net_speed")
         data['1.2.2. Резервный канал'] = f"{back_type} ({back_speed} Mbit/s)"
@@ -131,17 +133,17 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         if st.checkbox("Маршрутизаторы", key="router_chk"):
             r_count = st.number_input("Кол-во маршрутизаторов", min_value=0, step=1, key="router_cnt")
             data['1.2.4. Маршрутизаторы'] = f"Да ({r_count} шт)"
-            if r_count == 0: validation_errors.append("Укажите количество маршрутизаторов")
+            if r_count == 0: validation_errors.append("Укажите количество маршрутизаторов или отключите чекбокс")
     with c_net2:
         if st.checkbox("Коммутаторы L2", key="swl2_chk"):
             sw2_count = st.number_input("Кол-во коммутаторов L2", min_value=0, step=1, key="swl2_cnt")
             data['1.2.5. Коммутаторы L2'] = f"Да ({sw2_count} шт)"
-            if sw2_count == 0: validation_errors.append("Укажите количество коммутаторов L2")
+            if sw2_count == 0: validation_errors.append("Укажите количество коммутаторов L2 или отключите чекбокс")
     with c_net3:
         if st.checkbox("Коммутаторы L3", key="swl3_chk"):
             sw3_count = st.number_input("Кол-во коммутаторов L3", min_value=0, step=1, key="swl3_cnt")
             data['1.2.6. Коммутаторы L3'] = f"Да ({sw3_count} шт)"
-            if sw3_count == 0: validation_errors.append("Укажите количество коммутаторов L3")
+            if sw3_count == 0: validation_errors.append("Укажите количество коммутаторов L3 или отключите чекбокс")
 
     st.write("Уровни сети")
     l_col1, l_col2, l_col3 = st.columns(3)
@@ -149,17 +151,17 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         if st.checkbox("Ядро (Core)", key="net_core"):
             core_v = st.text_input("Основной производитель (Core)", key="core_vendor")
             data['Уровень сети Ядро'] = core_v
-            if not core_v: validation_errors.append("Укажите производителя Core-уровня")
+            if not core_v: validation_errors.append("Укажите производителя Core-уровня или отключите чекбокс")
     with l_col2:
         if st.checkbox("Уровень распределения", key="net_dist"):
             dist_v = st.text_input("Основной производитель (Dist)", key="dist_vendor")
             data['Уровень сети Распределение'] = dist_v
-            if not dist_v: validation_errors.append("Укажите производителя уровня распределения")
+            if not dist_v: validation_errors.append("Укажите производителя уровня распределения или отключите чекбокс")
     with l_col3:
         if st.checkbox("Уровень доступа", key="net_acc"):
             acc_v = st.text_input("Основной производитель (Access)", key="acc_vendor")
             data['Уровень сети Доступ'] = acc_v
-            if not acc_v: validation_errors.append("Укажите производителя уровня доступа")
+            if not acc_v: validation_errors.append("Укажите производителя уровня доступа или отключите чекбокс")
 
     if st.checkbox("Wi-Fi", key="wifi_toggle"):
         w_col1, w_col2, w_col3 = st.columns(3)
@@ -167,11 +169,11 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
             if st.checkbox("Контроллер", key="wifi_ctrl"):
                 wc_v = st.text_input("Производитель/модель контроллера", key="wc_vendor")
                 data['Wi-Fi Контроллер'] = wc_v
-                if not wc_v: validation_errors.append("Укажите модель Wi-Fi контроллера")
+                if not wc_v: validation_errors.append("Укажите модель Wi-Fi контроллера или отключите чекбокс")
         with w_col2:
             ap_cnt = st.number_input("Количество точек доступа (шт)", min_value=0, step=1, key="ap_cnt")
             data['Wi-Fi Точки доступа'] = ap_cnt
-            if ap_cnt == 0: validation_errors.append("Укажите количество точек доступа Wi-Fi")
+            if ap_cnt == 0: validation_errors.append("Укажите количество точек доступа Wi-Fi или отключите чекбокс")
         with w_col3:
             wf_types = ["Wi-Fi 6/6E (802.11ax)", "Wi-Fi 5 (802.11ac)", "Wi-Fi 4 (802.11n)", "Другое"]
             data['Wi-Fi Тип'] = st.selectbox("Тип Wi-Fi", wf_types, key="wf_type_sel")
@@ -179,7 +181,7 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
     if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk"):
         ngfw_vendor = st.text_input("Производитель (NGFW)", key="ngfw_v")
         data['1.2.7. NGFW'] = f"Да ({ngfw_vendor if ngfw_vendor else 'не указан'})"
-        if not ngfw_vendor: validation_errors.append("Укажите производителя NGFW")
+        if not ngfw_vendor: validation_errors.append("Укажите производителя NGFW или отключите чекбокс")
         score += 20
 
 # 1.3 Серверы
@@ -211,12 +213,12 @@ if selected_virt_sys and "Нет" not in selected_virt_sys:
     for v_sys in selected_virt_sys:
         v_h_cnt = st.number_input(f"Количество хостов {v_sys}", min_value=0, step=1, key=f"fv_cnt_{v_sys}")
         data[f"Система виртуализации ({v_sys})"] = v_h_cnt
-        if v_h_cnt == 0: validation_errors.append(f"Укажите количество хостов для {v_sys}")
+        if v_h_cnt == 0: validation_errors.append(f"Укажите количество хостов для {v_sys} или отключите чекбокс")
 
 if st.checkbox("Резервное копирование", key="ib_backup"):
     v_n_b = st.text_input("Вендор Резервного копирования", key="vn_backup")
     data["Резервное копирование"] = v_n_b
-    if not v_n_b: validation_errors.append("Укажите вендора резервного копирования")
+    if not v_n_b: validation_errors.append("Укажите вендора резервного копирования или отключите чекбокс")
     score += 20
 
 # 1.5 Внутренние ИС
@@ -229,9 +231,8 @@ if st.toggle("ИС организации", key="is_toggle"):
     if m_sys in ["Exchange (On-Prem)", "Lotus"]:
         m_ver = st.text_input(f"Версия {m_sys}*", key="mail_version_input")
         data['1.5.1. Почтовая система'] = f"{m_sys} (v.{m_ver})"
-        # 2. Версия Exchange (On-Prem) обязательна
         if m_sys == "Exchange (On-Prem)" and not m_ver:
-            validation_errors.append("Обязательно укажите версию Exchange (On-Prem)")
+            validation_errors.append("Обязательно укажите версию Exchange (On-Prem) или выберите другой тип почты")
     else:
         data['1.5.1. Почтовая система'] = m_sys
 
@@ -240,8 +241,7 @@ if st.toggle("ИС организации", key="is_toggle"):
         if st.checkbox(label):
             v_is = st.text_input(f"Версия {label}*", key=f"ver_{ks}")
             data[f"ИС {label}"] = v_is
-            # 3. Поля под чекбоксом обязательны
-            if not v_is: validation_errors.append(f"Укажите версию для {label}")
+            if not v_is: validation_errors.append(f"Укажите версию для {label} или отключите чекбокс")
 
 st.divider()
 
@@ -262,8 +262,7 @@ if st.toggle("Средства защиты", key="ib_toggle"):
             if st.checkbox(label, key=f"fib_{label}"):
                 v_n = st.text_input(f"Вендор {label}*", key=f"fvn_{label}")
                 data[label] = f"Да ({v_n})"
-                # 3. Поля под чекбоксом обязательны
-                if not v_n: validation_errors.append(f"Укажите вендора для {label}")
+                if not v_n: validation_errors.append(f"Укажите вендора для {label} или отключите чекбокс")
                 score += pts
             else:
                 data[label] = "Нет"
@@ -278,14 +277,14 @@ if st.toggle("Разработка", key="dev_toggle"):
         dev_count = st.number_input("Кол-во разработчиков*", min_value=0)
         data['4.1. Разработчики'] = dev_count
         data['4.2. CICD'] = st.checkbox("Используется CI/CD")
-        if dev_count == 0: validation_errors.append("Укажите количество разработчиков")
+        if dev_count == 0: validation_errors.append("Укажите количество разработчиков или отключите чекбокс")
     with col_d2:
         lang_list = ["Python", "JavaScript/TypeScript", "Java", "C# / .NET", "PHP", "Go", "C++", "Swift/Kotlin", "Другое"]
         sel_langs = st.multiselect("Языки программирования*", lang_list)
-        if not sel_langs: validation_errors.append("Выберите языки разработки")
+        if not sel_langs: validation_errors.append("Выберите языки разработки или отключите чекбокс")
         data['4.3. Языки разработки'] = ", ".join(sel_langs)
 
-# --- ГЕНЕРАЦИЯ EXCEL (без изменений) ---
+# --- ГЕНЕРАЦИЯ EXCEL ---
 def make_expert_excel(c_info, results, final_score):
     output = BytesIO()
     wb = Workbook()
