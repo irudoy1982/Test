@@ -6,12 +6,20 @@ from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
+import streamlit.components.v1 as components
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 7.0a", layout="wide", page_icon="🛡️")
 
-# Якорь для принудительного перехода в начало страницы
-st.markdown("<div id='top'></div>", unsafe_allow_html=True)
+# Принудительный скролл в начало страницы через JS
+components.html(
+    """
+    <script>
+        window.parent.document.querySelector('section.main').scrollTo(0, 0);
+    </script>
+    """,
+    height=0
+)
 
 # --- НАСТРОЙКИ TELEGRAM (из Secrets) ---
 TOKEN = st.secrets.get("TELEGRAM_TOKEN")
@@ -130,6 +138,13 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         back_speed = st.number_input("Скорость резервного (Mbit/s)", min_value=0, step=10, key="back_net_speed")
         data['1.2.2. Резервный канал'] = f"{back_type} ({back_speed} Mbit/s)"
 
+    # 1. ТИП МАРШРУТИЗАЦИИ
+    st.write("Маршрутизация")
+    routing_opts = ["Статическая", "RIP", "OSPF", "EIGRP", "BGP", "IS-IS", "Другое"]
+    sel_routing = st.multiselect("Тип маршрутизации*", routing_opts, key="routing_type_sel")
+    data['1.2.3. Маршрутизация'] = ", ".join(sel_routing)
+    if not sel_routing: validation_errors.append("Выберите тип маршрутизации или отключите чекбокс")
+
     st.write("Активное сетевое оборудование")
     c_net1, c_net2, c_net3 = st.columns(3)
     with c_net1:
@@ -243,7 +258,16 @@ if st.toggle("ИС организации", key="is_toggle"):
     else:
         data['1.5.1. Почтовая система'] = m_sys
 
-    is_list = {"1С": "1c", "Битрикс24": "b24", "Documentolog": "doc", "SAP": "sap"}
+    # 2. ДОБАВЛЕНЫ ПОПУЛЯРНЫЕ ИС В КАЗАХСТАНЕ
+    is_list = {
+        "1С": "1c", 
+        "Битрикс24": "b24", 
+        "Documentolog": "doc", 
+        "Almexoft": "alm",
+        "HelpDeskEddy": "hde",
+        "SAP": "sap",
+        "Directum": "dir"
+    }
     for label, ks in is_list.items():
         if st.checkbox(label):
             v_is = st.text_input(f"Версия {label}*", key=f"ver_{ks}")
