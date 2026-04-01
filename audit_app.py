@@ -8,7 +8,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
-st.set_page_config(page_title="Аудит ИТ и ИБ 7.0a", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
 
 # Якорь для принудительного перехода в начало страницы
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
@@ -26,7 +26,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник Технический аудит ИТ и ИБ (2026) v7.0a")
+st.title("📋 Опросник Технический аудит ИТ и ИБ (2026) v7.0b")
 
 # --- ИНСТРУКЦИЯ ДЛЯ ПОЛЬЗОВАТЕЛЯ ---
 with st.expander("📖 Инструкция по заполнению (нажмите, чтобы развернуть)"):
@@ -122,7 +122,7 @@ st.write("---")
 st.subheader("1.2. Сетевая инфраструктура")
 if st.toggle("Своя сетевая инфраструктура", key="net_toggle"):
     net_types = ["Оптика", "Радиорелейная", "Спутник", "4G/5G", "Starlink", "ADSL/VDSL", "Нет"]
-    routing_types = ["Статическая", "RIP", "OSPF", "EIGRP", "BGP", "IS-IS"] # Добавлена динамическая маршрутизация
+    routing_types = ["Статическая", "RIP", "OSPF", "EIGRP", "BGP", "IS-IS"]
     
     col_net1, col_net2 = st.columns(2)
     with col_net1:
@@ -136,7 +136,7 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         back_speed = st.number_input("Скорость резервного (Mbit/s)", min_value=0, step=10, key="back_net_speed")
         data['1.2.2. Резервный канал'] = f"{back_type} ({back_speed} Mbit/s)"
 
-    # Новое поле: Тип маршрутизации
+    # Тип маршрутизации
     st.write("Логика сети")
     selected_routing = st.multiselect("Тип маршрутизации*", routing_types, key="routing_sel")
     data['1.2.3. Маршрутизация'] = ", ".join(selected_routing)
@@ -149,17 +149,17 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         if st.checkbox("Маршрутизаторы", key="router_chk"):
             r_count = st.number_input("Кол-во маршрутизаторов", min_value=0, step=1, key="router_cnt")
             data['1.2.4. Маршрутизаторы'] = f"Да ({r_count} шт)"
-            if r_count == 0: validation_errors.append("Укажите количество маршрутизаторов или отключите чекбокс")
+            if r_count == 0: validation_errors.append("Укажите количество маршрутизаторов")
     with c_net2:
         if st.checkbox("Коммутаторы L2", key="swl2_chk"):
             sw2_count = st.number_input("Кол-во коммутаторов L2", min_value=0, step=1, key="swl2_cnt")
             data['1.2.5. Коммутаторы L2'] = f"Да ({sw2_count} шт)"
-            if sw2_count == 0: validation_errors.append("Укажите количество коммутаторов L2 или отключите чекбокс")
+            if sw2_count == 0: validation_errors.append("Укажите количество коммутаторов L2")
     with c_net3:
         if st.checkbox("Коммутаторы L3", key="swl3_chk"):
             sw3_count = st.number_input("Кол-во коммутаторов L3", min_value=0, step=1, key="swl3_cnt")
             data['1.2.6. Коммутаторы L3'] = f"Да ({sw3_count} шт)"
-            if sw3_count == 0: validation_errors.append("Укажите количество коммутаторов L3 или отключите чекбокс")
+            if sw3_count == 0: validation_errors.append("Укажите количество коммутаторов L3")
 
     st.write("Уровни сети")
     l_col1, l_col2, l_col3 = st.columns(3)
@@ -167,17 +167,17 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         if st.checkbox("Ядро (Core)", key="net_core"):
             core_v = st.text_input("Основной производитель (Core)", key="core_vendor")
             data['Уровень сети Ядро'] = core_v
-            if not core_v: validation_errors.append("Укажите производителя Core-уровня или отключите чекбокс")
+            if not core_v: validation_errors.append("Укажите производителя Core-уровня")
     with l_col2:
         if st.checkbox("Уровень распределения", key="net_dist"):
             dist_v = st.text_input("Основной производитель (Dist)", key="dist_vendor")
             data['Уровень сети Распределение'] = dist_v
-            if not dist_v: validation_errors.append("Укажите производителя уровня распределения или отключите чекбокс")
+            if not dist_v: validation_errors.append("Укажите производителя уровня распределения")
     with l_col3:
         if st.checkbox("Уровень доступа", key="net_acc"):
             acc_v = st.text_input("Основной производитель (Access)", key="acc_vendor")
             data['Уровень сети Доступ'] = acc_v
-            if not acc_v: validation_errors.append("Укажите производителя уровня доступа или отключите чекбокс")
+            if not acc_v: validation_errors.append("Укажите производителя уровня доступа")
 
     if st.checkbox("Wi-Fi", key="wifi_toggle"):
         w_col1, w_col2, w_col3 = st.columns(3)
@@ -185,11 +185,11 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
             if st.checkbox("Контроллер", key="wifi_ctrl"):
                 wc_v = st.text_input("Производитель/модель контроллера", key="wc_vendor")
                 data['Wi-Fi Контроллер'] = wc_v
-                if not wc_v: validation_errors.append("Укажите модель Wi-Fi контроллера или отключите чекбокс")
+                if not wc_v: validation_errors.append("Укажите модель Wi-Fi контроллера")
         with w_col2:
             ap_cnt = st.number_input("Количество точек доступа (шт)", min_value=0, step=1, key="ap_cnt")
             data['Wi-Fi Точки доступа'] = ap_cnt
-            if ap_cnt == 0: validation_errors.append("Укажите количество точек доступа Wi-Fi или отключите чекбокс")
+            if ap_cnt == 0: validation_errors.append("Укажите количество точек доступа Wi-Fi")
         with w_col3:
             wf_types = ["Wi-Fi 6/6E (802.11ax)", "Wi-Fi 5 (802.11ac)", "Wi-Fi 4 (802.11n)", "Другое"]
             data['Wi-Fi Тип'] = st.selectbox("Тип Wi-Fi", wf_types, key="wf_type_sel")
@@ -197,7 +197,7 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
     if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk"):
         ngfw_vendor = st.text_input("Производитель (NGFW)", key="ngfw_v")
         data['1.2.7. NGFW'] = f"Да ({ngfw_vendor if ngfw_vendor else 'не указан'})"
-        if not ngfw_vendor: validation_errors.append("Укажите производителя NGFW или отключите чекбокс")
+        if not ngfw_vendor: validation_errors.append("Укажите производителя NGFW")
         score += 20
     
     data['1.2. Примечание'] = st.text_area("Примечание к разделу 1.2", placeholder="Особенности топологии сети...", key="note_1_2")
@@ -231,12 +231,12 @@ if selected_virt_sys and "Нет" not in selected_virt_sys:
     for v_sys in selected_virt_sys:
         v_h_cnt = st.number_input(f"Количество хостов {v_sys}", min_value=0, step=1, key=f"fv_cnt_{v_sys}")
         data[f"Система виртуализации ({v_sys})"] = v_h_cnt
-        if v_h_cnt == 0: validation_errors.append(f"Укажите количество хостов для {v_sys} или отключите чекбокс")
+        if v_h_cnt == 0: validation_errors.append(f"Укажите количество хостов для {v_sys}")
 
 if st.checkbox("Резервное копирование", key="ib_backup"):
     v_n_b = st.text_input("Вендор Резервного копирования", key="vn_backup")
     data["Резервное копирование"] = v_n_b
-    if not v_n_b: validation_errors.append("Укажите вендора резервного копирования или отключите чекбокс")
+    if not v_n_b: validation_errors.append("Укажите вендора резервного копирования")
     score += 20
 
 data['1.3. Примечание'] = st.text_area("Примечание к разделу 1.3", placeholder="Специфика серверного парка...", key="note_1_3")
@@ -245,16 +245,10 @@ data['1.3. Примечание'] = st.text_area("Примечание к раз
 st.write("---")
 st.subheader("1.5. Внутренние Информационные системы")
 if st.toggle("ИС организации", key="is_toggle"):
-    # Переработка на типы систем
     is_types = {
-        "ERP": "erp", 
-        "CRM": "crm", 
-        "HelpDesk/ServiceDesk": "sd", 
-        "СЭД (Документооборот)": "sed", 
-        "HRM (Кадры)": "hrm", 
-        "BI (Аналитика)": "bi",
-        "WMS (Склад)": "wms",
-        "Учет (Бухгалтерия)": "acc"
+        "ERP": "erp", "CRM": "crm", "HelpDesk/ServiceDesk": "sd", 
+        "СЭД (Документооборот)": "sed", "HRM (Кадры)": "hrm", 
+        "BI (Аналитика)": "bi", "WMS (Склад)": "wms", "Учет (Бухгалтерия)": "acc"
     }
     
     m_opts = ["Exchange (On-Prem)", "Lotus", "Microsoft 365", "Google Workspace", "Собственный", "Нет"]
@@ -300,7 +294,7 @@ if st.toggle("Средства защиты", key="ib_toggle"):
             if st.checkbox(label, key=f"fib_{label}"):
                 v_n = st.text_input(f"Вендор {label}*", key=f"fvn_{label}")
                 data[label] = f"Да ({v_n})"
-                if not v_n: validation_errors.append(f"Укажите вендора для {label} или отключите чекбокс")
+                if not v_n: validation_errors.append(f"Укажите вендора для {label}")
                 score += pts
             else:
                 data[label] = "Нет"
@@ -309,21 +303,37 @@ if st.toggle("Средства защиты", key="ib_toggle"):
 
 st.divider()
 
-# --- БЛОК 4: РАЗРАБОТКА ---
+# --- БЛОК 3: WEB-РЕСУРСЫ (Из прикрепленного кода) ---
+st.header("Блок 3: Web-ресурсы")
+if st.toggle("Web-ресурсы", key="web_toggle"):
+    data['3.1. Хостинг'] = st.selectbox("Хостинг", ["Собственный ЦОД", "Облако KZ", "Облако Global"])
+    data['3.2. Frontend'] = st.multiselect("Frontend серверы", ["Nginx", "Apache", "IIS", "LiteSpeed", "Cloudflare"])
+    data['Примечание (Web)'] = st.text_area("Примечания по Web", placeholder="Стек...", key="note_web")
+
+st.divider()
+
+# --- БЛОК 4: РАЗРАБОТКА (Из прикрепленного кода) ---
 st.header("Блок 4: Разработка")
 if st.toggle("Разработка", key="dev_toggle"):
     col_d1, col_d2 = st.columns(2)
     with col_d1:
-        dev_count = st.number_input("Кол-во разработчиков*", min_value=0)
+        dev_count = st.number_input("Кол-во разработчиков*", min_value=0, key="dev_cnt_f")
         data['4.1. Разработчики'] = dev_count
-        data['4.2. CICD'] = st.checkbox("Используется CI/CD")
-        if dev_count == 0: validation_errors.append("Укажите количество разработчиков или отключите чекбокс")
+        data['4.2. CICD'] = st.checkbox("Используется CI/CD", key="cicd_f")
+        if dev_count == 0: validation_errors.append("Укажите количество разработчиков")
     with col_d2:
         lang_list = ["Python", "JavaScript/TypeScript", "Java", "C# / .NET", "PHP", "Go", "C++", "Swift/Kotlin", "Другое"]
-        sel_langs = st.multiselect("Языки программирования*", lang_list)
-        if not sel_langs: validation_errors.append("Выберите языки разработки или отключите чекбокс")
-        data['4.3. Языки разработки'] = ", ".join(sel_langs)
-    
+        sel_langs = st.multiselect("Языки программирования*", lang_list, key="langs_f")
+        
+        if not sel_langs:
+            validation_errors.append("Выберите языки разработки")
+            data['4.3. Языки разработки'] = "Не указаны"
+        elif "Другое" in sel_langs:
+            other_l = st.text_input("Укажите другие языки", key="other_langs_f")
+            data['4.3. Языки разработки'] = f"{', '.join([l for l in sel_langs if l != 'Другое'])}, {other_l}"
+        else:
+            data['4.3. Языки разработки'] = ", ".join(sel_langs)
+            
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 
 # --- ГЕНЕРАЦИЯ EXCEL ---
@@ -391,4 +401,4 @@ if st.button("📊 Сформировать экспертный отчет", di
         st.success("Отчет готов!")
         st.download_button("📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v7.0a | Almaty 2026")
+st.info("Khalil Audit System v7.0b | Almaty 2026")
