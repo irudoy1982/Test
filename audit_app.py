@@ -343,103 +343,111 @@ def make_expert_excel(c_info, results, final_score):
     ws = wb.active
     ws.title = "Khalil Audit Report"
     
-    # [Стили остаются прежними из вашего кода]
+    # --- СТИЛИ ---
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     
-    # ... (Шапка и сведения о клиенте остаются без изменений) ...
+    # --- ШАПКА ---
+    ws.merge_cells('A1:D2')
+    ws['A1'] = "ЭКСПЕРТНЫЙ ОТЧЕТ ПО ИТ И ИБ (2026)"
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
 
-    # --- УЛУЧШЕННАЯ ЭКСПЕРТНАЯ ЛОГИКА АНАЛИЗА (v8.0) ---
+    # --- ДАННЫЕ КЛИЕНТА ---
+    curr_row = 4
+    for k, v in c_info.items():
+        ws.cell(row=curr_row, column=1, value=k).font = Font(bold=True)
+        ws.cell(row=curr_row, column=2, value=str(v))
+        curr_row += 1
     
-    # Предварительный расчет показателей для комплексного анализа
+    # Индекс зрелости
+    ws.cell(row=curr_row, column=1, value="ИНДЕКС ЗРЕЛОСТИ:").font = Font(bold=True)
+    score_cell = ws.cell(row=curr_row, column=2, value=f"{final_score}%")
+    bg_col = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
+    score_cell.fill = PatternFill(start_color=bg_col, end_color=bg_col, fill_type="solid")
+    
+    # --- ТАБЛИЦА РЕКОМЕНДАЦИЙ ---
+    curr_row += 3
+    headers = ["Параметр", "Значение", "Статус", "Экспертная рекомендация"]
+    for i, h in enumerate(headers, 1):
+        cell = ws.cell(row=curr_row, column=i, value=h)
+        cell.fill = header_fill
+        cell.font = white_font
+
+    curr_row += 1 # Начало данных
+
+    # --- ПЕРЕМЕННЫЕ ДЛЯ КРОСС-АНАЛИЗА ---
     total_arm = results.get('1.1. Всего АРМ', 0)
-    total_srv = results.get('1.3.2. Виртуальные серверы', 0) + results.get('1.3.1. Физические серверы', 0)
-    dev_count = results.get('4.1. Разработчики', 0)
-    wifi_ap = results.get('Wi-Fi Точки доступа', 0)
+    has_backup = bool(results.get("Резервное копирование"))
     has_ngfw = "Да" in str(results.get('1.2.7. NGFW', "Нет"))
-    has_backup = results.get("Резервное копирование") is not None
-    
+
     for k, v in results.items():
+        # Пропускаем пустые примечания, чтобы не раздувать отчет
+        if "Примечание" in k and not str(v).strip():
+            continue
+
         status = "В норме"
-        rec = "Риски не выявлены. Рекомендуется плановое обслуживание."
-        val_str = str(v).lower()
-        is_numeric_positive = isinstance(v, (int, float)) and v > 0
+        rec = "Риски не выявлены. Поддерживать текущее состояние."
+        val_lower = str(v).lower()
 
-        # 1. СЛОЖНАЯ ЛОГИКА: СЕТЬ И МАСШТАБ
-        if "Точки доступа" in k and is_numeric_positive:
-            ratio = total_arm / v if v > 0 else total_arm
-            if ratio > 30:
+        # 1. СЛОЖНАЯ ЛОГИКА: МАСШТАБ И СЕТЬ
+        if "Точки доступа" in k and isinstance(v, (int, float)) and v > 0:
+            ratio = total_arm / v
+            if ratio > 25:
                 status = "ВНИМАНИЕ"
-                rec = f"Высокая плотность пользователей на одну AP ({ratio:.1f}). Возможны проблемы с производительностью. Рекомендуется радиоразведка и доустановка точек стандарта Wi-Fi 6."
-            elif "Wi-Fi 4" in str(results.get('Wi-Fi Тип', "")):
-                status = "ВЫСОКИЙ РИСК"
-                rec = "Использование устаревшего стандарта 802.11n. Риск низкой пропускной способности и уязвимостей WPA2-Personal."
+                rec = f"Высокая плотность устройств на точку ({ratio:.1f}). Рекомендуется переход на Wi-Fi 6 для исключения задержек в бизнес-приложениях."
 
-        # 2. СЛОЖНАЯ ЛОГИКА: БЕЗОПАСНОСТЬ РАЗРАБОТКИ (DevSecOps)
-        elif "Разработчики" in k and is_numeric_positive:
-            if not results.get('4.2. CICD'):
-                status = "КРИТИЧНО"
-                rec = f"Команда из {v} чел. работает без CI/CD. Высокий риск внесения ошибок в prod и 'человеческого фактора'. Срочно внедрить GitLab CI/Jenkins."
-            if not results.get('WAF (Веб)', "Нет") != "Нет":
-                status = "ВЫСОКИЙ РИСК"
-                rec = "Наличие собственной разработки при отсутствии WAF (Web Application Firewall). Риск SQL-инъекций и взлома приложений."
-
-        # 3. СЛОЖНАЯ ЛОГИКА: СЕРВЕРНАЯ ИНФРАСТРУКТУРА
-        elif "Виртуальные серверы" in k and is_numeric_positive:
-            if v > 10 and "VMware" not in str(results) and "Hyper-V" not in str(results) and "Proxmox" not in str(results):
-                status = "РИСК"
-                rec = "Большое кол-во ВМ без явного указания промышленного гипервизора. Проверьте легитимность и стабильность платформы."
-            if not has_backup:
-                status = "КРИТИЧНО"
-                rec = f"Критическая угроза: {v} серверов не имеют системы резервного копирования. Время восстановления (RTO) при аварии — неопределено."
-
-        # 4. СЛОЖНАЯ ЛОГИКА: КОРРЕЛЯЦИЯ СЕТИ
-        elif "Коммутаторы L2" in k and is_numeric_positive:
-            if v > 20 and not results.get('Уровень сети Ядро'):
-                status = "ВЫСОКИЙ РИСК"
-                rec = "Плоская сеть (20+ свитчей без ядра). Риск широковещательных штормов и падения всей сети. Необходимо внедрение Core-уровня."
-
-        # 5. СТАНДАРТНЫЕ ПРОВЕРКИ (Legacy & Compliance)
-        elif any(old in k for old in ["XP", "7", "8", "2008", "2012"]) and is_numeric_positive:
+        # 2. СЛОЖНАЯ ЛОГИКА: LEGACY + BACKUP
+        elif any(old in k for old in ["XP", "7", "8", "2008", "2012"]) and any(char.isdigit() for char in str(v)):
             status = "КРИТИЧНО"
-            rec = "EoL системы. Эксплуатация запрещена регуляторами и здравым смыслом. Изолировать в отдельный VLAN без доступа в интернет."
-        
-        elif "NGFW" in k and "нет" in val_str:
+            backup_status = "СРК присутствует" if has_backup else "СРК ОТСУТСТВУЕТ"
+            rec = f"Использование EoL-систем. В сочетании с тем, что {backup_status}, риск необратимой потери данных при атаке шифровальщика максимален."
+
+        # 3. СЛОЖНАЯ ЛОГИКА: ПЕРИМЕТР
+        elif "NGFW" in k and "нет" in val_lower:
             if total_arm > 50:
                 status = "КРИТИЧНО"
-                rec = "Для организации такого масштаба отсутствие NGFW — критическая брешь. Рекомендуется FortiGate или CheckPoint."
+                rec = "Отсутствие NGFW в сети более 50 АРМ — критическая уязвимость периметра. Рекомендуется внедрение решения уровня FortiGate/CheckPoint."
             else:
                 status = "ВЫСОКИЙ РИСК"
-                rec = "Периметр защищен обычным роутером. Необходим переход на stateful inspection решения."
+                rec = "Базовая защита роутером недостаточна. Рекомендуется внедрение межсетевого экрана с функциями IPS."
 
-        # 6. АНАЛИЗ ПОЧТЫ И ФИШИНГА
-        elif "Почтовая система" in k:
-            if "Exchange (On-Prem)" in v and "v.2013" in val_str:
-                status = "КРИТИЧНО"
-                rec = "Устаревший Exchange 2013. Огромное количество публичных эксплоитов (ProxyLogon и др.). Срочная миграция."
-            if not results.get('MFA (Аутентификация)', "Нет") != "Нет":
-                status = "ВЫСОКИЙ РИСК"
-                rec = "Корпоративная почта без 2FA. 80% взломов начинаются с компрометации почтового аккаунта."
+        # 4. СЛОЖНАЯ ЛОГИКА: РАЗРАБОТКА И БЕЗОПАСНОСТЬ
+        elif "CICD" in k and v is False and results.get('4.1. Разработчики', 0) > 0:
+            status = "ВНИМАНИЕ"
+            rec = "Ручной деплой при наличии штата разработки. Риск человеческой ошибки. Рекомендуется автоматизация через GitLab CI/CD."
 
-        # Заполнение ячеек (код отрисовки остается таким же)
+        # 5. ОБЩИЕ ПРОВЕРКИ
+        elif "нет" in val_lower or v == 0:
+            if status == "В норме": # Если спец. логика выше не сработала
+                status = "РИСК"
+                rec = "Параметр отсутствует. Требуется анализ целесообразности внедрения для повышения непрерывности ИТ-процессов."
+
+        # --- ОТРИСОВКА СТРОКИ ---
         ws.cell(row=curr_row, column=1, value=k).border = border
         ws.cell(row=curr_row, column=2, value=str(v)).border = border
+        
         st_cell = ws.cell(row=curr_row, column=3, value=status)
         st_cell.border = border
-        
-        # Цветная индикация
-        if status == "КРИТИЧНО": st_cell.font = Font(color="FF0000", bold=True)
-        elif status == "ВЫСОКИЙ РИСК": st_cell.font = Font(color="C00000", bold=True)
-        elif status == "ВНИМАНИЕ": st_cell.font = Font(color="FF8C00", bold=True)
-        elif status == "В норме": st_cell.font = Font(color="008000")
+        if status in ["КРИТИЧНО", "ВЫСОКИЙ РИСК"]:
+            st_cell.font = Font(color="FF0000", bold=True)
+        elif status in ["ВНИМАНИЕ", "РИСК"]:
+            st_cell.font = Font(color="FF8C00", bold=True)
 
         ws.cell(row=curr_row, column=4, value=rec).border = border
-        curr_row += 1
+        ws.cell(row=curr_row, column=4).alignment = Alignment(wrapText=True, vertical='top')
+        
+        curr_row += 1 # Инкремент в самом конце цикла
 
-    # [Настройка колонок остается прежней]
-    # ...
-    return output.getvalue(), auto_date
+    # Настройка колонок
+    widths = {'A': 35, 'B': 25, 'C': 20, 'D': 65}
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+
+    wb.save(output)
+    return output.getvalue(), datetime.now().strftime("%d.%m.%Y %H:%M")
+
 # --- ФИНАЛ ---
 st.divider()
 if validation_errors:
