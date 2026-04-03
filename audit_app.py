@@ -354,94 +354,116 @@ def make_expert_excel(c_info, results, final_score):
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
     ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
 
-    # --- ДАННЫЕ КЛИЕНТА ---
+    # Сведения о клиенте
     curr_row = 4
     for k, v in c_info.items():
         ws.cell(row=curr_row, column=1, value=k).font = Font(bold=True)
         ws.cell(row=curr_row, column=2, value=str(v))
         curr_row += 1
     
-    # Индекс зрелости
     ws.cell(row=curr_row, column=1, value="ИНДЕКС ЗРЕЛОСТИ:").font = Font(bold=True)
     score_cell = ws.cell(row=curr_row, column=2, value=f"{final_score}%")
     bg_col = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
     score_cell.fill = PatternFill(start_color=bg_col, end_color=bg_col, fill_type="solid")
     
-    # --- ТАБЛИЦА РЕКОМЕНДАЦИЙ ---
+    # Заголовки таблицы
     curr_row += 3
     headers = ["Параметр", "Значение", "Статус", "Экспертная рекомендация"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=curr_row, column=i, value=h)
-        cell.fill = header_fill
-        cell.font = white_font
-
-    curr_row += 1 # Начало данных
+        cell.fill = header_fill; cell.font = white_font
+    curr_row += 1
 
     # --- ПЕРЕМЕННЫЕ ДЛЯ КРОСС-АНАЛИЗА ---
     total_arm = results.get('1.1. Всего АРМ', 0)
+    total_srv = results.get('1.3.1. Физические серверы', 0) + results.get('1.3.2. Виртуальные серверы', 0)
+    dev_count = results.get('4.1. Разработчики', 0)
+    wifi_ap = results.get('Wi-Fi Точки доступа', 0)
     has_backup = bool(results.get("Резервное копирование"))
-    has_ngfw = "Да" in str(results.get('1.2.7. NGFW', "Нет"))
+    mail_sys = str(results.get('1.5.1. Почтовая система', "")).lower()
 
+    # --- ЦИКЛ ГЕНЕРАЦИИ СТРОК ---
     for k, v in results.items():
-        # Пропускаем пустые примечания, чтобы не раздувать отчет
-        if "Примечание" in k and not str(v).strip():
-            continue
+        if "Примечание" in k and not str(v).strip(): continue
 
         status = "В норме"
-        rec = "Риски не выявлены. Поддерживать текущее состояние."
-        val_lower = str(v).lower()
+        rec = "Риски не выявлены. Поддерживайте текущее состояние."
+        val_str = str(v).lower()
+        is_absent = "нет" in val_str or v is False or v == 0
 
-        # 1. СЛОЖНАЯ ЛОГИКА: МАСШТАБ И СЕТЬ
-        if "Точки доступа" in k and isinstance(v, (int, float)) and v > 0:
-            ratio = total_arm / v
-            if ratio > 25:
-                status = "ВНИМАНИЕ"
-                rec = f"Высокая плотность устройств на точку ({ratio:.1f}). Рекомендуется переход на Wi-Fi 6 для исключения задержек в бизнес-приложениях."
-
-        # 2. СЛОЖНАЯ ЛОГИКА: LEGACY + BACKUP
-        elif any(old in k for old in ["XP", "7", "8", "2008", "2012"]) and any(char.isdigit() for char in str(v)):
-            status = "КРИТИЧНО"
-            backup_status = "СРК присутствует" if has_backup else "СРК ОТСУТСТВУЕТ"
-            rec = f"Использование EoL-систем. В сочетании с тем, что {backup_status}, риск необратимой потери данных при атаке шифровальщика максимален."
-
-        # 3. СЛОЖНАЯ ЛОГИКА: ПЕРИМЕТР
-        elif "NGFW" in k and "нет" in val_lower:
-            if total_arm > 50:
-                status = "КРИТИЧНО"
-                rec = "Отсутствие NGFW в сети более 50 АРМ — критическая уязвимость периметра. Рекомендуется внедрение решения уровня FortiGate/CheckPoint."
-            else:
+        # 1. WI-FI: Контроллер и плотность
+        if "Точки доступа" in k and wifi_ap > 0:
+            if wifi_ap > 5 and not results.get('Wi-Fi Контроллер'):
                 status = "ВЫСОКИЙ РИСК"
-                rec = "Базовая защита роутером недостаточна. Рекомендуется внедрение межсетевого экрана с функциями IPS."
+                rec = f"Используется {wifi_ap} точек без контроллера. Это ведет к обрывам при перемещении (отсутствие роуминга) и хаосу в радиоэфире."
+            elif (total_arm / wifi_ap) > 30:
+                status = "ВНИМАНИЕ"
+                rec = "Слишком много устройств на одну точку. Возможны 'замирания' видеосвязи и медленная работа почты."
 
-        # 4. СЛОЖНАЯ ЛОГИКА: РАЗРАБОТКА И БЕЗОПАСНОСТЬ
-        elif "CICD" in k and v is False and results.get('4.1. Разработчики', 0) > 0:
-            status = "ВНИМАНИЕ"
-            rec = "Ручной деплой при наличии штата разработки. Риск человеческой ошибки. Рекомендуется автоматизация через GitLab CI/CD."
+        # 2. SIEM: Критичность от масштаба
+        elif "SIEM" in k:
+            if is_absent:
+                if total_arm > 100 or total_srv > 10:
+                    status = "ВЫСОКИЙ РИСК"
+                    rec = "В крупной сети невозможно вручную отследить атаку хакера. SIEM необходим для корреляции логов и быстрого реагирования."
+                else:
+                    status = "ИНФО"
+                    rec = "Для малого офиса SIEM не обязателен, достаточно настроить централизованный сбор логов (Syslog)."
 
-        # 5. ОБЩИЕ ПРОВЕРКИ
-        elif "нет" in val_lower or v == 0:
-            if status == "В норме": # Если спец. логика выше не сработала
+        # 3. ИБ ПРОДУКТЫ: EDR и Антивирус
+        elif "Антивирус" in k:
+            if is_absent:
+                status = "КРИТИЧНО"
+                rec = "Отсутствие базовой защиты. Заражение шифровальщиком — вопрос времени."
+            elif total_arm > 50 and not results.get('EDR/XDR'):
+                status = "ВНИМАНИЕ"
+                rec = "Обычный антивирус не видит сложные атаки. При вашем масштабе рекомендуется внедрение EDR."
+
+        # 4. РАЗРАБОТКА И WAF
+        elif "WAF" in k:
+            if is_absent and dev_count > 0:
+                status = "КРИТИЧНО"
+                rec = "У вас есть свои разработчики, но нет защиты веб-приложений. Ваши ИС открыты для SQL-инъекций и взлома через браузер."
+
+        # 5. СЕТЕВАЯ СЕГМЕНТАЦИЯ (L3)
+        elif "Коммутаторы L2" in k and not is_absent:
+            if not results.get('1.2.6. Коммутаторы L3') and total_arm > 40:
+                status = "ВНИМАНИЕ"
+                rec = "Сеть плоская. Ошибка на одном компьютере может 'положить' всю сеть компании. Требуется сегментация на L3-уровне."
+
+        # 6. ПОЧТА И MFA
+        elif "MFA" in k and is_absent:
+            if any(cloud in mail_sys for cloud in ["365", "google", "workspace", "облако"]):
+                status = "КРИТИЧНО"
+                rec = "Облачная почта без 2FA — это подарок для хакера. Доступ к переписке можно получить простым подбором пароля."
+
+        # 7. ЛЕГАСИ (Старые ОС)
+        elif any(old in k for old in ["XP", "7", "2008", "2012"]) and not is_absent:
+            status = "КРИТИЧНО"
+            rec = "Системы не получают обновлений безопасности. Рекомендуется немедленная замена или изоляция в отдельную сеть без интернета."
+
+        # 8. ОБЩИЙ ПРИНЦИП: Если чекбокс не нажат
+        elif is_absent:
+            if status == "В норме": # Если не сработали условия выше
                 status = "РИСК"
-                rec = "Параметр отсутствует. Требуется анализ целесообразности внедрения для повышения непрерывности ИТ-процессов."
+                rec = "Компонент защиты отсутствует. Это снижает общую устойчивость компании к киберугрозам."
 
-        # --- ОТРИСОВКА СТРОКИ ---
+        # --- ЗАПИСЬ В ТАБЛИЦУ ---
         ws.cell(row=curr_row, column=1, value=k).border = border
         ws.cell(row=curr_row, column=2, value=str(v)).border = border
         
         st_cell = ws.cell(row=curr_row, column=3, value=status)
         st_cell.border = border
-        if status in ["КРИТИЧНО", "ВЫСОКИЙ РИСК"]:
-            st_cell.font = Font(color="FF0000", bold=True)
-        elif status in ["ВНИМАНИЕ", "РИСК"]:
-            st_cell.font = Font(color="FF8C00", bold=True)
+        if status == "КРИТИЧНО": st_cell.font = Font(color="FF0000", bold=True)
+        elif status == "ВЫСОКИЙ РИСК": st_cell.font = Font(color="C00000", bold=True)
+        elif status in ["ВНИМАНИЕ", "РИСК"]: st_cell.font = Font(color="FF8C00", bold=True)
 
         ws.cell(row=curr_row, column=4, value=rec).border = border
         ws.cell(row=curr_row, column=4).alignment = Alignment(wrapText=True, vertical='top')
-        
-        curr_row += 1 # Инкремент в самом конце цикла
+        curr_row += 1
 
     # Настройка колонок
-    widths = {'A': 35, 'B': 25, 'C': 20, 'D': 65}
+    widths = {'A': 40, 'B': 25, 'C': 20, 'D': 70}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
 
@@ -467,4 +489,4 @@ if st.button("📊 Сформировать экспертный отчет", di
         st.success("Отчет готов!")
         st.download_button("📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v7.0b | Almaty 2026")
+st.info("Khalil Audit System v7.0E | Almaty 2026")
