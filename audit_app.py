@@ -105,7 +105,7 @@ with col_h2:
     client_info['Контактный телефон'] = f"{selected_code[1]} {phone_num}" if phone_num else ""
 
 # Валидация общих полей
-if not all([client_info.get('Город'), client_info.get('Наименование компании'), client_info.get('Сайт компании'), client_info.get('Email'), client_info.get('ФИО контактного лица'), client_info.get('Должность'), phone_num]):
+if not all([client_info.get('Город'), client_info.get('Наименование компании'), client_info.get('Сфера деятельности'), client_info.get('Сайт компании'), client_info.get('Email'), client_info.get('ФИО контактного лица'), client_info.get('Должность'), phone_num]):
     validation_errors.append("Заполните все обязательные поля в блоке 'Общая информация'")
 
 st.divider()
