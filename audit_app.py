@@ -365,7 +365,7 @@ def make_expert_excel(c_info, results, final_score):
                     top=Side(style='thin'), bottom=Side(style='thin'))
     
     ws.merge_cells('A1:E2')
-    ws['A1'] = "STRATEGIC IT & CYBERSECURITY AUDIT (CTO / CISO / BIG4 MODEL)"
+    ws['A1'] = "STRATEGIC IT & CYBERSECURITY AUDIT"
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
     ws['A1'].font = Font(bold=True, size=14, color="002060")
 
@@ -413,7 +413,67 @@ def make_expert_excel(c_info, results, final_score):
 
     industry = c_info.get("Сфера деятельности", "Другое")
 
-    # --- CORE LOGIC ---
+    # =========================================================
+    # 🔴 GLOBAL RISKS (ОДИН РАЗ, НЕ В ЦИКЛЕ)
+    # =========================================================
+    global_checks = []
+
+    if total_arm > 50 and not has_mfa:
+        global_checks.append((
+            "Глобально: MFA",
+            "Отсутствует",
+            "КРИТИЧНО",
+            "При масштабе >50 пользователей отсутствие MFA = высокий риск компрометации учетных записей.",
+            "Zero Trust / NIST"
+        ))
+
+    if has_edr and not has_siem:
+        global_checks.append((
+            "Глобально: Мониторинг",
+            "EDR без SIEM",
+            "РИСК",
+            "Нет централизованного мониторинга инцидентов.",
+            "SOC Maturity"
+        ))
+
+    if virt > 20 and not has_backup:
+        global_checks.append((
+            "Глобально: Backup",
+            f"{virt} VM",
+            "FATAL",
+            "Отсутствие резервного копирования при высокой виртуализации.",
+            "ISO 22301"
+        ))
+
+    if total_arm > 30 and not has_ngfw:
+        global_checks.append((
+            "Глобально: Периметр",
+            "Нет NGFW",
+            "КРИТИЧНО",
+            "Отсутствие NGFW при развитой инфраструктуре.",
+            "Perimeter Security"
+        ))
+
+    # Вставка global блоков
+    for item in global_checks:
+        for col_idx, value in enumerate(item, 1):
+            cell = ws.cell(row=row, column=col_idx, value=value)
+            cell.border = border
+            cell.alignment = Alignment(wrapText=True, vertical='top')
+
+            if col_idx == 3:
+                if value == "FATAL":
+                    cell.font = Font(color="8B0000", bold=True)
+                elif value == "КРИТИЧНО":
+                    cell.font = Font(color="FF0000", bold=True)
+                elif value in ["РИСК", "ВНИМАНИЕ"]:
+                    cell.font = Font(color="FF8C00", bold=True)
+
+        row += 1
+
+    # =========================================================
+    # 🧠 ПОСТРОЧНЫЙ АНАЛИЗ
+    # =========================================================
     for k, v in results.items():
         if "Примечание" in k and not str(v).strip():
             continue
@@ -425,70 +485,40 @@ def make_expert_excel(c_info, results, final_score):
         val_str = str(v).lower()
         is_absent = "нет" in val_str or v in [0, "0", False]
 
-        # --- 1. ZERO TRUST GAP ---
-        if total_arm > 50 and not has_mfa:
+        # --- OLD OS ---
+        if "Windows XP" in k and v > 0:
             status = "КРИТИЧНО"
-            rec = "Отсутствие MFA при масштабе >50 пользователей = высокий риск компрометации учетных записей."
-            std = "Zero Trust / NIST"
+            rec = "Используются устаревшие ОС. Высокий риск компрометации."
+            std = "ISO 27001"
 
-        # --- 2. EDR + SIEM КОРРЕЛЯЦИЯ ---
-        elif has_edr and not has_siem:
-            status = "РИСК"
-            rec = "EDR без SIEM = нет централизованного мониторинга. Атаки могут остаться незамеченными."
-            std = "SOC Maturity Model"
-
-        # --- 3. BACKUP + VM DENSITY ---
-        elif virt > 20 and not has_backup:
-            status = "FATAL"
-            rec = f"{virt} VM без backup — риск полной остановки бизнеса (ransomware / сбой)."
-            std = "BCP / ISO 22301"
-
-        # --- 4. ВИРТУАЛИЗАЦИЯ OVERCOMMIT ---
+        # --- OVERCOMMIT ---
         elif phys > 0 and virt / max(phys, 1) > 15:
             status = "РИСК"
-            rec = f"Высокий overcommit: {virt}/{phys}. Возможны деградации и cascade failure."
-            std = "Capacity Management"
+            rec = f"Высокая плотность VM ({virt}/{phys}). Возможна деградация."
+            std = "Capacity Mgmt"
 
-        # --- 5. NGFW ОТСУТСТВИЕ ---
-        elif not has_ngfw and total_arm > 30:
-            status = "КРИТИЧНО"
-            rec = "Нет NGFW при значимом периметре. Высокий риск внешних атак."
-            std = "Perimeter Security"
-
-        # --- 6. СКОРОСТЬ КАНАЛОВ ---
+        # --- NETWORK FAILOVER ---
         elif back_speed > 0 and main_speed > 0 and back_speed < main_speed * 0.3:
             status = "ВНИМАНИЕ"
-            rec = "Резервный канал сильно слабее основного. При failover бизнес деградирует."
+            rec = "Резервный канал значительно слабее основного."
             std = "BCP"
 
-        # --- 7. DEVOPS RISK ---
-        elif has_cicd and not has_siem:
+        # --- DEVSECOPS ---
+        elif k == "4.2. CICD" and has_cicd and not has_siem:
             status = "РИСК"
-            rec = "CI/CD без мониторинга = риск supply-chain атак."
+            rec = "CI/CD без мониторинга — риск supply-chain атак."
             std = "DevSecOps"
 
-        # --- 8. INDUSTRY SPECIFIC ---
+        # --- FINANCE INDUSTRY ---
         elif "банк" in industry.lower() and not has_siem:
             status = "КРИТИЧНО"
-            rec = "Для финсектора SIEM обязателен (регулятор + fraud detection)."
-            std = "Регулятор РК / PCI DSS"
+            rec = "Для финсектора требуется SIEM."
+            std = "Регулятор РК"
 
-        # --- 9. SHADOW IT ---
-        elif total_arm > 100 and "crm" not in str(results).lower():
-            status = "ВНИМАНИЕ"
-            rec = "Отсутствие CRM при масштабе — возможен Shadow IT."
-            std = "IT Governance"
-
-        # --- 10. SECURITY STACK IMBALANCE ---
-        elif has_siem and not has_edr:
-            status = "РИСК"
-            rec = "Есть SIEM, но нет EDR — нет источников телеметрии."
-            std = "Detection Engineering"
-
-        # --- DEFAULT GAP ---
+        # --- DEFAULT ---
         elif is_absent:
             status = "ВНИМАНИЕ"
-            rec = "Отсутствует элемент инфраструктуры. Требуется оценка необходимости."
+            rec = "Отсутствует элемент. Требуется оценка."
             std = "Best Practice"
 
         # --- WRITE ---
