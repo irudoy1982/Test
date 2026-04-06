@@ -54,6 +54,13 @@ col_h1, col_h2 = st.columns(2)
 with col_h1:
     client_info['Город'] = st.text_input("Город*")
     client_info['Наименование компании'] = st.text_input("Наименование компании*")
+
+    ndustry = st.selectbox("Сфера деятельности компании", 
+                       ["Финтех / Банки", "Ритейл / E-commerce", "Производство", "IT / Разработка", "Госсектор", "Другое"])
+
+client_info = {
+    "Наименование компании": company_name,
+    "Сфера деятельности": industry,
     
     site_input = st.text_input("Сайт компании*", key="site_field", placeholder="example.kz")
     client_info['Сайт компании'] = site_input
