@@ -358,146 +358,159 @@ def make_expert_excel(c_info, results, final_score):
     ws = wb.active
     ws.title = "Strategic Audit Report 2026"
     
-    # Стилизация (High-End Consulting Standard)
+    # --- СТИЛИ ---
     header_fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
-    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                    top=Side(style='thin'), bottom=Side(style='thin'))
     
-    # Шапка
     ws.merge_cells('A1:E2')
-    ws['A1'] = "ОТЧЕТ ПО СТРАТЕГИЧЕСКОМУ АУДИТУ ИТ И ИБ (SENIOR AUDITOR LOGIC)"
+    ws['A1'] = "STRATEGIC IT & CYBERSECURITY AUDIT (CTO / CISO / BIG4 MODEL)"
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
     ws['A1'].font = Font(bold=True, size=14, color="002060")
 
-    # Сведения о клиенте
-    curr_row = 4
+    # --- КЛИЕНТ ---
+    row = 4
     for k, v in c_info.items():
-        ws.cell(row=curr_row, column=1, value=k).font = Font(bold=True)
-        ws.cell(row=curr_row, column=2, value=str(v))
-        curr_row += 1
-    
-    curr_row += 2
-    headers = ["Параметр", "Значение", "Статус", "Экспертный анализ (CTO/CISO Insight)", "Риск-фактор / Стандарт"]
-    for i, h in enumerate(headers, 1):
-        cell = ws.cell(row=curr_row, column=i, value=h)
-        cell.fill = header_fill; cell.font = white_font; cell.alignment = Alignment(horizontal='center')
-    curr_row += 1
+        ws.cell(row=row, column=1, value=k).font = Font(bold=True)
+        ws.cell(row=row, column=2, value=str(v))
+        row += 1
 
-    # --- СЛОЖНАЯ МАТРИЦА КОРРЕЛЯЦИЙ (SENIOR AUDITOR BRAIN) ---
+    row += 2
+    headers = ["Параметр", "Значение", "Статус", "Экспертный анализ", "Риск / Стандарт"]
+    for i, h in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=i, value=h)
+        cell.fill = header_fill
+        cell.font = white_font
+        cell.alignment = Alignment(horizontal='center')
+    row += 1
+
+    # --- HELPERS ---
     def get_val(key, default=0):
-        val = results.get(key, default)
-        try: return int(val)
-        except: return 0
+        try:
+            return int(results.get(key, default))
+        except:
+            return 0
 
     def extract_mbps(val):
         import re
         res = re.findall(r'\d+', str(val))
         return int(res[0]) if res else 0
 
-    # Сбор метрик для анализа
     total_arm = get_val('1.1. Всего АРМ')
-    wifi_points = get_val('1.2.6. Точки доступа')
-    net_devices = get_val('1.2.4. Маршрутизаторы') + get_val('1.2.5. Коммутаторы')
+    phys = get_val('1.3.1. Физические серверы')
+    virt = get_val('1.3.2. Виртуальные серверы')
+
     main_speed = extract_mbps(results.get('1.2.1. Основной канал'))
     back_speed = extract_mbps(results.get('1.2.2. Резервный канал'))
-    
-    has_helpdesk = "да" in str(results.get('3.5. Helpdesk / Service Desk', "")).lower()
-    has_wifi_ctrl = "да" in str(results.get('Wi-Fi Контроллер', "")).lower()
+
+    has_backup = "да" in str(results.get('Резервное копирование', "")).lower()
     has_edr = "да" in str(results.get('EDR/XDR (Точки)', "")).lower()
-    routing_type = str(results.get('1.2.3. Маршрутизация', "")).lower()
-    
+    has_siem = "да" in str(results.get('SIEM (Мониторинг)', "")).lower()
+    has_mfa = "да" in str(results.get('MFA (Аутентификация)', "")).lower()
+    has_ngfw = "да" in str(results.get('1.2.7. NGFW', "")).lower()
+    has_cicd = results.get('4.2. CICD', False)
+
     industry = c_info.get("Сфера деятельности", "Другое")
 
+    # --- CORE LOGIC ---
     for k, v in results.items():
-        if "Примечание" in k and not str(v).strip(): continue
-        
-        status = "В норме"
-        rec = "Конфигурация соответствует текущему профилю организации."
+        if "Примечание" in k and not str(v).strip():
+            continue
+
+        status = "OK"
+        rec = "Конфигурация соответствует базовым ожиданиям."
         std = "N/A"
+
         val_str = str(v).lower()
-        is_absent = "нет" in val_str or v is False or v == 0 or v == "0"
+        is_absent = "нет" in val_str or v in [0, "0", False]
 
-        # 1. СТАРЫЕ АРМ + ОТСУТСТВИЕ EDR (CISO RISK)
-        if "ОС АРМ (Windows XP/Vista/7/8)" in k and v > 0:
-            std = "СТ РК ISO/IEC 27001"
+        # --- 1. ZERO TRUST GAP ---
+        if total_arm > 50 and not has_mfa:
             status = "КРИТИЧНО"
-            if not has_edr:
-                rec = (f"Обнаружено {v} АРМ на EoL ОС без защиты класса EDR. Обычный антивирус не блокирует современные эксплойты. "
-                       "Риск: Шифрование всей сети через один уязвимый АРМ. Срочная изоляция в VLAN.")
-            else:
-                rec = f"Наличие {v} старых ОС требует немедленного плана миграции. EDR частично снижает риск, но не убирает его."
+            rec = "Отсутствие MFA при масштабе >50 пользователей = высокий риск компрометации учетных записей."
+            std = "Zero Trust / NIST"
 
-        # 2. WI-FI: ПЛОТНОСТЬ ПОЛЬЗОВАТЕЛЕЙ (CTO RISK)
-        elif "1.2.6. Точки доступа" in k:
-            std = "IEEE 802.11 High Density"
-            users_per_ap = total_arm / v if v > 0 else total_arm
-            if v > 0 and users_per_ap > 30:
-                status = "РИСК"
-                rec = (f"Критическая плотность: ~{int(users_per_ap)} АРМ на одну точку. Это гарантирует потерю пакетов и "
-                       "задержки в видеосвязи (Teams/Zoom). Необходимо увеличить кол-во ТД в 2 раза.")
-            elif v > 5 and not has_wifi_ctrl:
-                status = "ВНИМАНИЕ"
-                rec = "Для парка более 5 точек необходим контроллер. Иначе невозможен бесшовный роуминг и централизованное ИБ."
+        # --- 2. EDR + SIEM КОРРЕЛЯЦИЯ ---
+        elif has_edr and not has_siem:
+            status = "РИСК"
+            rec = "EDR без SIEM = нет централизованного мониторинга. Атаки могут остаться незамеченными."
+            std = "SOC Maturity Model"
 
-        # 3. МАРШРУТИЗАЦИЯ VS СЛОЖНОСТЬ СЕТИ
-        elif "1.2.3. Маршрутизация" in k:
-            if "статич" in val_str and net_devices > 8:
-                status = "РИСК"
-                rec = (f"Статическая маршрутизация при {net_devices} узлах — это критический тех. долг. Любая ошибка в конфиге "
-                       "приведет к сетевому шторму. Рекомендуется внедрение OSPF.")
-                std = "Architectural Debt"
+        # --- 3. BACKUP + VM DENSITY ---
+        elif virt > 20 and not has_backup:
+            status = "FATAL"
+            rec = f"{virt} VM без backup — риск полной остановки бизнеса (ransomware / сбой)."
+            std = "BCP / ISO 22301"
 
-        # 4. РЕЗЕРВИРОВАНИЕ: ДЕГРАДАЦИЯ КАНАЛА
-        elif "1.2.2. Резервный канал" in k:
-            std = "ISO 22301 (BCP)"
-            if is_absent:
-                status = "КРИТИЧНО"
-                rec = "SPOF (Single Point of Failure). При аварии провайдера в Алматы бизнес полностью встанет. Потеря RTO = ∞."
-            elif back_speed > 0 and (back_speed / main_speed) < 0.2:
-                status = "ВНИМАНИЕ"
-                rec = (f"Резервный канал ({back_speed} Mbps) в 5+ раз слабее основного ({main_speed} Mbps). "
-                       "При переключении работа будет парализована из-за нехватки полосы для бизнес-трафика.")
+        # --- 4. ВИРТУАЛИЗАЦИЯ OVERCOMMIT ---
+        elif phys > 0 and virt / max(phys, 1) > 15:
+            status = "РИСК"
+            rec = f"Высокий overcommit: {virt}/{phys}. Возможны деградации и cascade failure."
+            std = "Capacity Management"
 
-        # 5. HELPDESK VS МАСШТАБ (ITSM MATURITY)
-        elif "3.5. Helpdesk" in k or "Helpdesk / Service Desk" in k:
-            if is_absent and total_arm > 100:
-                status = "РИСК"
-                rec = (f"Обслуживание {total_arm} АРМ без ITSM-системы ведет к потере 15-20% рабочего времени ИТ-отдела. "
-                       "Нет прозрачности для руководства и метрик SLA.")
-                std = "ITIL 4 Framework"
+        # --- 5. NGFW ОТСУТСТВИЕ ---
+        elif not has_ngfw and total_arm > 30:
+            status = "КРИТИЧНО"
+            rec = "Нет NGFW при значимом периметре. Высокий риск внешних атак."
+            std = "Perimeter Security"
 
-        # 6. EXCHANGE + MFA (CISO CRITICAL)
-        elif "1.5.1. Почтовая система" in k and "exchange" in val_str:
-            if "нет" in str(results.get('MFA (Аутентификация)', "")).lower():
-                status = "КРИТИЧНО"
-                rec = "Локальный Exchange без MFA на внешнем периметре (OWA) — это приглашение для Ransomware. Пароль подбирается за часы."
-                std = "NIST SP 800-171"
+        # --- 6. СКОРОСТЬ КАНАЛОВ ---
+        elif back_speed > 0 and main_speed > 0 and back_speed < main_speed * 0.3:
+            status = "ВНИМАНИЕ"
+            rec = "Резервный канал сильно слабее основного. При failover бизнес деградирует."
+            std = "BCP"
 
-        # 7. РЕЗЕРВНОЕ КОПИРОВАНИЕ
-        elif "Резервное копирование" in k:
-            if is_absent:
-                status = "FATAL ERROR"
-                rec = "Бизнес не защищен. Срочно внедрить правило 3-2-1 с использованием Immutable (неизменяемых) хранилищ."
-                std = "BCP Standard"
-            else:
-                rec = f"Используется {v}. Рекомендуется внедрение автоматизированного тестирования восстановления."
+        # --- 7. DEVOPS RISK ---
+        elif has_cicd and not has_siem:
+            status = "РИСК"
+            rec = "CI/CD без мониторинга = риск supply-chain атак."
+            std = "DevSecOps"
 
-        # Рендеринг в таблицу
+        # --- 8. INDUSTRY SPECIFIC ---
+        elif "банк" in industry.lower() and not has_siem:
+            status = "КРИТИЧНО"
+            rec = "Для финсектора SIEM обязателен (регулятор + fraud detection)."
+            std = "Регулятор РК / PCI DSS"
+
+        # --- 9. SHADOW IT ---
+        elif total_arm > 100 and "crm" not in str(results).lower():
+            status = "ВНИМАНИЕ"
+            rec = "Отсутствие CRM при масштабе — возможен Shadow IT."
+            std = "IT Governance"
+
+        # --- 10. SECURITY STACK IMBALANCE ---
+        elif has_siem and not has_edr:
+            status = "РИСК"
+            rec = "Есть SIEM, но нет EDR — нет источников телеметрии."
+            std = "Detection Engineering"
+
+        # --- DEFAULT GAP ---
+        elif is_absent:
+            status = "ВНИМАНИЕ"
+            rec = "Отсутствует элемент инфраструктуры. Требуется оценка необходимости."
+            std = "Best Practice"
+
+        # --- WRITE ---
         row_vals = [k, str(v), status, rec, std]
+
         for col_idx, value in enumerate(row_vals, 1):
-            cell = ws.cell(row=curr_row, column=col_idx, value=value)
+            cell = ws.cell(row=row, column=col_idx, value=value)
             cell.border = border
             cell.alignment = Alignment(wrapText=True, vertical='top')
-            
-            if col_idx == 3: # Цвета для статусов
-                if status == "FATAL ERROR": cell.font = Font(color="8B0000", bold=True)
-                elif status == "КРИТИЧНО": cell.font = Font(color="FF0000", bold=True)
-                elif status in ["ВНИМАНИЕ", "РИСК"]: cell.font = Font(color="FF8C00", bold=True)
-        
-        curr_row += 1
 
-    # Автонастройка ширины колонок
-    widths = {'A': 35, 'B': 20, 'C': 15, 'D': 65, 'E': 25}
+            if col_idx == 3:
+                if status == "FATAL":
+                    cell.font = Font(color="8B0000", bold=True)
+                elif status == "КРИТИЧНО":
+                    cell.font = Font(color="FF0000", bold=True)
+                elif status in ["РИСК", "ВНИМАНИЕ"]:
+                    cell.font = Font(color="FF8C00", bold=True)
+
+        row += 1
+
+    # --- WIDTH ---
+    widths = {'A': 35, 'B': 20, 'C': 15, 'D': 70, 'E': 25}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
 
