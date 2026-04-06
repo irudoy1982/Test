@@ -57,10 +57,6 @@ with col_h1:
 
     ndustry = st.selectbox("Сфера деятельности компании", 
                        ["Финтех / Банки", "Ритейл / E-commerce", "Производство", "IT / Разработка", "Госсектор", "Другое"])
-
-client_info = {
-    "Наименование компании": company_name,
-    "Сфера деятельности": industry,
     
     site_input = st.text_input("Сайт компании*", key="site_field", placeholder="example.kz")
     client_info['Сайт компании'] = site_input
