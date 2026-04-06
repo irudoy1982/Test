@@ -54,7 +54,7 @@ col_h1, col_h2 = st.columns(2)
 with col_h1:
     client_info['Город'] = st.text_input("Город*", help="Укажите город фактического нахождения головного офиса.")
     industry_options = ["Финтех / Банки", "Ритейл / E-commerce", "Производство", "IT / Разработка", "Госсектор", "Другое"]
-selected_ind = st.selectbox(
+    selected_ind = st.selectbox(
     "Сфера деятельности компании*", 
     [""] + industry_options, # Добавляем пустую строку, чтобы заставить выбрать
     format_func=lambda x: "Выберите сферу..." if x == "" else x,
