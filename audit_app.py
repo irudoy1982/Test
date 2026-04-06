@@ -142,7 +142,7 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
     col_net1, col_net2 = st.columns(2)
     with col_net1:
         st.write("Основной канал")
-        main_type = st.selectbox("Тип (основной)", net_types, key="main_net_type", help="Технология подключения основного интернет-канала.")
+        main_type = st.selectbox("Тип (основной)", net_types, key="main_net_type", index=7, help="Технология подключения основного интернет-канала.")
         main_speed = st.number_input("Скорость основного (Mbit/s)", min_value=0, step=10, key="main_net_speed")
         data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
     with col_net2:
