@@ -109,7 +109,7 @@ st.header("Блок 1: Информационные технологии")
 st.subheader("1.1. Конечные точки (АРМ)")
 total_arm = st.number_input("Общее количество АРМ (шт)", min_value=0, step=1, help="Общее число ПК и ноутбуков.")
 data['1.1. Всего АРМ'] = total_arm
-selected_os_arm = st.multiselect("ОС на АРМ", ["Windows 10", "Windows 11", "Linux", "macOS", "Другое"], help="Типы используемых ОС.")
+selected_os_arm = st.multiselect("ОС на АРМ", ["Windows XP/Vista/7/8", "Windows 10", "Windows 11", "Linux", "macOS", "Другое"], help="Выберите все типы операционных систем, используемых сотрудниками.")
 
 sum_os_arm = 0
 if selected_os_arm:
