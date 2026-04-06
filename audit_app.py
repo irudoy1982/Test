@@ -68,7 +68,7 @@ else:
     industry = selected_ind
 
 client_info['Сфера деятельности'] = industry
-    client_info['Наименование компании'] = st.text_input("Наименование компании*", help="Официальное или сокращенное название юрлица.")
+client_info['Наименование компании'] = st.text_input("Наименование компании*", help="Официальное или сокращенное название юрлица.")
 
     site_input = st.text_input("Сайт компании*", key="site_field", placeholder="example.kz", help="Используется для анализа внешнего цифрового отпечатка.")
     client_info['Сайт компании'] = site_input
