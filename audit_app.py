@@ -147,7 +147,7 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
         data['1.2.1. Основной канал'] = f"{main_type} ({main_speed} Mbit/s)"
     with col_net2:
         st.write("Резервный канал")
-        back_type = st.selectbox("Тип (резервный)", net_types, index=6, key="back_net_type", help="Наличие и тип независимого резервного канала.")
+        back_type = st.selectbox("Тип (резервный)", net_types, index=7, key="back_net_type", help="Наличие и тип независимого резервного канала.")
         back_speed = st.number_input("Скорость резервного (Mbit/s)", min_value=0, step=10, key="back_net_speed")
         data['1.2.2. Резервный канал'] = f"{back_type} ({back_speed} Mbit/s)"
 
