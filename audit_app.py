@@ -358,18 +358,16 @@ def make_expert_excel(c_info, results, final_score):
     ws = wb.active
     ws.title = "Strategic Audit Report 2026"
     
-    # --- СТИЛИ ---
     header_fill = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     border = Border(left=Side(style='thin'), right=Side(style='thin'),
                     top=Side(style='thin'), bottom=Side(style='thin'))
-    
+
     ws.merge_cells('A1:E2')
     ws['A1'] = "STRATEGIC IT & CYBERSECURITY AUDIT"
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
     ws['A1'].font = Font(bold=True, size=14, color="002060")
 
-    # --- КЛИЕНТ ---
     row = 4
     for k, v in c_info.items():
         ws.cell(row=row, column=1, value=k).font = Font(bold=True)
@@ -385,7 +383,7 @@ def make_expert_excel(c_info, results, final_score):
         cell.alignment = Alignment(horizontal='center')
     row += 1
 
-    # --- HELPERS ---
+    # helpers
     def get_val(key, default=0):
         try:
             return int(results.get(key, default))
@@ -409,119 +407,93 @@ def make_expert_excel(c_info, results, final_score):
     has_siem = "да" in str(results.get('SIEM (Мониторинг)', "")).lower()
     has_mfa = "да" in str(results.get('MFA (Аутентификация)', "")).lower()
     has_ngfw = "да" in str(results.get('1.2.7. NGFW', "")).lower()
+    has_wifi_ctrl = "контроллер" in str(results).lower()
 
-    # =========================================================
-    # 🔴 GLOBAL RISKS (ОДИН РАЗ)
-    # =========================================================
-    global_checks = []
+    top_risks = []
 
+    def add_risk(title, level, text):
+        if len(top_risks) < 5:
+            top_risks.append((title, level, text))
+
+    # =========================
+    # GLOBAL RISKS + TOP5
+    # =========================
     if total_arm > 50 and not has_mfa:
-        global_checks.append((
-            "Глобально: MFA",
-            "Отсутствует",
-            "КРИТИЧНО",
-            "При масштабе >50 пользователей отсутствие MFA = высокий риск компрометации учетных записей.",
-            "Zero Trust / NIST"
-        ))
-
-    if has_edr and not has_siem:
-        global_checks.append((
-            "Глобально: Мониторинг",
-            "EDR без SIEM",
-            "РИСК",
-            "Нет централизованного мониторинга инцидентов.",
-            "SOC Maturity"
-        ))
+        add_risk("Нет MFA", "КРИТИЧНО", "Высокий риск компрометации учетных записей")
 
     if virt > 20 and not has_backup:
-        global_checks.append((
-            "Глобально: Backup",
-            f"{virt} VM",
-            "FATAL",
-            "Отсутствие резервного копирования при высокой виртуализации.",
-            "ISO 22301"
-        ))
+        add_risk("Нет backup при VM", "FATAL", "Риск полной остановки бизнеса")
+
+    if has_edr and not has_siem:
+        add_risk("Нет мониторинга", "РИСК", "EDR без SIEM")
 
     if total_arm > 30 and not has_ngfw:
-        global_checks.append((
-            "Глобально: Периметр",
-            "Нет NGFW",
-            "КРИТИЧНО",
-            "Отсутствие NGFW при развитой инфраструктуре.",
-            "Perimeter Security"
-        ))
+        add_risk("Нет NGFW", "КРИТИЧНО", "Нет защиты периметра")
 
-    for item in global_checks:
-        for col_idx, value in enumerate(item, 1):
-            cell = ws.cell(row=row, column=col_idx, value=value)
-            cell.border = border
-            cell.alignment = Alignment(wrapText=True, vertical='top')
-
-            if col_idx == 3:
-                if value == "FATAL":
-                    cell.font = Font(color="8B0000", bold=True)
-                elif value == "КРИТИЧНО":
-                    cell.font = Font(color="FF0000", bold=True)
-                elif value in ["РИСК", "ВНИМАНИЕ"]:
-                    cell.font = Font(color="FF8C00", bold=True)
-
-        row += 1
-
-    # =========================================================
-    # 🧠 ПОСТРОЧНЫЙ АНАЛИЗ (FIXED)
-    # =========================================================
+    # =========================
+    # POST ANALYSIS
+    # =========================
     for k, v in results.items():
         if "Примечание" in k and not str(v).strip():
             continue
 
         status = "OK"
-        rec = "Конфигурация соответствует базовым ожиданиям."
-        std = "N/A"
+        rec = "Конфигурация соответствует текущему уровню зрелости."
+        std = "Best Practice"
 
         val_str = str(v).lower()
         is_absent = "нет" in val_str or v in [0, "0", False]
 
-        # --- OLD OS ---
-        if "ОС АРМ (Windows XP" in k and int(v) > 0:
-            status = "КРИТИЧНО"
-            rec = "Используются устаревшие ОС. Высокий риск компрометации."
-            std = "ISO 27001"
+        # WIFI CORRELATION (УСИЛЕННАЯ)
+        if "Wi-Fi Точки доступа" in k:
+            ap = int(v) if str(v).isdigit() else 0
+            if ap > 5 and not has_wifi_ctrl:
+                status = "КРИТИЧНО"
+                rec = (
+                    f"{ap} точек доступа без контроллера. "
+                    "Нет централизованного управления, roaming и сегментации. "
+                    "Рекомендуется внедрение Wi-Fi контроллера (Unifi / Cisco / Aruba)."
+                )
+                std = "Enterprise WiFi"
+                add_risk("WiFi без контроллера", "КРИТИЧНО", "Невозможно управлять сетью")
 
-        # --- MFA ---
-        elif k == "MFA (Аутентификация)" and is_absent:
-            status = "КРИТИЧНО"
-            rec = "Отсутствует MFA — основной вектор атак (phishing / brute force)."
-            std = "Zero Trust"
+            if ap > 0 and total_arm > 0:
+                density = total_arm / ap
+                if density > 30:
+                    status = "РИСК"
+                    rec = f"{int(density)} устройств на точку — перегруз Wi-Fi."
+                    add_risk("WiFi перегруз", "РИСК", "Плохая производительность")
 
-        # --- SIEM ---
-        elif k == "SIEM (Мониторинг)" and is_absent:
+        # HELPDESK
+        elif total_arm > 80 and "HelpDesk" in k and is_absent:
             status = "РИСК"
-            rec = "Нет централизованного мониторинга событий безопасности."
-            std = "SOC"
+            rec = f"{total_arm} пользователей без Service Desk — потеря управляемости ИТ."
+            add_risk("Нет ITSM", "РИСК", "Нет контроля инцидентов")
 
-        # --- EDR ---
-        elif k == "EDR/XDR (Точки)" and is_absent:
-            status = "РИСК"
-            rec = "Нет защиты endpoint уровня detection & response."
-            std = "Endpoint Security"
+        # NETWORK
+        elif "Маршрутизация" in k:
+            net_devices = get_val('1.2.4. Маршрутизаторы') + get_val('1.2.5. Коммутаторы L2')
+            if "стат" in val_str and net_devices > 8:
+                status = "РИСК"
+                rec = "Статическая маршрутизация при сложной сети."
+                add_risk("Статическая сеть", "РИСК", "Ошибки конфигурации")
 
-        # --- NGFW ---
-        elif k == "1.2.7. NGFW" and is_absent:
+        # EMAIL + MFA
+        elif "Почтовая система" in k and "exchange" in val_str and not has_mfa:
             status = "КРИТИЧНО"
-            rec = "Отсутствует NGFW — нет защиты периметра."
-            std = "Perimeter Security"
+            rec = "Exchange без MFA — основной вектор ransomware."
+            add_risk("Почта без MFA", "КРИТИЧНО", "Взлом почты")
 
-        # --- BACKUP ---
-        elif k == "Резервное копирование" and is_absent:
-            status = "FATAL"
-            rec = "Нет резервного копирования. Риск полной потери бизнеса."
-            std = "BCP / ISO 22301"
+        # SECURITY STACK GAP
+        elif has_siem and not has_edr:
+            status = "РИСК"
+            rec = "Есть SIEM, но нет EDR — нет телеметрии."
+            add_risk("Нет EDR", "РИСК", "Слепая зона безопасности")
 
-        # --- DEFAULT ---
+        # DEFAULT
         elif is_absent:
             status = "ВНИМАНИЕ"
-            rec = "Отсутствует элемент. Требуется оценка."
-            std = "Best Practice"
+            rec = "Функция отсутствует. Рекомендуется внедрение при росте бизнеса."
 
         row_vals = [k, str(v), status, rec, std]
 
@@ -530,23 +502,26 @@ def make_expert_excel(c_info, results, final_score):
             cell.border = border
             cell.alignment = Alignment(wrapText=True, vertical='top')
 
-            if col_idx == 3:
-                if status == "FATAL":
-                    cell.font = Font(color="8B0000", bold=True)
-                elif status == "КРИТИЧНО":
-                    cell.font = Font(color="FF0000", bold=True)
-                elif status in ["РИСК", "ВНИМАНИЕ"]:
-                    cell.font = Font(color="FF8C00", bold=True)
-
         row += 1
 
-    # --- WIDTH ---
-    widths = {'A': 35, 'B': 20, 'C': 15, 'D': 70, 'E': 25}
+    # =========================
+    # TOP RISKS BLOCK
+    # =========================
+    row += 2
+    ws.cell(row=row, column=1, value="ТОП-5 КЛЮЧЕВЫХ РИСКОВ").font = Font(bold=True, size=12)
+    row += 1
+
+    for r in top_risks:
+        ws.cell(row=row, column=1, value=f"{r[0]} ({r[1]})")
+        ws.cell(row=row, column=2, value=r[2])
+        row += 1
+
+    widths = {'A': 35, 'B': 25, 'C': 15, 'D': 70, 'E': 25}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
 
     wb.save(output)
-    return output.getvalue(), datetime.now().strftime("%d.%m.%Y %H:%М")
+    return output.getvalue(), datetime.now().strftime("%d.%m.%Y %H:%M")
 
 # --- ФИНАЛ ---
 st.divider()
