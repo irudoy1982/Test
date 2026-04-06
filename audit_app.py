@@ -344,7 +344,7 @@ def make_expert_excel(c_info, results, final_score):
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Khalil Audit Report"
+    ws.title = "Expert Consulting Report"
     
     # --- СТИЛИ ---
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
@@ -352,10 +352,10 @@ def make_expert_excel(c_info, results, final_score):
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     
     # --- ШАПКА ---
-    ws.merge_cells('A1:D2')
-    ws['A1'] = "ЭКСПЕРТНЫЙ ОТЧЕТ ПО ИТ И ИБ (2026)"
+    ws.merge_cells('A1:E2') # Расширяем до 5 колонок
+    ws['A1'] = "СТРАТЕГИЧЕСКИЙ АУДИТ ИТ И ИБ (CONFORMITY NIST/ISO)"
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-    ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
+    ws['A1'].font = Font(bold=True, size=14, color="1F4E78")
 
     # Сведения о клиенте
     curr_row = 4
@@ -364,133 +364,98 @@ def make_expert_excel(c_info, results, final_score):
         ws.cell(row=curr_row, column=2, value=str(v))
         curr_row += 1
     
-    ws.cell(row=curr_row, column=1, value="ИНДЕКС ЗРЕЛОСТИ:").font = Font(bold=True)
-    score_cell = ws.cell(row=curr_row, column=2, value=f"{final_score}%")
-    bg_col = "92D050" if final_score > 70 else "FFC000" if final_score > 40 else "FF7C80"
-    score_cell.fill = PatternFill(start_color=bg_col, end_color=bg_col, fill_type="solid")
-    
-    # Заголовки таблицы
-    curr_row += 3
-    headers = ["Параметр", "Значение", "Статус", "Экспертная рекомендация"]
+    curr_row += 2
+    # Заголовки таблицы (Добавлена колонка Стандарт)
+    headers = ["Параметр", "Значение", "Статус", "Рекомендация (Best Practice)", "Стандарт (ISO/NIST)"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=curr_row, column=i, value=h)
         cell.fill = header_fill; cell.font = white_font
     curr_row += 1
 
-    # --- ПОДГОТОВКА ДАННЫХ ДЛЯ КРОСС-АНАЛИЗА ---
+    # --- ПАРАМЕТРЫ ОТРАСЛИ ---
+    industry = c_info.get("Сфера деятельности", "Другое")
     total_arm = results.get('1.1. Всего АРМ', 0)
     total_srv = results.get('1.3.1. Физические серверы', 0) + results.get('1.3.2. Виртуальные серверы', 0)
-    dev_count = results.get('4.1. Разработчики', 0)
-    wifi_ap = results.get('Wi-Fi Точки доступа', 0)
-    has_backup = bool(results.get("Резервное копирование"))
     mail_sys = str(results.get('1.5.1. Почтовая система', "")).lower()
-    it_staff = results.get('ИТ-персонал', 0)
 
-    # --- ЦИКЛ ГЕНЕРАЦИИ СТРОК С ЭКСПЕРТНОЙ ЛОГИКОЙ ---
+    # --- ЦИКЛ АНАЛИЗА ---
     for k, v in results.items():
         if "Примечание" in k and not str(v).strip(): continue
-
+        
         status = "В норме"
-        rec = "Риски не выявлены. Поддерживайте текущее состояние."
+        rec = "Риски минимальны."
+        std = "N/A" # По умолчанию
         val_str = str(v).lower()
-        # Определяем "пустой" ли параметр (чекбокс не нажат или 0)
-        is_absent = "нет" in val_str or v is False or v == 0 or v == "Нет"
+        is_absent = "нет" in val_str or v is False or v == 0
 
-        # 1. СЕТЬ И WI-FI
-        if "Точки доступа" in k and wifi_ap > 0:
-            if wifi_ap > 5 and not results.get('Wi-Fi Контроллер'):
-                status = "ВЫСОКИЙ РИСК"
-                rec = f"Используется {wifi_ap} точек без централизованного контроллера. Это ведет к обрывам связи при перемещении и сложностям в настройке безопасности."
-            elif (total_arm / wifi_ap) > 25:
-                status = "ВНИМАНИЕ"
-                rec = f"Высокая плотность устройств ({total_arm / wifi_ap:.1f} на точку). Требуется переход на Wi-Fi 6 для обеспечения стабильной скорости."
+        # --- ЛОГИКА 4 И 5: СТАНДАРТЫ И ОТРАСЛИ ---
 
-        elif "Коммутаторы L2" in k and not is_absent:
-            if not results.get('1.2.6. Коммутаторы L3') and total_arm > 40:
-                status = "ВНИМАНИЕ"
-                rec = "Сеть плоская (без L3). Ошибка в одном сегменте может парализовать всю компанию. Рекомендуется внедрение VLAN и сегментации."
-
-        # 2. ИБ ПРОДУКТЫ (SIEM, EDR, DLP, PAM)
-        elif "SIEM" in k:
+        # 1. SIEM (Пункт 5: Отраслевой вес)
+        if "SIEM" in k:
+            std = "ISO 27001 (A.12.4)"
             if is_absent:
-                if total_arm > 100 or total_srv > 10:
+                if industry in ["Финтех / Банки", "IT / Разработка"]:
+                    status = "КРИТИЧНО"
+                    rec = f"Для отрасли '{industry}' отсутствие SIEM недопустимо. Риск потери лицензии и невозможность расследования инцидентов."
+                elif total_arm > 100:
                     status = "ВЫСОКИЙ РИСК"
-                    rec = "Для вашего масштаба SIEM необходим. Без корреляции событий невозможно обнаружить сложные атаки (APT) на ранних стадиях."
+                    rec = "Большая сеть требует автоматизации мониторинга логов."
                 else:
                     status = "ИНФО"
-                    rec = "Внедрение SIEM желательно, но для малого офиса достаточно настроить сбор логов на центральный сервер (Syslog)."
+                    rec = "Рекомендуется базовый лог-менеджмент."
 
-        elif "Антивирус" in k:
-            if is_absent:
-                status = "КРИТИЧНО"
-                rec = "Защита рабочих мест отсутствует. Риск заражения всей сети шифровальщиком в течение суток."
-            elif total_arm > 80 and not results.get('EDR/XDR'):
-                status = "ВНИМАНИЕ"
-                rec = "Обычный антивирус не блокирует современные угрозы. Рекомендуется переход на EDR для анализа поведения процессов."
-
-        elif "DLP" in k and is_absent:
-            if total_arm > 50:
-                status = "ВЫСОКИЙ РИСК"
-                rec = "Высокий риск утечки коммерческой тайны и ПДн через USB или мессенджеры. Рекомендуется внедрение системы контроля утечек."
-
-        elif "PAM" in k and is_absent:
-            if it_staff > 3 or total_srv > 15:
-                status = "ВЫСОКИЙ РИСК"
-                rec = "Отсутствует контроль действий администраторов. Рекомендуется внедрение PAM для записи сессий и управления привилегиями."
-
-        # 3. РАЗРАБОТКА И ВЕБ-ЗАЩИТА (WAF)
+        # 2. WAF (Пункт 4: Разработка)
         elif "WAF" in k:
-            if is_absent and dev_count > 0:
-                status = "КРИТИЧНО"
-                rec = "При наличии штатной разработки отсутствие WAF — критическая брешь. Ваши внутренние ИС и веб-ресурсы открыты для SQL-инъекций."
-        
-        elif "Разработка" in k or "ИС" in k:
-            if dev_count > 0 and not results.get('4.3. Хранение кода (Git)'):
-                status = "КРИТИЧНО"
-                rec = "Код хранится децентрализованно. Риск потери интеллектуальной собственности компании."
+            std = "OWASP / NIST 800-53"
+            if is_absent:
+                if industry == "Ритейл / E-commerce" or results.get('4.1. Разработчики', 0) > 0:
+                    status = "КРИТИЧНО"
+                    rec = "Веб-ресурсы под угрозой атак SQLi/XSS. Необходим экран уровня приложений."
 
-        # 4. ПОЧТА И MFA
-        elif "MFA" in k and is_absent:
-            if any(cloud in mail_sys for cloud in ["365", "google", "workspace", "облако"]):
-                status = "КРИТИЧНО"
-                rec = "Облачная почта без 2FA — критический риск. Доступ к переписке руководства может быть получен через простой фишинг."
+        # 3. MFA / 2FA
+        elif "MFA" in k:
+            std = "NIST SP 800-63"
+            if is_absent:
+                status = "КРИТИЧНО" if any(x in mail_sys for x in ["365", "google"]) else "ВЫСОКИЙ РИСК"
+                rec = "Отсутствие многофакторной аутентификации нарушает базовые нормы цифровой гигиены."
 
-        # 5. ИНФРАСТРУКТУРА И БЭКАП
+        # 4. Wi-Fi Инфраструктура (Пункт 5: Ритейл)
+        elif "Точки доступа" in k and v > 0:
+            std = "IEEE 802.11ax"
+            if industry == "Ритейл / E-commerce" and not results.get('Wi-Fi Контроллер'):
+                status = "ВЫСОКИЙ РИСК"
+                rec = "Для торговых залов/складов отсутствие контроллера ведет к разрывам ТСД и потере прибыли."
+
+        # 5. Резервное копирование
         elif "Резервное копирование" in k:
+            std = "ISO 27001 (A.12.3)"
             if is_absent:
                 status = "КРИТИЧНО"
-                rec = "Система бэкапа отсутствует. Любой технический сбой приведет к невосполнимой потере данных бизнеса."
-            elif "нет" in str(results.get('Хранение вне офиса', 'Нет')).lower():
+                rec = "Бизнес не защищен от полной потери данных. Нарушение принципа доступности информации."
+
+        # 6. DLP (Пункт 5: Госсектор / ПДн)
+        elif "DLP" in k and is_absent:
+            std = "GDPR / 152-ФЗ"
+            if industry in ["Госсектор", "Финтех / Банки"] or total_arm > 50:
                 status = "ВЫСОКИЙ РИСК"
-                rec = "Бэкапы только на месте. В случае инцидента в серверной (пожар, кража) восстановиться будет невозможно. Внедрите правило 3-2-1."
+                rec = "Высокая вероятность утечки персональных данных и интеллектуальной собственности."
 
-        # 6. ЛЕГАСИ (Старые системы)
-        elif any(old in k for old in ["XP", "7", "2008", "2012"]) and not is_absent:
-            status = "КРИТИЧНО"
-            rec = "Эксплуатация систем без обновлений безопасности запрещена. Рекомендуется миграция или полная изоляция в отдельный VLAN."
+        # --- ЗАПИСЬ В EXCEL ---
+        row_vals = [k, str(v), status, rec, std]
+        for col_idx, value in enumerate(row_vals, 1):
+            cell = ws.cell(row=curr_row, column=col_idx, value=value)
+            cell.border = border
+            if col_idx == 3: # Статус (Цвета)
+                if status == "КРИТИЧНО": cell.font = Font(color="FF0000", bold=True)
+                elif status == "ВЫСОКИЙ РИСК": cell.font = Font(color="C00000", bold=True)
+                elif status in ["ВНИМАНИЕ", "РИСК"]: cell.font = Font(color="FF8C00", bold=True)
+            if col_idx == 4: # Перенос текста в рекомендации
+                cell.alignment = Alignment(wrapText=True, vertical='top')
 
-        # 7. ОБЩИЙ ПРИНЦИП (Если параметр просто отсутствует)
-        elif is_absent:
-            if status == "В норме":
-                status = "РИСК"
-                rec = "Данная технология или процесс отсутствует, что снижает общую защищенность инфраструктуры."
-
-        # --- ЗАПИСЬ СТРОКИ В EXCEL ---
-        ws.cell(row=curr_row, column=1, value=k).border = border
-        ws.cell(row=curr_row, column=2, value=str(v)).border = border
-        
-        st_cell = ws.cell(row=curr_row, column=3, value=status)
-        st_cell.border = border
-        if status == "КРИТИЧНО": st_cell.font = Font(color="FF0000", bold=True)
-        elif status == "ВЫСОКИЙ РИСК": st_cell.font = Font(color="C00000", bold=True)
-        elif status in ["ВНИМАНИЕ", "РИСК"]: st_cell.font = Font(color="FF8C00", bold=True)
-
-        ws.cell(row=curr_row, column=4, value=rec).border = border
-        ws.cell(row=curr_row, column=4).alignment = Alignment(wrapText=True, vertical='top')
         curr_row += 1
 
-    # Настройка колонок
-    widths = {'A': 40, 'B': 25, 'C': 20, 'D': 75}
+    # Настройка ширины
+    widths = {'A': 35, 'B': 20, 'C': 15, 'D': 55, 'E': 25}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
 
