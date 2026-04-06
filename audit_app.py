@@ -358,15 +358,18 @@ def make_expert_excel(c_info, results, final_score):
     ws = wb.active
     ws.title = "Expert Consulting Report"
     
+    # Стилизация
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     
+    # Шапка отчета
     ws.merge_cells('A1:E2')
-    ws['A1'] = "СТРАТЕГИЧЕСКИЙ АУДИТ ИТ И ИБ (CONFORMITY NIST/ISO)"
+    ws['A1'] = "СТРАТЕГИЧЕСКИЙ АУДИТ ИТ И ИБ (CONFORMITY NIST/ISO/ST RK)"
     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
     ws['A1'].font = Font(bold=True, size=14, color="1F4E78")
 
+    # Информация о клиенте
     curr_row = 4
     for k, v in c_info.items():
         ws.cell(row=curr_row, column=1, value=k).font = Font(bold=True)
@@ -374,83 +377,122 @@ def make_expert_excel(c_info, results, final_score):
         curr_row += 1
     
     curr_row += 2
-    headers = ["Параметр", "Значение", "Статус", "Рекомендация (Best Practice)", "Стандарт (ISO/NIST)"]
+    headers = ["Параметр", "Значение", "Статус", "Рекомендация (Expert CISO/CTO View)", "Стандарт"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=curr_row, column=i, value=h)
         cell.fill = header_fill; cell.font = white_font
     curr_row += 1
 
+    # Вспомогательные переменные для сложной логики
     industry_val = c_info.get("Сфера деятельности", "Другое")
-    total_arm_val = results.get('1.1. Всего АРМ', 0)
+    has_dev = results.get('4.1. Разработчики', 0) > 0
+    total_arm = results.get('1.1. Всего АРМ', 0)
     mail_sys_val = str(results.get('1.5.1. Почтовая система', "")).lower()
 
     for k, v in results.items():
         if "Примечание" in k and not str(v).strip(): continue
         
+        # Дефолтные значения
         status = "В норме"
-        rec = "Риски минимальны."
+        rec = "Параметр соответствует базовым требованиям гигиены ИТ. Рекомендуется плановый аудит."
         std = "N/A"
         val_str = str(v).lower()
         is_absent = "нет" in val_str or v is False or v == 0
 
-        if "SIEM" in k:
-            std = "ISO 27001 (A.12.4)"
-            if is_absent:
-                if industry_val in ["Финтех / Банки", "IT / Разработка"]:
-                    status = "КРИТИЧНО"
-                    rec = f"Для отрасли '{industry_val}' отсутствие SIEM недопустимо. Риск потери лицензии и невозможность расследования инцидентов."
-                elif total_arm_val > 100:
-                    status = "ВЫСОКИЙ РИСК"
-                    rec = "Большая сеть требует автоматизации мониторинга логов."
-                else:
-                    status = "ИНФО"
-                    rec = "Рекомендуется базовый лог-менеджмент."
+        # --- ЛОГИКА 1: УСТАРЕВШИЕ ОС (CISO CRITICAL) ---
+        if "ОС АРМ (Windows XP/Vista/7/8)" in k and v > 0:
+            std = "ST RK ISO/IEC 27001"
+            status = "КРИТИЧНО"
+            rec = (f"CISO WARNING: Обнаружено {v} систем End-of-Life. В условиях угроз 2026 года это критический риск. "
+                   "Немедленная изоляция в VLAN без доступа к интернет. План миграции на Win 11 или Astra Linux обязателен.")
 
-        elif "WAF" in k:
-            std = "OWASP / NIST 800-53"
-            if is_absent:
-                if industry_val == "Ритейл / E-commerce" or results.get('4.1. Разработчики', 0) > 0:
-                    status = "КРИТИЧНО"
-                    rec = "Веб-ресурсы под угрозой атак SQLi/XSS. Необходим экран уровня приложений."
+        elif "ОС АРМ (Windows 10)" in k and v > 0:
+            std = "Microsoft Lifecycle"
+            status = "ВНИМАНИЕ"
+            rec = "Windows 10 выходит из фазы активной поддержки. Требуется инвентаризация железа на предмет поддержки TPM 2.0 для перехода на Win 11."
 
-        elif "MFA" in k:
-            std = "NIST SP 800-63"
-            if is_absent:
-                status = "КРИТИЧНО" if any(x in mail_sys_val for x in ["365", "google"]) else "ВЫСОКИЙ РИСК"
-                rec = "Отсутствие многофакторной аутентификации нарушает базовые нормы цифровой гигиены."
+        # --- ЛОГИКА 2: ПОЧТА И ОБЛАКА (CTO/CISO STRATEGY) ---
+        elif "1.5.1. Почтовая система" in k:
+            std = "NIST SP 800-45"
+            if "exchange (on-prem)" in val_str:
+                status = "РИСК"
+                rec = ("Проверить наличие подписок Exchange Server Subscription Edition (SE). "
+                       "Без перехода на SE-версию и внедрения MFA (через ADFS/Keycloak) почта является вектором №1 для атак на компанию.")
+            elif "google" in val_str or "365" in val_str:
+                rec = "Использование SaaS-решения снижает нагрузку на ИТ. Убедитесь, что настроены политики Conditional Access и гео-ограничения (только РК/доверенные страны)."
 
-        elif "Точки доступа" in k and v > 0:
-            std = "IEEE 802.11ax"
-            if industry_val == "Ритейл / E-commerce" and not results.get('Wi-Fi Контроллер'):
-                status = "ВЫСОКИЙ РИСК"
-                rec = "Для торговых залов/складов отсутствие контроллера ведет к разрывам ТСД и потере прибыли."
-
-        elif "Резервное копирование" in k:
-            std = "ISO 27001 (A.12.3)"
+        # --- ЛОГИКА 3: СЕТЕВАЯ БЕЗОПАСНОСТЬ ---
+        elif "1.2.7. NGFW" in k:
+            std = "ГТС РК / NIST 800-41"
             if is_absent:
                 status = "КРИТИЧНО"
-                rec = "Бизнес не защищен от полной потери данных. Нарушение принципа доступности информации."
+                rec = "Периметр не защищен. Обычный роутер не обеспечивает инспекцию трафика L7. Срочно внедрить FortiGate/UserGate/CheckPoint."
+            elif "mikrotik" in val_str:
+                status = "ВНИМАНИЕ"
+                rec = "MikroTik — отличное сетевое решение, но не является NGFW. Требуется дополнительный уровень фильтрации контента и IPS."
 
-        elif "DLP" in k and is_absent:
-            std = "GDPR / 152-ФЗ"
-            if industry_val in ["Госсектор", "Финтех / Банки"] or total_arm_val > 50:
-                status = "ВЫСОКИЙ РИСК"
-                rec = "Высокая вероятность утечки персональных данных и интеллектуальной собственности."
+        # --- ЛОГИКА 4: ИБ СЕРВИСЫ (МУЛЬТИФАКТОРНЫЙ АНАЛИЗ) ---
+        elif "MFA" in k and is_absent:
+            std = "NIST 800-63"
+            status = "КРИТИЧНО"
+            rec = "Критический пробел. 80% инцидентов в РК связаны с кражей учетных данных. Внедрить MFA для VPN, почты и админ-панелей."
 
+        elif "WAF" in k:
+            std = "OWASP Top 10"
+            if is_absent and (has_dev or industry_val in ["Ритейл / E-commerce", "Финтех / Банки"]):
+                status = "КРИТИЧНО"
+                rec = "Для вашей сферы отсутствие защиты веб-приложений (WAF) недопустимо. Риск взлома БД через SQLi/XSS крайне высок."
+            elif is_absent:
+                status = "РИСК"
+                rec = "Рекомендуется для защиты публичного корпоративного сайта."
+
+        elif "SIEM" in k:
+            std = "ISO 27001 (A.12.4)"
+            if is_absent:
+                if total_arm > 100 or industry_val in ["Финтех / Банки", "Госсектор"]:
+                    status = "КРИТИЧНО"
+                    rec = "Вы не видите действий злоумышленника внутри сети. Требование 'Киберщита РК' для критической инфраструктуры."
+                else:
+                    status = "ВНИМАНИЕ"
+                    rec = "Рекомендуется внедрение хотя бы лог-менеджмента (ELK/Graylog) для анализа инцидентов."
+
+        # --- ЛОГИКА 5: НЕПРЕРЫВНОСТЬ (BCP) ---
+        elif "Резервное копирование" in k:
+            std = "ISO 22301"
+            if is_absent:
+                status = "FATAL ERROR"
+                rec = "Бизнес под угрозой полной остановки без возможности восстановления. Срочно внедрить систему бэкапа по правилу 3-2-1."
+            else:
+                rec = f"Используется {v}. Рекомендация CTO: Проверить наличие Immutable (неизменяемых) копий для защиты от программ-вымогателей."
+
+        # --- ЛОГИКА 6: РАЗРАБОТКА (DEVSECOPS) ---
+        elif "4.2. CICD" in k:
+            if v:
+                rec = "Процессы автоматизированы. Следующий шаг — внедрение SAST/DAST сканеров в пайплайн для защиты кода."
+            else:
+                status = "ВНИМАНИЕ"
+                rec = "Ручной деплой увеличивает риск ошибок. Рассмотрите переход на GitLab CI для повышения надежности релизов."
+
+        # Запись строки в таблицу
         row_vals = [k, str(v), status, rec, std]
         for col_idx, value in enumerate(row_vals, 1):
             cell = ws.cell(row=curr_row, column=col_idx, value=value)
             cell.border = border
+            
+            # Цветовая индикация статусов
             if col_idx == 3:
-                if status == "КРИТИЧНО": cell.font = Font(color="FF0000", bold=True)
+                if status == "FATAL ERROR": cell.font = Font(color="8B0000", bold=True)
+                elif status == "КРИТИЧНО": cell.font = Font(color="FF0000", bold=True)
                 elif status == "ВЫСОКИЙ РИСК": cell.font = Font(color="C00000", bold=True)
                 elif status in ["ВНИМАНИЕ", "РИСК"]: cell.font = Font(color="FF8C00", bold=True)
+            
             if col_idx == 4:
                 cell.alignment = Alignment(wrapText=True, vertical='top')
 
         curr_row += 1
 
-    widths = {'A': 35, 'B': 20, 'C': 15, 'D': 55, 'E': 25}
+    # Настройка ширины колонок
+    widths = {'A': 35, 'B': 25, 'C': 15, 'D': 60, 'E': 25}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
 
