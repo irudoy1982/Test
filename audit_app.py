@@ -409,12 +409,9 @@ def make_expert_excel(c_info, results, final_score):
     has_siem = "да" in str(results.get('SIEM (Мониторинг)', "")).lower()
     has_mfa = "да" in str(results.get('MFA (Аутентификация)', "")).lower()
     has_ngfw = "да" in str(results.get('1.2.7. NGFW', "")).lower()
-    has_cicd = results.get('4.2. CICD', False)
-
-    industry = c_info.get("Сфера деятельности", "Другое")
 
     # =========================================================
-    # 🔴 GLOBAL RISKS (ОДИН РАЗ, НЕ В ЦИКЛЕ)
+    # 🔴 GLOBAL RISKS (ОДИН РАЗ)
     # =========================================================
     global_checks = []
 
@@ -454,7 +451,6 @@ def make_expert_excel(c_info, results, final_score):
             "Perimeter Security"
         ))
 
-    # Вставка global блоков
     for item in global_checks:
         for col_idx, value in enumerate(item, 1):
             cell = ws.cell(row=row, column=col_idx, value=value)
@@ -472,7 +468,7 @@ def make_expert_excel(c_info, results, final_score):
         row += 1
 
     # =========================================================
-    # 🧠 ПОСТРОЧНЫЙ АНАЛИЗ
+    # 🧠 ПОСТРОЧНЫЙ АНАЛИЗ (FIXED)
     # =========================================================
     for k, v in results.items():
         if "Примечание" in k and not str(v).strip():
@@ -486,34 +482,40 @@ def make_expert_excel(c_info, results, final_score):
         is_absent = "нет" in val_str or v in [0, "0", False]
 
         # --- OLD OS ---
-        if "Windows XP" in k and v > 0:
+        if "ОС АРМ (Windows XP" in k and int(v) > 0:
             status = "КРИТИЧНО"
             rec = "Используются устаревшие ОС. Высокий риск компрометации."
             std = "ISO 27001"
 
-        # --- OVERCOMMIT ---
-        elif phys > 0 and virt / max(phys, 1) > 15:
-            status = "РИСК"
-            rec = f"Высокая плотность VM ({virt}/{phys}). Возможна деградация."
-            std = "Capacity Mgmt"
-
-        # --- NETWORK FAILOVER ---
-        elif back_speed > 0 and main_speed > 0 and back_speed < main_speed * 0.3:
-            status = "ВНИМАНИЕ"
-            rec = "Резервный канал значительно слабее основного."
-            std = "BCP"
-
-        # --- DEVSECOPS ---
-        elif k == "4.2. CICD" and has_cicd and not has_siem:
-            status = "РИСК"
-            rec = "CI/CD без мониторинга — риск supply-chain атак."
-            std = "DevSecOps"
-
-        # --- FINANCE INDUSTRY ---
-        elif "банк" in industry.lower() and not has_siem:
+        # --- MFA ---
+        elif k == "MFA (Аутентификация)" and is_absent:
             status = "КРИТИЧНО"
-            rec = "Для финсектора требуется SIEM."
-            std = "Регулятор РК"
+            rec = "Отсутствует MFA — основной вектор атак (phishing / brute force)."
+            std = "Zero Trust"
+
+        # --- SIEM ---
+        elif k == "SIEM (Мониторинг)" and is_absent:
+            status = "РИСК"
+            rec = "Нет централизованного мониторинга событий безопасности."
+            std = "SOC"
+
+        # --- EDR ---
+        elif k == "EDR/XDR (Точки)" and is_absent:
+            status = "РИСК"
+            rec = "Нет защиты endpoint уровня detection & response."
+            std = "Endpoint Security"
+
+        # --- NGFW ---
+        elif k == "1.2.7. NGFW" and is_absent:
+            status = "КРИТИЧНО"
+            rec = "Отсутствует NGFW — нет защиты периметра."
+            std = "Perimeter Security"
+
+        # --- BACKUP ---
+        elif k == "Резервное копирование" and is_absent:
+            status = "FATAL"
+            rec = "Нет резервного копирования. Риск полной потери бизнеса."
+            std = "BCP / ISO 22301"
 
         # --- DEFAULT ---
         elif is_absent:
@@ -521,7 +523,6 @@ def make_expert_excel(c_info, results, final_score):
             rec = "Отсутствует элемент. Требуется оценка."
             std = "Best Practice"
 
-        # --- WRITE ---
         row_vals = [k, str(v), status, rec, std]
 
         for col_idx, value in enumerate(row_vals, 1):
@@ -545,7 +546,7 @@ def make_expert_excel(c_info, results, final_score):
         ws.column_dimensions[col].width = width
 
     wb.save(output)
-    return output.getvalue(), datetime.now().strftime("%d.%m.%Y %H:%M")
+    return output.getvalue(), datetime.now().strftime("%d.%m.%Y %H:%М")
 
 # --- ФИНАЛ ---
 st.divider()
