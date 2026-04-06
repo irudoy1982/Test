@@ -26,7 +26,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник Технический аудит ИТ и ИБ (2026) v7.0F")
+st.title("📋 Опросник Технический аудит ИТ и ИБ (2026) v7.0H")
 
 # --- ИНСТРУКЦИЯ ДЛЯ ПОЛЬЗОВАТЕЛЯ ---
 with st.expander("📖 Инструкция по заполнению (нажмите, чтобы развернуть)"):
@@ -53,9 +53,21 @@ col_h1, col_h2 = st.columns(2)
 
 with col_h1:
     client_info['Город'] = st.text_input("Город*", help="Укажите город фактического нахождения головного офиса.")
-    industry = st.selectbox("Сфера деятельности компании", 
-                       ["Финтех / Банки", "Ритейл / E-commerce", "Производство", "IT / Разработка", "Госсектор", "Другое"],
-                       help="Отрасль влияет на профиль угроз и регуляторные требования (например, PCI DSS или 152-ФЗ).")
+    industry_options = ["Финтех / Банки", "Ритейл / E-commerce", "Производство", "IT / Разработка", "Госсектор", "Другое"]
+selected_ind = st.selectbox(
+    "Сфера деятельности компании*", 
+    [""] + industry_options, # Добавляем пустую строку, чтобы заставить выбрать
+    format_func=lambda x: "Выберите сферу..." if x == "" else x,
+    help="Отрасль влияет на профиль угроз и регуляторные требования."
+)
+
+if selected_ind == "Другое":
+    other_ind = st.text_input("Укажите вашу сферу деятельности*", help="Введите отрасль вручную")
+    industry = other_ind
+else:
+    industry = selected_ind
+
+client_info['Сфера деятельности'] = industry
     client_info['Наименование компании'] = st.text_input("Наименование компании*", help="Официальное или сокращенное название юрлица.")
 
     site_input = st.text_input("Сайт компании*", key="site_field", placeholder="example.kz", help="Используется для анализа внешнего цифрового отпечатка.")
@@ -464,4 +476,4 @@ if st.button("📊 Сформировать экспертный отчет", di
         st.success("Отчет готов!")
         st.download_button("📥 Скачать отчет", report_bytes, f"Audit_{client_info['Наименование компании']}.xlsx")
 
-st.info("Khalil Audit System v7.0F | Almaty 2026")
+st.info("Khalil Audit System v7.0G | Almaty 2026")
