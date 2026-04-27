@@ -356,136 +356,178 @@ def make_expert_excel(c_info, results, final_score):
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Executive Audit Report"
-    
-    # Стилизация
+    ws.title = "CISO Report"
+
+    # --- СТИЛИ ---
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
-    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-    
-    # Шапка
-    ws.merge_cells('A1:E2')
-    ws['A1'] = "СТРАТЕГИЧЕСКИЙ ОТЧЕТ ПО ИТ-ИНФРАСТРУКТУРЕ И КИБЕРБЕЗОПАСНОСТИ (CISO/CTO VIEW)"
-    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-    ws['A1'].font = Font(bold=True, size=14, color="1F4E78")
+    bold_font = Font(bold=True)
+    border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                    top=Side(style='thin'), bottom=Side(style='thin'))
 
-    # Сбор данных о клиенте
-    curr_row = 4
-    for k, v in c_info.items():
-        ws.cell(row=curr_row, column=1, value=k).font = Font(bold=True)
-        ws.cell(row=curr_row, column=2, value=str(v))
-        curr_row += 1
-    
-    curr_row += 2
-    headers = ["Параметр", "Значение", "Статус", "Рекомендация (Strategic Analysis)", "Стандарт / Регулятор"]
-    for i, h in enumerate(headers, 1):
-        cell = ws.cell(row=curr_row, column=i, value=h)
+    def write_block_title(row, text):
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+        cell = ws.cell(row=row, column=1, value=text)
         cell.fill = header_fill
         cell.font = white_font
-    curr_row += 1
+        cell.alignment = Alignment(horizontal='center')
+        return row + 1
 
-    # --- СТРАТЕГИЧЕСКИЙ КОНТЕКСТ (КОРРЕЛЯЦИИ) ---
-    industry = c_info.get("Сфера деятельности", "Другое")
-    is_fintech = any(x in industry for x in ["Финтех", "Банки", "Платежные"])
-    has_dev = results.get('4.1. Разработчики', 0) > 0
+    def write_kv(row, key, value):
+        ws.cell(row=row, column=1, value=key).font = bold_font
+        ws.cell(row=row, column=2, value=value)
+        return row + 1
+
+    row = 1
+
+    # --- 1. EXECUTIVE SUMMARY ---
+    row = write_block_title(row, "EXECUTIVE SUMMARY (CISO VIEW)")
+
+    # Модель зрелости
+    if final_score < 20:
+        maturity = "Initial"
+    elif final_score < 40:
+        maturity = "Basic"
+    elif final_score < 60:
+        maturity = "Managed"
+    elif final_score < 80:
+        maturity = "Defined"
+    else:
+        maturity = "Optimized"
+
+    industry = c_info.get("Сфера деятельности", "Не указано")
     total_arm = results.get('1.1. Всего АРМ', 0)
-    
-    # Проверка резервного канала
-    back_val = str(results.get('1.2.2. Резервный канал', "")).lower()
-    no_backup = "нет" in back_val or "0 mbit" in back_val
+
+    row = write_kv(row, "Компания", c_info.get("Наименование компании"))
+    row = write_kv(row, "Отрасль", industry)
+    row = write_kv(row, "Уровень зрелости", f"{maturity} ({final_score}%)")
+
+    verdict = "Инфраструктура частично управляемая, но содержит критические риски."
+    if final_score > 70:
+        verdict = "Инфраструктура зрелая, требуется точечная оптимизация."
+    elif final_score < 40:
+        verdict = "Низкий уровень зрелости. Высокая вероятность инцидентов."
+
+    row = write_kv(row, "Вердикт CISO", verdict)
+
+    row += 1
+
+    # --- 2. ТОП РИСКИ ---
+    row = write_block_title(row, "TOP-5 CRITICAL RISKS")
+
+    risks = []
+
+    if results.get("Резервное копирование") in [None, "", "Нет"]:
+        risks.append("Отсутствует резервное копирование (риск полной потери бизнеса)")
+
+    if results.get("MFA") == "Нет":
+        risks.append("Отсутствует MFA (компрометация учетных записей)")
+
+    if "Windows XP/Vista/7/8" in str(results):
+        risks.append("Используются устаревшие ОС")
+
+    if results.get("SIEM") == "Нет":
+        risks.append("Нет мониторинга безопасности (атаки незаметны)")
+
+    if "0 Mbit" in str(results.get("1.2.2. Резервный канал", "")):
+        risks.append("Нет резервного интернет-канала (SPOF)")
+
+    for i, r in enumerate(risks[:5], 1):
+        ws.cell(row=row, column=1, value=f"{i}. {r}")
+        row += 1
+
+    row += 1
+
+    # --- 3. ATTACK SCENARIO ---
+    row = write_block_title(row, "LIKELY ATTACK SCENARIO")
+
+    scenario = [
+        "1. Подбор пароля (Password Spraying)",
+        "2. Отсутствие MFA → доступ получен",
+        "3. Нет SIEM → атака не обнаружена",
+        "4. Распространение по сети",
+        "5. Шифрование или утечка данных"
+    ]
+
+    for step in scenario:
+        ws.cell(row=row, column=1, value=step)
+        row += 1
+
+    row += 1
+
+    # --- 4. ROADMAP ---
+    row = write_block_title(row, "SECURITY ROADMAP")
+
+    roadmap = {
+        "0-3 месяца": [
+            "Внедрить MFA",
+            "Настроить резервное копирование (3-2-1)",
+            "Обновить устаревшие ОС"
+        ],
+        "3-6 месяцев": [
+            "Внедрить SIEM",
+            "Сегментация сети",
+            "Внедрить EDR"
+        ],
+        "6-12 месяцев": [
+            "Zero Trust модель",
+            "SOC / мониторинг 24/7",
+            "Автоматизация реагирования"
+        ]
+    }
+
+    for phase, actions in roadmap.items():
+        ws.cell(row=row, column=1, value=phase).font = bold_font
+        row += 1
+        for act in actions:
+            ws.cell(row=row, column=2, value=f"- {act}")
+            row += 1
+
+    row += 1
+
+    # --- 5. ДЕТАЛЬНЫЙ АНАЛИЗ ---
+    row = write_block_title(row, "DETAILED TECHNICAL ANALYSIS")
+
+    headers = ["Параметр", "Значение", "Статус", "Риск", "Рекомендация"]
+    for i, h in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=i, value=h)
+        cell.fill = header_fill
+        cell.font = white_font
+
+    row += 1
 
     for k, v in results.items():
-        if "Примечание" in k and not str(v).strip(): continue
-        
-        status = "В норме"
-        rec = "Параметр соответствует гигиене ИТ. Рекомендуется плановый контроль."
-        std = "N/A"
+        status = "OK"
+        risk = "Низкий"
+        rec = "Контроль в рамках регламента"
+
         val_str = str(v).lower()
-        is_absent = "нет" in val_str or v is False or v == 0 or v == "0"
 
-        # 1. СТАРЫЕ АРМ (WINDOWS XP/7/8) - КРИТИКА CISO
-        if "ОС АРМ (Windows XP/Vista/7/8)" in k:
-            if isinstance(v, (int, float)) and v > 0:
-                std = "СТ РК ISO/IEC 27001 / NIST"
-                status = "КРИТИЧНО"
-                rec = (f"CISO WARNING: {v} устройств являются 'дырой' в периметре. Эксплойты для этих ОС доступны "
-                       "в открытом виде. Рекомендация: Полная изоляция в карантинный VLAN без доступа к КСП "
-                       "и немедленная замена. Использование таких ОС в 2026 году — прямой риск шифрования всей сети.")
+        if "нет" in val_str or v == 0:
+            status = "ПРОБЛЕМА"
+            risk = "Средний"
+            rec = "Рекомендуется внедрение"
 
-        # 2. РЕЗЕРВИРОВАНИЕ КАНАЛА (SPOF) - КРИТИКА CTO
-        elif "1.2.2. Резервный канал" in k:
-            std = "ISO 22301 (BCM)"
-            if no_backup:
-                status = "ВЫСОКИЙ РИСК"
-                rec = ("Единая точка отказа (SPOF). Отсутствие резервного интернет-канала делает бизнес полностью "
-                       "уязвимым к авариям на стороне провайдера. Риск простоя 100%. Необходимо подключение "
-                       "второго оператора с настроенным автоматическим переключением (BGP/IP SLA).")
-
-        # 3. EXCHANGE ON-PREM (STRATEGY)
-        elif "1.5.1. Почтовая система" in k and "exchange (on-prem)" in val_str:
-            std = "NIST SP 800-45"
-            status = "ВНИМАНИЕ"
-            rec = ("Рекомендация CTO: Проверить подписки Exchange Server SE (Subscription Edition). "
-                   "On-prem версии без SE перестают получать патчи безопасности. Обязательно внедрить MFA "
-                   "для веб-доступа (OWA), иначе риск компрометации через Password Spraying критический.")
-
-        # 4. КОРРЕЛЯЦИЯ: SIEM + ОТРАСЛЬ + МАСШТАБ
-        elif "SIEM" in k:
-            std = "ГТС РК / НКЦБ"
-            if is_absent:
-                if is_fintech or total_arm > 150:
-                    status = "КРИТИЧНО"
-                    rec = (f"Для сектора '{industry}' отсутствие SIEM — это нарушение комплаенса РК. "
-                           "Вы не видите действий атакующего внутри сети. Срочно внедрить мониторинг 24/7.")
-                else:
-                    status = "РИСК"
-                    rec = "Отсутствие корреляции событий не позволяет вовремя обнаружить атаку. Рекомендуется ELK или аналоги."
-
-        # 5. КОРРЕЛЯЦИЯ: WAF + РАЗРАБОТКА
-        elif "WAF" in k:
-            std = "OWASP Top 10"
-            if is_absent and (has_dev or is_fintech):
-                status = "КРИТИЧНО"
-                rec = "При наличии собственной разработки веб-сервисы без WAF — это приглашение для хакеров. Риск кражи БД через SQLi/XSS."
-
-        # 6. РЕЗЕРВНОЕ КОПИРОВАНИЕ (FATAL RISK)
-        elif "Резервное копирование" in k:
-            std = "СТ РК / ISO 22301"
-            if is_absent:
-                status = "FATAL ERROR"
-                rec = ("Терминальный риск. Отсутствие бэкапов означает, что бизнес закроется после первого инцидента. "
-                       "Срочно внедрить стратегию 3-2-1 с хранением одной копии вне сети (Air-gapped).")
-            else:
-                rec = "Бэкапы есть. Проверьте неизменяемость (Immutable) данных для защиты от программ-вымогателей."
-
-        # 7. MFA (КЛЮЧЕВОЙ РИСК)
-        elif "MFA" in k and is_absent:
-            std = "NIST 800-63"
+        if "резервное копирование" in k.lower() and ("нет" in val_str):
             status = "КРИТИЧНО"
-            rec = "Самый дешевый и эффективный способ защиты. Без MFA риск взлома через скомпрометированный пароль админа — 99%."
+            risk = "Максимальный"
+            rec = "Срочно внедрить backup (3-2-1, immutable)"
 
-        # 8. DLP (ДЛЯ ФИНТЕХА)
-        elif "DLP" in k and is_absent and is_fintech:
-            status = "ВЫСОКИЙ РИСК"
-            rec = "Для финтеха утечка клиентских данных — это отзыв лицензии и суды. Срочно внедрить контроль каналов передачи (Web/Email/USB)."
+        if "mfa" in k.lower() and ("нет" in val_str):
+            status = "КРИТИЧНО"
+            risk = "Максимальный"
+            rec = "Включить MFA для всех пользователей"
 
-        # Отрисовка строки
-        row_vals = [k, str(v), status, rec, std]
-        for col_idx, value in enumerate(row_vals, 1):
-            cell = ws.cell(row=curr_row, column=col_idx, value=value)
-            cell.border = border
-            cell.alignment = Alignment(wrapText=True, vertical='top')
-            
-            # Цветовая индикация
-            if col_idx == 3:
-                if status == "FATAL ERROR": cell.font = Font(color="8B0000", bold=True)
-                elif status == "КРИТИЧНО": cell.font = Font(color="FF0000", bold=True)
-                elif status in ["ВЫСОКИЙ РИСК", "РИСК", "ВНИМАНИЕ"]: cell.font = Font(color="FF8C00", bold=True)
-        
-        curr_row += 1
+        ws.cell(row=row, column=1, value=k)
+        ws.cell(row=row, column=2, value=str(v))
+        ws.cell(row=row, column=3, value=status)
+        ws.cell(row=row, column=4, value=risk)
+        ws.cell(row=row, column=5, value=rec)
 
-    # Ширина колонок
-    widths = {'A': 35, 'B': 25, 'C': 15, 'D': 65, 'E': 25}
+        row += 1
+
+    # --- ШИРИНА ---
+    widths = {'A': 35, 'B': 25, 'C': 15, 'D': 25, 'E': 50}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
 
