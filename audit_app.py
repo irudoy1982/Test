@@ -335,43 +335,105 @@ st.subheader("Информационная безопасность")
 
 col1, col2, col3 = st.columns(3)
 
-# --- КОЛОНКА 1 (база ИБ) ---
+errors = []
+
+# --- КОЛОНКА 1 (БАЗОВАЯ ЗАЩИТА) ---
 with col1:
-    siem = st.checkbox("SIEM", key="siem")
-    dlp = st.checkbox("DLP", key="dlp")
-    edr = st.checkbox("EDR", key="edr")
-    waf = st.checkbox("WAF", key="waf")
-    mfa = st.checkbox("MFA", key="mfa")
-    patch = st.checkbox("Patch Management", key="patch_mgmt")
+    st.markdown("**Базовая защита**")
 
-# --- КОЛОНКА 2 (доступ и сеть) ---
+    siem = st.checkbox("SIEM (система мониторинга и корреляции событий ИБ)", key="siem")
+    siem_vendor = st.text_input("Производитель SIEM", key="siem_v") if siem else ""
+
+    dlp = st.checkbox("DLP (предотвращение утечек данных)", key="dlp")
+    dlp_vendor = st.text_input("Производитель DLP", key="dlp_v") if dlp else ""
+
+    edr = st.checkbox("EDR (защита рабочих станций)", key="edr")
+    edr_vendor = st.text_input("Производитель EDR", key="edr_v") if edr else ""
+
+    email_sec = st.checkbox("Защита почты (антифишинг / антиспам)", key="email_sec")
+    email_vendor = st.text_input("Производитель защиты почты", key="email_v") if email_sec else ""
+
+
+# --- КОЛОНКА 2 (СЕТЬ И ДОСТУП) ---
 with col2:
-    pam = st.checkbox("PAM", key="pam")
-    nac = st.checkbox("NAC (контроль доступа к сети)", key="nac")
-    iam = st.checkbox("IAM (управление доступом)", key="iam")
-    vpn = st.checkbox("VPN", key="vpn")
-    ids = st.checkbox("IDS/IPS", key="ids")
-    ndr = st.checkbox("NDR / анализ трафика", key="ndr")
+    st.markdown("**Сеть и доступ**")
 
-# --- КОЛОНКА 3 (SOC / advanced) ---
+    waf = st.checkbox("WAF (защита веб-приложений)", key="waf")
+    waf_vendor = st.text_input("Производитель WAF", key="waf_v") if waf else ""
+
+    ids = st.checkbox("IDS/IPS (обнаружение и предотвращение атак)", key="ids")
+    ids_vendor = st.text_input("Производитель IDS/IPS", key="ids_v") if ids else ""
+
+    nac = st.checkbox("NAC (контроль доступа устройств в сеть)", key="nac")
+    nac_vendor = st.text_input("Производитель NAC", key="nac_v") if nac else ""
+
+    ztna = st.checkbox("ZTNA (Zero Trust Network Access)", key="ztna")
+    ztna_vendor = st.text_input("Производитель ZTNA", key="ztna_v") if ztna else ""
+
+
+# --- КОЛОНКА 3 (ADVANCED / SOC) ---
 with col3:
-    xdr = st.checkbox("XDR", key="xdr")
-    mdr = st.checkbox("MDR", key="mdr")
-    soar = st.checkbox("SOAR", key="soar")
-    email_sec = st.checkbox("Защита почты", key="email_sec")
-    vuln = st.checkbox("Управление уязвимостями", key="vuln_mgmt")
-    awareness = st.checkbox("Awareness (обучение сотрудников)", key="awareness")
+    st.markdown("**Расширенная защита**")
 
-# --- ДОП БЛОК (процессы и учет) ---
+    xdr = st.checkbox("XDR (расширенное обнаружение угроз)", key="xdr")
+    xdr_vendor = st.text_input("Производитель XDR", key="xdr_v") if xdr else ""
+
+    mdr = st.checkbox("MDR (аутсорс мониторинга ИБ)", key="mdr")
+    mdr_vendor = st.text_input("Провайдер MDR", key="mdr_v") if mdr else ""
+
+    soar = st.checkbox("SOAR (автоматизация реагирования)", key="soar")
+    soar_vendor = st.text_input("Производитель SOAR", key="soar_v") if soar else ""
+
+    ndr = st.checkbox("NDR (анализ сетевого трафика)", key="ndr")
+    ndr_vendor = st.text_input("Производитель NDR", key="ndr_v") if ndr else ""
+
+
+# --- ДОПОЛНИТЕЛЬНО ---
+st.markdown("**Дополнительные меры защиты**")
+
 col4, col5 = st.columns(2)
 
 with col4:
-    ir = st.checkbox("Управление инцидентами (IR)", key="ir")
-    asset = st.checkbox("Учет активов (Asset Management)", key="asset")
+    anti_ddos = st.checkbox("Anti-DDoS (защита от DDoS-атак)", key="ddos")
+    ddos_vendor = st.text_input("Производитель Anti-DDoS", key="ddos_v") if anti_ddos else ""
+
+    vuln_scan = st.checkbox("Сканер уязвимостей", key="vuln")
+    vuln_vendor = st.text_input("Производитель сканера", key="vuln_v") if vuln_scan else ""
 
 with col5:
-    data_class = st.checkbox("Классификация данных", key="data_class")
-    log_mgmt = st.checkbox("Централизованное логирование", key="log_mgmt")
+    dast = st.checkbox("DAST (динамический анализ безопасности приложений)", key="dast")
+    dast_vendor = st.text_input("Производитель DAST", key="dast_v") if dast else ""
+
+    sast = st.checkbox("SAST (статический анализ кода)", key="sast")
+    sast_vendor = st.text_input("Производитель SAST", key="sast_v") if sast else ""
+
+
+# --- ВАЛИДАЦИЯ ---
+def check_required(name, enabled, vendor):
+    if enabled and not vendor:
+        errors.append(f"Не указан производитель для: {name}")
+
+check_required("SIEM", siem, siem_vendor)
+check_required("DLP", dlp, dlp_vendor)
+check_required("EDR", edr, edr_vendor)
+check_required("Защита почты", email_sec, email_vendor)
+check_required("WAF", waf, waf_vendor)
+check_required("IDS/IPS", ids, ids_vendor)
+check_required("NAC", nac, nac_vendor)
+check_required("ZTNA", ztna, ztna_vendor)
+check_required("XDR", xdr, xdr_vendor)
+check_required("MDR", mdr, mdr_vendor)
+check_required("SOAR", soar, soar_vendor)
+check_required("NDR", ndr, ndr_vendor)
+check_required("Anti-DDoS", anti_ddos, ddos_vendor)
+check_required("Сканер уязвимостей", vuln_scan, vuln_vendor)
+check_required("DAST", dast, dast_vendor)
+check_required("SAST", sast, sast_vendor)
+
+if errors:
+    st.error("Заполните обязательные поля:")
+    for e in errors:
+        st.write(f"- {e}")
 
 # --- БЛОК 3: WEB-РЕСУРСЫ ---
 st.header("Блок 3: Web-ресурсы")
