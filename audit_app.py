@@ -331,37 +331,47 @@ if st.toggle("ИС организации", key="is_toggle", help="Бизнес-
 st.divider()
 
 # --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
-st.header("Блок 2: Информационная Безопасность")
-if st.toggle("Средства защиты", key="ib_toggle"):
-    ib_systems = {
-        "EPP (Антивирус)": 10, "DLP (Утечки)": 15, "PAM (Привилегии)": 10,
-        "SIEM (Мониторинг)": 20, "VM (Уязвимости)": 10, "EDR/XDR (Точки)": 15,
-        "WAF (Веб)": 10, "Sandbox (Песочница)": 5, "IDS/IPS (Атаки)": 5, "IDM/IGA (Доступ)": 5,
-        "MFA (Аутентификация)": 15, "Anti-DDoS": 15, "Patch Management": "",
-"NAC (Network Access Control)": "",
-"XDR": "",
-"MDR": "",
-"NDR/NAD": "",
-"SOAR": "",
-"Защита почты": "",
-"IAM (управление учетными записями)": ""
-    }
-    col_ib1, col_ib2 = st.columns(2)
-    items = list(ib_systems.items())
-    for i, (label, pts) in enumerate(items):
-        target_col = col_ib1 if i < 6 else col_ib2
-        with target_col:
-            if st.checkbox(label, key=f"fib_{label}"):
-                v_n = st.text_input(f"Вендор {label}*", key=f"fvn_{label}")
-                data[label] = f"Да ({v_n})"
-                if not v_n: validation_errors.append(f"Укажите вендора для {label}")
-                score += pts
-            else:
-                data[label] = "Нет"
-    
-    data['Блок 2. Примечание'] = st.text_area("Примечание к разделу ИБ", placeholder="Планы по внедрению ИБ-решений...", key="note_ib")
+st.subheader("Информационная безопасность")
 
-st.divider()
+col1, col2, col3 = st.columns(3)
+
+# --- КОЛОНКА 1 (база ИБ) ---
+with col1:
+    siem = st.checkbox("SIEM", key="siem")
+    dlp = st.checkbox("DLP", key="dlp")
+    edr = st.checkbox("EDR", key="edr")
+    waf = st.checkbox("WAF", key="waf")
+    mfa = st.checkbox("MFA", key="mfa")
+    patch = st.checkbox("Patch Management", key="patch_mgmt")
+
+# --- КОЛОНКА 2 (доступ и сеть) ---
+with col2:
+    pam = st.checkbox("PAM", key="pam")
+    nac = st.checkbox("NAC (контроль доступа к сети)", key="nac")
+    iam = st.checkbox("IAM (управление доступом)", key="iam")
+    vpn = st.checkbox("VPN", key="vpn")
+    ids = st.checkbox("IDS/IPS", key="ids")
+    ndr = st.checkbox("NDR / анализ трафика", key="ndr")
+
+# --- КОЛОНКА 3 (SOC / advanced) ---
+with col3:
+    xdr = st.checkbox("XDR", key="xdr")
+    mdr = st.checkbox("MDR", key="mdr")
+    soar = st.checkbox("SOAR", key="soar")
+    email_sec = st.checkbox("Защита почты", key="email_sec")
+    vuln = st.checkbox("Управление уязвимостями", key="vuln_mgmt")
+    awareness = st.checkbox("Awareness (обучение сотрудников)", key="awareness")
+
+# --- ДОП БЛОК (процессы и учет) ---
+col4, col5 = st.columns(2)
+
+with col4:
+    ir = st.checkbox("Управление инцидентами (IR)", key="ir")
+    asset = st.checkbox("Учет активов (Asset Management)", key="asset")
+
+with col5:
+    data_class = st.checkbox("Классификация данных", key="data_class")
+    log_mgmt = st.checkbox("Централизованное логирование", key="log_mgmt")
 
 # --- БЛОК 3: WEB-РЕСУРСЫ ---
 st.header("Блок 3: Web-ресурсы")
