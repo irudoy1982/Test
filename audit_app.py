@@ -337,7 +337,14 @@ if st.toggle("Средства защиты", key="ib_toggle"):
         "EPP (Антивирус)": 10, "DLP (Утечки)": 15, "PAM (Привилегии)": 10,
         "SIEM (Мониторинг)": 20, "VM (Уязвимости)": 10, "EDR/XDR (Точки)": 15,
         "WAF (Веб)": 10, "Sandbox (Песочница)": 5, "IDS/IPS (Атаки)": 5, "IDM/IGA (Доступ)": 5,
-        "MFA (Аутентификация)": 15, "Anti-DDoS": 15
+        "MFA (Аутентификация)": 15, "Anti-DDoS": 15, "Patch Management": "",
+"NAC (Network Access Control)": "",
+"XDR": "",
+"MDR": "",
+"NDR/NAD": "",
+"SOAR": "",
+"Защита почты": "",
+"IAM (управление учетными записями)": ""
     }
     col_ib1, col_ib2 = st.columns(2)
     items = list(ib_systems.items())
