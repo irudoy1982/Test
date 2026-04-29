@@ -331,21 +331,18 @@ if st.toggle("ИС организации", key="is_toggle", help="Бизнес-
 st.divider()
 
 # --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
-st.markdown("## 🔐 Информационная безопасность")
+st.markdown("Информационная безопасность")
 
-enable_security = st.toggle("Включить оценку информационной безопасности", value=False)
+enable_security = st.toggle("Включить блок ИБ", value=False)
 
 if enable_security:
-
-    st.subheader("Информационная безопасность")
 
     errors = []
 
     # =========================
     # ENDPOINT SECURITY
     # =========================
-    st.markdown("### 🖥 Защита конечных устройств")
-
+    st.markdown("Защита конечных устройств")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -359,15 +356,14 @@ if enable_security:
         xdr = st.checkbox("XDR (расширенная защита)", key="xdr")
         xdr_v = st.text_input("Производитель XDR", key="xdr_v") if xdr else ""
 
-        mdr = st.checkbox("MDR (аутсорс мониторинга)", key="mdr")
+        mdr = st.checkbox("MDR (внешний мониторинг)", key="mdr")
         mdr_v = st.text_input("Провайдер MDR", key="mdr_v") if mdr else ""
 
 
     # =========================
     # DATA SECURITY
     # =========================
-    st.markdown("### 📊 Защита данных")
-
+    st.markdown("Защита данных")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -385,8 +381,7 @@ if enable_security:
     # =========================
     # NETWORK SECURITY
     # =========================
-    st.markdown("### 🌐 Сетевая безопасность")
-
+    st.markdown("Сетевая безопасность")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -410,8 +405,7 @@ if enable_security:
     # =========================
     # APPLICATION SECURITY
     # =========================
-    st.markdown("### 🧩 Безопасность приложений")
-
+    st.markdown("Безопасность приложений")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -426,8 +420,7 @@ if enable_security:
     # =========================
     # ACCESS SECURITY
     # =========================
-    st.markdown("### 🔐 Управление доступом")
-
+    st.markdown("Управление доступом")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -445,8 +438,7 @@ if enable_security:
     # =========================
     # SOC
     # =========================
-    st.markdown("### 📡 Мониторинг и реагирование")
-
+    st.markdown("Мониторинг и реагирование")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -461,10 +453,19 @@ if enable_security:
     # =========================
     # ДОПОЛНИТЕЛЬНО
     # =========================
-    st.markdown("### 🔍 Дополнительно")
+    st.markdown("Дополнительно")
+    col1, col2 = st.columns(2)
 
-    vuln = st.checkbox("Сканер уязвимостей", key="vuln")
-    vuln_v = st.text_input("Производитель сканера", key="vuln_v") if vuln else ""
+    with col1:
+        vuln = st.checkbox("Сканер уязвимостей", key="vuln")
+        vuln_v = st.text_input("Производитель сканера", key="vuln_v") if vuln else ""
+
+        patch = st.checkbox("Patch Management (управление обновлениями)", key="patch")
+        patch_v = st.text_input("Производитель Patch Management", key="patch_v") if patch else ""
+
+    with col2:
+        nad = st.checkbox("NAD (Network Attack Discovery)", key="nad")
+        nad_v = st.text_input("Производитель NAD", key="nad_v") if nad else ""
 
 
     # =========================
@@ -482,7 +483,9 @@ if enable_security:
         ("SAST", sast, sast_v), ("DAST", dast, dast_v),
         ("IAM", iam, iam_v), ("MFA", mfa, mfa_v), ("PAM", pam, pam_v),
         ("SIEM", siem, siem_v), ("SOAR", soar, soar_v),
-        ("Сканер уязвимостей", vuln, vuln_v)
+        ("Сканер уязвимостей", vuln, vuln_v),
+        ("Patch Management", patch, patch_v),
+        ("NAD", nad, nad_v)
     ]:
         check(name, enabled, vendor)
 
