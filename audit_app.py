@@ -538,7 +538,6 @@ def make_expert_excel(c_info, results, final_score):
     green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
     white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 
-    # --- ВСПОМОГАТЕЛЬНЫЕ ---
     def write_block(row, text):
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
         cell = ws.cell(row=row, column=1, value=text)
@@ -575,7 +574,7 @@ def make_expert_excel(c_info, results, final_score):
     row = write_kv(row, "Уровень зрелости", f"{final_score}% — {maturity}")
     row += 1
 
-    # --- РИСКИ ---
+    # --- КЛЮЧЕВЫЕ РИСКИ (расширенные) ---
     row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ")
     risks = []
 
@@ -583,15 +582,42 @@ def make_expert_excel(c_info, results, final_score):
     b_spd = results.get("_back_speed", 0)
 
     if b_spd == 0:
-        risks.append("Критично: отсутствует резервный канал.")
+        risks.append(
+            "КРИТИЧНО: Отсутствует резервный интернет-канал. "
+            "При отказе основного провайдера происходит полная остановка бизнес-сервисов, "
+            "включая доступ к облакам, почте и внешним системам."
+        )
     elif b_spd < (m_spd / 2):
-        risks.append("Важно: слабый резервный канал.")
+        risks.append(
+            "ВЫСОКИЙ РИСК: Резервный канал существенно уступает основному по пропускной способности. "
+            "При аварийном переключении возможна деградация сервисов, потеря производительности "
+            "и недоступность критичных систем."
+        )
 
     if results.get("Резервное копирование") == "Нет":
-        risks.append("Критично: нет резервного копирования.")
+        risks.append(
+            "КРИТИЧНО: Отсутствует система резервного копирования. "
+            "Любой сбой, атака ransomware или ошибка администратора приведёт к полной потере данных "
+            "без возможности восстановления."
+        )
 
     if results.get("MFA") == "Нет":
-        risks.append("Критично: нет MFA.")
+        risks.append(
+            "КРИТИЧНО: Отсутствует многофакторная аутентификация (MFA). "
+            "Компрометация пароля даёт злоумышленнику полный доступ к корпоративным системам."
+        )
+
+    if results.get("NGFW") in ["Нет", "", None]:
+        risks.append(
+            "ВЫСОКИЙ РИСК: Отсутствует NGFW. "
+            "Периметр сети не защищён от современных угроз (APT, exploit, lateral movement)."
+        )
+
+    if "RAID 0" in str(results.get("RAID-группы", "")) or "JBOD" in str(results.get("RAID-группы", "")):
+        risks.append(
+            "РИСК ДАННЫХ: Используется RAID без отказоустойчивости. "
+            "Выход из строя одного диска приведёт к потере всех данных."
+        )
 
     if not risks:
         risks.append("Критичных рисков не выявлено.")
@@ -602,54 +628,42 @@ def make_expert_excel(c_info, results, final_score):
 
     row += 1
 
-    # --- РЕКОМЕНДАЦИИ ---
+    # --- РЕКОМЕНДАЦИИ (с объяснением) ---
     row = write_block(row, "РЕКОМЕНДАЦИИ")
     recs = []
 
-    # Интернет
     if b_spd == 0:
-        recs.append("Подключить резервный канал (Cisco, Fortinet, Huawei).")
-    elif b_spd < (m_spd / 2):
-        recs.append("Увеличить резервный канал (Cisco, Fortinet, Huawei).")
+        recs.append(
+            "Рекомендуется подключить резервный интернет-канал от независимого провайдера. "
+            "Это обеспечит непрерывность бизнеса при авариях и сбоях."
+        )
 
-    # WiFi
-    if results.get("WiFi Контроллер") in ["Нет", "", None]:
-        recs.append("Внедрить Wi-Fi контроллер (Cisco, Huawei).")
-
-    # Backup
     if results.get("Резервное копирование") == "Нет":
-        recs.append("Внедрить резервное копирование (Veeam, Commvault, Veritas).")
+        recs.append(
+            "Внедрить систему резервного копирования (Veeam, Commvault, Veritas). "
+            "Это позволит восстановить данные после сбоев и кибератак."
+        )
 
-    # MFA / PAM
     if results.get("MFA") == "Нет":
-        recs.append("Внедрить управление доступом (CyberArk, WALLIX, Axidian, Netwrix, Fudo, JumpServer).")
+        recs.append(
+            "Внедрить MFA (CyberArk, WALLIX, Axidian, Netwrix). "
+            "Это значительно снижает риск компрометации учетных записей."
+        )
 
-    # NGFW
     if results.get("NGFW") in ["Нет", "", None]:
-        recs.append("Внедрить NGFW (Check Point, Palo Alto, Fortinet, Forcepoint, Cisco, Huawei).")
+        recs.append(
+            "Внедрить NGFW (Check Point, Palo Alto, Fortinet, Cisco, Huawei). "
+            "Это обеспечит защиту сети от современных угроз и контроль трафика."
+        )
 
-    # DLP
     if results.get("DLP") == "Нет":
-        recs.append("Внедрить DLP (Symantec, Forcepoint, Zecurion, ibatyr, Strac).")
-
-    # Шифрование
-    if results.get("DLP") == "Нет":
-        recs.append("Внедрить шифрование данных (Thales, Imperva, Гарда, Symantec).")
-
-    # IDS/IPS
-    if results.get("IDS/IPS") == "Нет":
-        recs.append("Внедрить IDS/IPS (Trend Micro, Forcepoint).")
-
-    # WAF
-    if results.get("WAF") == "Нет":
-        recs.append("Внедрить WAF (Check Point, Radware, A10, Cloudflare).")
-
-    # Anti-DDoS
-    if results.get("Anti-DDoS") == "Нет":
-        recs.append("Внедрить защиту от DDoS (F5, Radware, Check Point).")
+        recs.append(
+            "Внедрить DLP (Symantec, Forcepoint, Zecurion, ibatyr). "
+            "Это позволит предотвратить утечки конфиденциальной информации."
+        )
 
     if not recs:
-        recs.append("Рекомендуется плановое развитие инфраструктуры.")
+        recs.append("Рекомендуется регулярный аудит и развитие инфраструктуры.")
 
     for r in recs:
         ws.cell(row=row, column=1, value=f"- {r}")
@@ -668,32 +682,29 @@ def make_expert_excel(c_info, results, final_score):
 
     row += 1
 
+    exclude = [
+        "Город","Сфера деятельности","Наименование компании","Сайт компании",
+        "Email","ФИО контактного лица","Должность","Контактный телефон","Языки"
+    ]
+
     full_data = {}
     full_data.update(results)
-    full_data.update(c_info)
 
     for k, v in full_data.items():
-        if k.startswith("_"):
+        if k in exclude or k.startswith("_"):
             continue
 
         val_str = str(v).lower()
 
-        if "нет" in val_str or v == 0 or "не указан" in val_str:
+        if "нет" in val_str or v == 0:
             status = "Критично"
             risk = "Высокий"
-            rec = f"Отсутствует '{k}'. Требуется внедрение."
+            rec = f"Требуется внедрение '{k}'"
             fill = red_fill
-
-        elif "да" in val_str:
-            status = "Хорошо"
-            risk = "Низкий"
-            rec = f"'{k}' реализован."
-            fill = green_fill
-
         else:
             status = "Норма"
             risk = "Низкий"
-            rec = f"'{k}' без рисков."
+            rec = "-"
             fill = white_fill
 
         ws.cell(row=row, column=1, value=k)
@@ -707,7 +718,7 @@ def make_expert_excel(c_info, results, final_score):
 
         row += 1
 
-    for col in ['A', 'B', 'C', 'D', 'E']:
+    for col in ['A','B','C','D','E']:
         ws.column_dimensions[col].width = 30 if col != 'E' else 60
 
     wb.save(output)
