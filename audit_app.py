@@ -493,6 +493,30 @@ if web_active:
 st.divider()
 
 # --- БЛОК 4: РАЗРАБОТКА ---
+st.header("Блок 4: Разработка")
+dev_active = st.toggle("Разработка", key="dev_toggle")
+if dev_active:
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        dev_count = st.number_input("Кол-во разработчиков*", min_value=0, key="dev_cnt_f")
+        data['4.1. Разработчики'] = dev_count
+        cicd_active = st.checkbox("Используется CI/CD", key="cicd_f")
+        data['4.2. CICD'] = "Да" if cicd_active else "Нет"
+        if dev_count == 0: validation_errors.append("Укажите количество разработчиков")
+    with col_d2:
+        lang_list = ["Python", "JavaScript/TypeScript", "Java", "C# / .NET", "PHP", "Go", "C++", "Swift/Kotlin", "Другое"]
+        sel_langs = st.multiselect("Языки программирования*", lang_list, key="langs_f")
+        if not sel_langs:
+            validation_errors.append("Выберите языки разработки")
+            data['4.3. Языки разработки'] = "Не указаны"
+        elif "Другое" in sel_langs:
+            other_l = st.text_input("Укажите другие языки", key="other_langs_f")
+            data['4.3. Языки разработки'] = f"{', '.join([l for l in sel_langs if l != 'Другое'])}, {other_l}"
+        else:
+            data['4.3. Языки разработки'] = ", ".join(sel_langs)
+    data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
+
+# --- Отчет ---
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
