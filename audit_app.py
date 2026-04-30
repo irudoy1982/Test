@@ -367,13 +367,19 @@ if enable_security:
     with col1:
         epp = st.checkbox("EPP (антивирусная защита)", key="epp")
         epp_v = st.text_input("Производитель EPP", key="epp_v") if epp else ""
+        data['Блок 2. EPP'] = epp_v if epp else "Нет"
+        
         edr = st.checkbox("EDR (обнаружение и реагирование)", key="edr")
         edr_v = st.text_input("Производитель EDR", key="edr_v") if edr else ""
+        data['Блок 2. EDR'] = edr_v if edr else "Нет"
     with col2:
         xdr = st.checkbox("XDR (расширенная защита)", key="xdr")
         xdr_v = st.text_input("Производитель XDR", key="xdr_v") if xdr else ""
+        data['Блок 2. XDR'] = xdr_v if xdr else "Нет"
+        
         mdr = st.checkbox("MDR (внешний мониторинг)", key="mdr")
         mdr_v = st.text_input("Провайдер MDR", key="mdr_v") if mdr else ""
+        data['Блок 2. MDR'] = mdr_v if mdr else "Нет"
 
     # =========================
     # DATA SECURITY
@@ -383,11 +389,15 @@ if enable_security:
     with col1:
         dlp = st.checkbox("DLP (предотвращение утечек)", key="dlp")
         dlp_v = st.text_input("Производитель DLP", key="dlp_v") if dlp else ""
+        data['Блок 2. DLP'] = dlp_v if dlp else "Нет"
+        
         mail_sec = st.checkbox("Mail Security (защита почты)", key="mail_sec")
         mail_v = st.text_input("Производитель Mail Security", key="mail_v") if mail_sec else ""
+        data['Блок 2. Mail Security'] = mail_v if mail_sec else "Нет"
     with col2:
         casb = st.checkbox("CASB (контроль облаков)", key="casb")
         casb_v = st.text_input("Производитель CASB", key="casb_v") if casb else ""
+        data['Блок 2. CASB'] = casb_v if casb else "Нет"
 
     # =========================
     # NETWORK SECURITY
@@ -397,17 +407,27 @@ if enable_security:
     with col1:
         waf = st.checkbox("WAF (защита веб-приложений)", key="waf")
         waf_v = st.text_input("Производитель WAF", key="waf_v") if waf else ""
+        data['Блок 2. WAF'] = waf_v if waf else "Нет"
+        
         ddos = st.checkbox("Anti-DDoS (защита от атак)", key="ddos")
         ddos_v = st.text_input("Производитель Anti-DDoS", key="ddos_v") if ddos else ""
+        data['Блок 2. Anti-DDoS'] = ddos_v if ddos else "Нет"
+        
         nad = st.checkbox("NAD (Network Attack Discovery)", key="nad")
         nad_v = st.text_input("Производитель NAD", key="nad_v") if nad else ""
+        data['Блок 2. NAD'] = nad_v if nad else "Нет"
     with col2:
         ids = st.checkbox("IDS/IPS (сетевые атаки)", key="ids")
         ids_v = st.text_input("Производитель IDS/IPS", key="ids_v") if ids else ""
+        data['Блок 2. IDS/IPS'] = ids_v if ids else "Нет"
+        
         nac = st.checkbox("NAC (контроль доступа)", key="nac")
         nac_v = st.text_input("Производитель NAC", key="nac_v") if nac else ""
+        data['Блок 2. NAC'] = nac_v if nac else "Нет"
+        
         ztna = st.checkbox("ZTNA (Zero Trust доступ)", key="ztna")
         ztna_v = st.text_input("Производитель ZTNA", key="ztna_v") if ztna else ""
+        data['Блок 2. ZTNA'] = ztna_v if ztna else "Нет"
 
     # =========================
     # APPLICATION SECURITY
@@ -417,9 +437,11 @@ if enable_security:
     with col1:
         sast = st.checkbox("SAST (анализ кода)", key="sast")
         sast_v = st.text_input("Производитель SAST", key="sast_v") if sast else ""
+        data['Блок 2. SAST'] = sast_v if sast else "Нет"
     with col2:
         dast = st.checkbox("DAST (тестирование приложений)", key="dast")
         dast_v = st.text_input("Производитель DAST", key="dast_v") if dast else ""
+        data['Блок 2. DAST'] = dast_v if dast else "Нет"
 
     # =========================
     # ACCESS SECURITY
@@ -429,11 +451,15 @@ if enable_security:
     with col1:
         iam = st.checkbox("IAM (учетные записи)", key="iam")
         iam_v = st.text_input("Производитель IAM", key="iam_v") if iam else ""
+        data['Блок 2. IAM'] = iam_v if iam else "Нет"
+        
         mfa = st.checkbox("MFA (многофакторная аутентификация)", key="mfa")
         mfa_v = st.text_input("Производитель MFA", key="mfa_v") if mfa else ""
+        data['Блок 2. MFA'] = mfa_v if mfa else "Нет"
     with col2:
         pam = st.checkbox("PAM (привилегированный доступ)", key="pam")
         pam_v = st.text_input("Производитель PAM", key="pam_v") if pam else ""
+        data['Блок 2. PAM'] = pam_v if pam else "Нет"
 
     # =========================
     # SOC
@@ -443,9 +469,11 @@ if enable_security:
     with col1:
         siem = st.checkbox("SIEM (мониторинг событий)", key="siem")
         siem_v = st.text_input("Производитель SIEM", key="siem_v") if siem else ""
+        data['Блок 2. SIEM'] = siem_v if siem else "Нет"
     with col2:
         soar = st.checkbox("SOAR (автоматизация)", key="soar")
         soar_v = st.text_input("Производитель SOAR", key="soar_v") if soar else ""
+        data['Блок 2. SOAR'] = soar_v if soar else "Нет"
 
     # =========================
     # ДОПОЛНИТЕЛЬНО
@@ -455,9 +483,11 @@ if enable_security:
     with col1:
         vuln = st.checkbox("Сканер уязвимостей", key="vuln")
         vuln_v = st.text_input("Производитель сканера", key="vuln_v") if vuln else ""
+        data['Блок 2. Сканер уязвимостей'] = vuln_v if vuln else "Нет"
     with col2:
         patch = st.checkbox("Patch Management (управление обновлениями)", key="patch")
         patch_v = st.text_input("Производитель Patch Management", key="patch_v") if patch else ""
+        data['Блок 2. Patch Management'] = patch_v if patch else "Нет"
 
     # Валидация
     ib_items = [
@@ -553,7 +583,7 @@ def make_expert_excel(c_info, results, final_score):
     row = 1
 
     # --- ШАПКА ---
-    row = write_block(row, "ИНФОРМАЦИЯ О ЗАКАЗЧИКЕ")
+    row = write_block(row, "ИНФОРМАЦИОННЫЯ О ЗАКАЗЧИКЕ")
     row = write_kv(row, "Компания", c_info.get("Наименование компании"))
     row = write_kv(row, "ФИО", c_info.get("ФИО контактного лица"))
     row = write_kv(row, "Должность", c_info.get("Должность"))
@@ -574,7 +604,7 @@ def make_expert_excel(c_info, results, final_score):
     row = write_kv(row, "Уровень зрелости", f"{final_score}% — {maturity}")
     row += 1
 
-    # --- КЛЮЧЕВЫЕ РИСКИ (расширенные) ---
+    # --- КЛЮЧЕВЫЕ РИСКИ ---
     row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ")
     risks = []
 
@@ -584,39 +614,26 @@ def make_expert_excel(c_info, results, final_score):
     if b_spd == 0:
         risks.append(
             "КРИТИЧНО: Отсутствует резервный интернет-канал. "
-            "При отказе основного провайдера происходит полная остановка бизнес-сервисов, "
-            "включая доступ к облакам, почте и внешним системам."
+            "При отказе основного провайдера происходит полная остановка бизнес-сервисов."
         )
     elif b_spd < (m_spd / 2):
         risks.append(
-            "ВЫСОКИЙ РИСК: Резервный канал существенно уступает основному по пропускной способности. "
-            "При аварийном переключении возможна деградация сервисов, потеря производительности "
-            "и недоступность критичных систем."
+            "ВЫСОКИЙ РИСК: Резервный канал существенно уступает основному по пропускной способности."
         )
 
     if results.get("Резервное копирование") == "Нет":
         risks.append(
-            "КРИТИЧНО: Отсутствует система резервного копирования. "
-            "Любой сбой, атака ransomware или ошибка администратора приведёт к полной потере данных "
-            "без возможности восстановления."
+            "КРИТИЧНО: Отсутствует система резервного копирования. Данные под угрозой безвозвратной потери."
         )
 
     if results.get("MFA") == "Нет":
         risks.append(
-            "КРИТИЧНО: Отсутствует многофакторная аутентификация (MFA). "
-            "Компрометация пароля даёт злоумышленнику полный доступ к корпоративным системам."
+            "КРИТИЧНО: Отсутствует многофакторная аутентификация (MFA)."
         )
 
     if results.get("NGFW") in ["Нет", "", None]:
         risks.append(
-            "ВЫСОКИЙ РИСК: Отсутствует NGFW. "
-            "Периметр сети не защищён от современных угроз (APT, exploit, lateral movement)."
-        )
-
-    if "RAID 0" in str(results.get("RAID-группы", "")) or "JBOD" in str(results.get("RAID-группы", "")):
-        risks.append(
-            "РИСК ДАННЫХ: Используется RAID без отказоустойчивости. "
-            "Выход из строя одного диска приведёт к потере всех данных."
+            "ВЫСОКИЙ РИСК: Отсутствует NGFW. Периметр сети не защищен от современных угроз."
         )
 
     if not risks:
@@ -628,42 +645,21 @@ def make_expert_excel(c_info, results, final_score):
 
     row += 1
 
-    # --- РЕКОМЕНДАЦИИ (с объяснением) ---
+    # --- РЕКОМЕНДАЦИИ ---
     row = write_block(row, "РЕКОМЕНДАЦИИ")
     recs = []
 
     if b_spd == 0:
-        recs.append(
-            "Рекомендуется подключить резервный интернет-канал от независимого провайдера. "
-            "Это обеспечит непрерывность бизнеса при авариях и сбоях."
-        )
-
+        recs.append("Рекомендуется подключить резервный интернет-канал.")
     if results.get("Резервное копирование") == "Нет":
-        recs.append(
-            "Внедрить систему резервного копирования (Veeam, Commvault, Veritas). "
-            "Это позволит восстановить данные после сбоев и кибератак."
-        )
-
+        recs.append("Внедрить систему резервного копирования (Veeam, Commvault, Veritas).")
     if results.get("MFA") == "Нет":
-        recs.append(
-            "Внедрить MFA (CyberArk, WALLIX, Axidian, Netwrix). "
-            "Это значительно снижает риск компрометации учетных записей."
-        )
-
+        recs.append("Внедрить MFA (CyberArk, WALLIX, Axidian, Netwrix).")
     if results.get("NGFW") in ["Нет", "", None]:
-        recs.append(
-            "Внедрить NGFW (Check Point, Palo Alto, Fortinet, Cisco, Huawei). "
-            "Это обеспечит защиту сети от современных угроз и контроль трафика."
-        )
-
-    if results.get("DLP") == "Нет":
-        recs.append(
-            "Внедрить DLP (Symantec, Forcepoint, Zecurion, ibatyr). "
-            "Это позволит предотвратить утечки конфиденциальной информации."
-        )
+        recs.append("Внедрить NGFW (Check Point, Palo Alto, Fortinet).")
 
     if not recs:
-        recs.append("Рекомендуется регулярный аудит и развитие инфраструктуры.")
+        recs.append("Рекомендуется регулярный аудит.")
 
     for r in recs:
         ws.cell(row=row, column=1, value=f"- {r}")
@@ -671,7 +667,7 @@ def make_expert_excel(c_info, results, final_score):
 
     row += 1
 
-    # --- ДЕТАЛЬНЫЙ АНАЛИЗ ---
+    # --- ДЕТАЛЬНЫЙ АНАЛИЗ (Сюда попадает ВСЁ из словаря) ---
     row = write_block(row, "ДЕТАЛЬНЫЙ АНАЛИЗ")
 
     headers = ["Параметр", "Значение", "Статус", "Риск", "Рекомендация"]
@@ -684,14 +680,11 @@ def make_expert_excel(c_info, results, final_score):
 
     exclude = [
         "Город","Сфера деятельности","Наименование компании","Сайт компании",
-        "Email","ФИО контактного лица","Должность","Контактный телефон","Языки"
+        "Email","ФИО контактного лица","Должность","Контактный телефон"
     ]
 
-    full_data = {}
-    full_data.update(results)
-
-    for k, v in full_data.items():
-        if k in exclude or k.startswith("_"):
+    for k, v in results.items():
+        if k in exclude or str(k).startswith("_"):
             continue
 
         val_str = str(v).lower()
@@ -715,7 +708,6 @@ def make_expert_excel(c_info, results, final_score):
 
         for col in range(1, 6):
             ws.cell(row=row, column=col).fill = fill
-
         row += 1
 
     for col in ['A','B','C','D','E']:
@@ -733,71 +725,33 @@ if validation_errors:
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
     with st.spinner("Формирование отчета..."):
         
-        # Сбор данных в единый словарь результатов
-        results = {
-            "Интернет канал": f"{main_speed} Mbit/s",
+        # 1. Берем копию всех собранных данных из опросника
+        results = data.copy()
+
+        # 2. Добавляем расчетные поля для блока "Резюме" и логики рисков
+        results.update({
+            "Интернет канал (осн)": f"{main_speed} Mbit/s",
             "Резервный канал": f"{back_speed} Mbit/s",
             "_main_speed": main_speed,
             "_back_speed": back_speed,
             "_user_count": total_arm,
-            "_ap_cnt": ap_cnt,
             "WiFi Точки": ap_cnt,
             "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
             "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
-            "NGFW": ngfw_vendor,
+            "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
             "Серверы (физ)": phys_count,
             "Серверы (вирт)": virt_count,
-            "Резервное копирование": v_n_b,
-        }
+            "Резервное копирование": v_n_b if v_n_b else "Нет",
+        })
 
-        # Блок СХД
-        if storage_active:
-            results.update({
-                "RAID-группы": data.get('1.4.6. RAID-группы'),
-                "Типы дисков": data.get('1.4.1. Типы носителей'),
-                "All-Flash": data.get('1.4.5. All-Flash'),
-                "Гибридная СХД": data.get('1.4.4. Гибридная СХД')
-            })
+        # Специальная проверка для MFA (поиск в данных, если блок ИБ был активен)
+        if "Блок 2. MFA" in results:
+            results["MFA"] = results["Блок 2. MFA"]
         else:
-            results["СХД"] = "Не используется / Нет данных"
-
-        # Блок ИБ
-        if enable_security:
-            results.update({
-                "EPP": epp_v if epp else "Нет",
-                "EDR": edr_v if edr else "Нет",
-                "DLP": dlp_v if dlp else "Нет",
-                "NAD": nad_v if nad else "Нет",
-                "WAF": waf_v if waf else "Нет",
-                "IDS/IPS": ids_v if ids else "Нет",
-                "MFA": mfa_v if mfa else "Нет",
-                "SIEM": siem_v if siem else "Нет",
-                "Сканер уязвимостей": vuln_v if vuln else "Нет"
-            })
-        else:
-            results["Информационная безопасность"] = "Блок не заполнен"
-
-        # Блок WEB
-        if web_active:
-            results.update({
-                "Web-хостинг": data.get('3.1. Хостинг'),
-                "Frontend": ", ".join(data.get('3.2. Frontend', []))
-            })
-        else:
-            results["Web-ресурсы"] = "Нет данных"
-
-        # Блок Разработка
-        if dev_active:
-            results.update({
-                "Разработчики": data.get('4.1. Разработчики'),
-                "CICD": data.get('4.2. CICD'),
-                "Языки": data.get('4.3. Языки разработки')
-            })
-        else:
-            results["Разработка"] = "Нет данных"
+            results["MFA"] = "Нет"
 
         # Расчет итогового балла
-        f_score = min(score + 10, 100) # Базовая логика скоринга
+        f_score = min(score + 10, 100) 
         
         report_bytes = make_expert_excel(client_info, results, f_score)
         
