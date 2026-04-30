@@ -582,6 +582,7 @@ def make_expert_excel(c_info, results, final_score):
         return row + 1
 
     row = 1
+    # --- 1. ШАПКА ---
     row = write_block(row, "ОБЩАЯ ИНФОРМАЦИЯ")
     for k, v in c_info.items():
         ws.cell(row=row, column=1, value=k).font = bold_font
@@ -589,44 +590,60 @@ def make_expert_excel(c_info, results, final_score):
         row += 1
     row += 1
 
-    # Метрики
+    # Метрики для логики
     pc_cnt = get_int(results.get("_user_count", 0))
     wifi_ap_cnt = get_int(results.get("Wi-Fi Точки", 0))
     m_spd = get_int(results.get("_main_speed", 0))
     b_spd = get_int(results.get("_back_speed", 0))
+    srv_v_cnt = get_int(results.get("Серверы (вирт)", 0))
     has_dev = get_int(results.get("4.1. Разработчики", 0)) > 0
     has_web = results.get("3.2. Frontend") not in [None, [], "", "Нет"]
     mail_sys = str(results.get("1.4. Почтовая система", ""))
 
-    # --- 2. СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ ---
+    # --- 2. СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ (Объединенный блок) ---
     row = write_block(row, "СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
     risks_summary = []
     
-    # Устаревшие ОС (Полное описание)
-    legacy_map = {
-        "Windows XP/Vista/7/8": "Критическая уязвимость рабочих станций.",
-        "Windows Server 2008/2012 R2": "Критическая уязвимость серверной инфраструктуры.",
-        "Windows Server 2016": "Окончание основной фазы поддержки."
-    }
-    for os_name, risk_text in legacy_map.items():
+    # Устаревшие ОС
+    legacy_os_list = [
+        ("Windows XP/Vista/7/8", "Критическая уязвимость рабочих станций."),
+        ("Windows Server 2008/2012 R2", "Критическая уязвимость серверной инфраструктуры."),
+        ("Windows Server 2016", "Окончание основной фазы поддержки.")
+    ]
+    for os_name, risk_desc in legacy_os_list:
         if get_int(results.get(os_name)) > 0:
-            risks_summary.append(("🔴 КРИТИЧНО", f"Использование {os_name}. {risk_text}", "Срочная миграция на актуальные версии (Win 11 / Server 2022) или изоляция в закрытых сегментах без доступа в интернет."))
+            risks_summary.append(("🔴 КРИТИЧНО", f"Использование {os_name}. {risk_desc}", "Срочная миграция на актуальные версии или изоляция хостов в отдельный VLAN."))
 
-    if results.get("MFA") == "Нет" and pc_cnt > 50:
-        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие MFA при 50+ АРМ.", "Внедрение многофакторной аутентификации для всех корпоративных сервисов."))
+    # Маршрутизация
+    if "Статическая" in str(results.get("1.2.1. Маршрутизация", "")) and pc_cnt > 50:
+        risks_summary.append(("🔴 КРИТИЧНО", "Статическая маршрутизация при наличии более 50 АРМ.", "Переход на динамические протоколы (OSPF/BGP) для исключения ошибок ручного управления."))
+
+    # MFA и DLP (от масштаба)
+    if (results.get("MFA") == "Нет" or results.get("Блок 2. MFA") == "Нет") and pc_cnt > 50:
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие многофакторной аутентификации (MFA).", "Внедрение MFA — это базовый и обязательный уровень защиты при 50+ АРМ."))
     
     if get_int(results.get("DLP")) == 0 and pc_cnt > 50:
-        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие DLP-системы при 50+ АРМ.", "Необходим контроль передачи конфиденциальной информации и предотвращение утечек через каналы связи."))
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие DLP-системы при наличии более 50 АРМ.", "Необходим контроль передачи конфиденциальной информации и предотвращение утечек."))
+
+    # Системные риски (SIEM, SAST, WAF, Бэкап)
+    if results.get("Блок 2. SIEM") == "Нет" and srv_v_cnt > 20:
+        risks_summary.append(("🔴 ВЫСОКИЙ", "Отсутствие системы SIEM при наличии крупного серверного парка.", "Внедрение SIEM необходимо для централизованного выявления инцидентов."))
+    
+    if has_dev and (results.get("Блок 2. SAST") == "Нет" or results.get("Блок 2. DAST") == "Нет"):
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие контроля уязвимостей в коде (SAST/DAST).", "Внедрение инструментов анализа безопасности кода в CI/CD пайплайны."))
+
+    if has_web and results.get("Блок 2. WAF") == "Нет":
+        risks_summary.append(("🟡 ВНИМАНИЕ", "Публичные веб-сервисы не защищены WAF.", "Установка Web Application Firewall для защиты от атак на прикладном уровне."))
 
     if results.get("Резервное копирование") == "Нет":
-        risks_summary.append(("🔴 КРИТИЧНО", "Риск полной потери данных.", "Настройка системы бэкапа по правилу 3-2-1 и внедрение схемы GFS."))
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие системы резервного копирования.", "Внедрение стратегии GFS и автоматизация бэкапа критических данных."))
 
     for priority, desc, rec in risks_summary:
         ws.cell(row=row, column=1, value=priority); ws.cell(row=row, column=2, value=desc); ws.cell(row=row, column=3, value=rec)
         row += 1
     row += 2
 
-    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ ---
+    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ (Исправленная логика) ---
     row = write_block(row, "ДЕТАЛЬНАЯ ТЕХНИЧЕСКАЯ ИНВЕНТАРИЗАЦИЯ")
     headers = ["Параметр", "Значение", "Статус", "Анализ риска", "Рекомендация эксперта"]
     for i, h in enumerate(headers, 1):
@@ -638,52 +655,55 @@ def make_expert_excel(c_info, results, final_score):
         k_str = str(k)
         if k_str.startswith("_") or k in processed_keys or k_str in ["Город", "Сфера деятельности", "Наименование компании"]: continue
         
+        # Нормализация MFA
+        if "MFA" in k_str: processed_keys.add("MFA"); processed_keys.add("Блок 2. MFA")
+        
         status, risk_desc, rec_final, fill = "🟢 Соответствует", "Риск приемлем", "-", white_fill
         val_str = str(v)
 
-        # Логика ОС
+        # 1. ОС (Клиентские и Серверные)
         if any(x in k_str for x in ["XP", "7", "8", "2008", "2012", "2016"]):
             if get_int(v) > 0:
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Устаревшее ПО", "Обновить/Изолировать", red_fill
+                status, risk_desc, rec_final, fill = "🔴 Критично", "Устаревшая ОС (без патчей)", "Срочно обновить или изолировать хост", red_fill
 
-        # Логика Wi-Fi (Плотность и Контроллер)
+        # 2. Wi-Fi (Плотность и Контроллер)
         elif "Wi-Fi Точки" in k_str:
             num_ap = get_int(v)
             if num_ap > 0:
                 ratio = pc_cnt / num_ap
                 if ratio > 25:
-                    status, risk_desc, rec_final, fill = "🟡 Внимание", f"Плотность {int(ratio)} АРМ/Точку", "Добавить точки доступа", yellow_fill
+                    status, risk_desc, rec_final, fill = "🟡 Внимание", f"Плотность {int(ratio)} АРМ/Точку", "Добавить точки (норма < 25 АРМ)", yellow_fill
         elif "Wi-Fi Контроллер" in k_str:
             if v == "Нет" and wifi_ap_cnt > 10:
-                status, risk_desc, rec_final, fill = "🔴 Высокий", "Ручное управление 10+ точками", "Внедрить Wi-Fi контроллер", red_fill
+                status, risk_desc, rec_final, fill = "🔴 Высокий", "Ручное управление 10+ точками", "Необходим Wi-Fi контроллер", red_fill
 
-        # Логика Бэкапа
+        # 3. Резервное копирование
         elif "Резервное копирование" in k_str:
             if v == "Нет":
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Данные не защищены", "Внедрить систему бэкапа", red_fill
+                status, risk_desc, rec_final, fill = "🔴 Критично", "Риск потери данных 100%", "Внедрить систему бэкапа", red_fill
 
-        # Логика ИБ Продуктов
+        # 4. ИБ Продукты и сетевые эшелоны
         elif "Блок 2." in k_str or k_str in ["MFA", "DLP"]:
             if v == "Нет" or v == "0":
-                # Группа ВСЕГДА рекомендуемых
+                # Обязательные по умолчанию
                 if any(x in k_str for x in ["ZTNA", "NAD", "IPS", "MDR"]):
-                    status, risk_desc, rec_final, fill = "🟡 Рекомендовано", "Отсутствие современных эшелонов", f"Рассмотреть внедрение {k_str}", yellow_fill
+                    status, risk_desc, rec_final, fill = "🟡 Рекомендовано", "Отсутствие эшелона защиты", f"Рассмотреть внедрение {k_str}", yellow_fill
                 # DLP
                 elif "DLP" in k_str and pc_cnt > 50:
-                    status, risk_desc, rec_final, fill = "🔴 Критично", "Риск утечки данных", "Внедрить DLP", red_fill
-                # XDR/EDR
+                    status, risk_desc, rec_final, fill = "🔴 Критично", "Риск утечки данных", "Внедрить DLP-систему", red_fill
+                # XDR
                 elif "XDR" in k_str:
                     if "EDR" in str(results.get("Блок 2. EDR")):
-                        status, risk_desc, rec_final, fill = "🟢 Рекомендовано", "Для связки с EDR", "Рассмотреть XDR", yellow_fill
+                        status, risk_desc, rec_final, fill = "🟢 Рекомендовано", "Расширение функций EDR", "Рассмотреть переход на XDR", yellow_fill
                 # Mail Security / CASB
                 elif "Mail Security" in k_str:
                     if any(x in mail_sys for x in ["365", "Google", "Workspace"]):
-                        status, risk_desc, rec_final, fill = "🔴 Критично", "Облачная почта без защиты", "Внедрить CASB", red_fill
+                        status, risk_desc, rec_final, fill = "🔴 Критично", "Облачная почта без доп. защиты", "Внедрить CASB-решение", red_fill
                     else:
-                        status, risk_desc, rec_final, fill = "🔴 Критично", "Почтовый шлюз не защищен", "Внедрить Mail Security Шлюз", red_fill
-                # Patch Manager
+                        status, risk_desc, rec_final, fill = "🔴 Критично", "Риск фишинга/спама", "Внедрить Mail Security Gateway", red_fill
+                # Patch Management
                 elif "Patch Management" in k_str and results.get("Блок 2. Сканер уязвимостей") != "Нет":
-                    status, risk_desc, rec_final, fill = "🟡 Рекомендовано", "Автоматизация устранения", "Внедрить Patch Management", yellow_fill
+                    status, risk_desc, rec_final, fill = "🟡 Рекомендовано", "Связка со сканером", "Внедрить Patch Management", yellow_fill
 
         ws.cell(row=row, column=1, value=k); ws.cell(row=row, column=2, value=val_str)
         ws.cell(row=row, column=3, value=status); ws.cell(row=row, column=4, value=risk_desc); ws.cell(row=row, column=5, value=rec_final)
