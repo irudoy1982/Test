@@ -546,7 +546,7 @@ if dev_active:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 
-# --- Отчет (Экспертная логика CISO и CTO) ---
+# --- Итоговый экспертный отчет с расширенной логикой Khalil Audit ---
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
@@ -562,9 +562,9 @@ def make_expert_excel(c_info, results, final_score):
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     bold_font = Font(bold=True)
-    red_fill = PatternFill(start_color="FFC7CE", end_color="9C0006", fill_type="solid")
-    yellow_fill = PatternFill(start_color="FFEB9C", end_color="9C6500", fill_type="solid")
-    white_fill = PatternFill(start_color="FFFFFF", end_color="000000", fill_type="solid")
+    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    yellow_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+    white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 
     def write_block(row, text):
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
@@ -581,51 +581,86 @@ def make_expert_excel(c_info, results, final_score):
         ws.cell(row=row, column=1, value=k).font = bold_font
         ws.cell(row=row, column=2, value=str(v))
         row += 1
-    row = write_block(row, f"Дата отчета: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
     row += 1
 
-    # --- 2. КЛЮЧЕВЫЕ РИСКИ (Аналитический блок) ---
+    # --- 2. КЛЮЧЕВЫЕ РИСКИ И СТРАТЕГИЯ ---
     row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ И СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
     
+    # Сбор метрик для расчетов
     pc_cnt = results.get("_user_count", 0)
-    srv_cnt = results.get("Серверы (вирт)", 0)
-    routing = results.get("Маршрутизация", "")
+    srv_v_cnt = results.get("Серверы (вирт)", 0)
     wifi_ap = results.get("WiFi Точки", 0)
-    is_dev = results.get("4.1. Разработчики", 0) > 0
+    m_spd = results.get("_main_speed", 0)
+    b_spd = results.get("_back_speed", 0)
+    has_dev = results.get("4.1. Разработчики", 0) > 0
     
     risks = []
 
-    # Логика: Сетевая архитектура
-    if pc_cnt > 50 and "Статическая" in routing:
-        risks.append(("🔴 КРИТИЧНО", "Статическая маршрутизация при наличии более 50 АРМ.", 
-                       "Переход на динамические протоколы (OSPF/BGP) для исключения ошибок ручного управления."))
+    # ЛОГИКА: СЕРВЕРНЫЕ ОС
+    legacy_srv = [k for k in results.keys() if "Windows Server 2008/2012" in k or "2016" in k]
+    if any(results.get(lk, 0) > 0 for lk in legacy_srv):
+        risks.append(("🔴 КРИТИЧНО", "Использование серверных ОС ниже версии 2019.", 
+                       "Системы не получают актуальных обновлений безопасности. Рекомендуется апгрейд до Windows Server 2019/2022."))
 
-    # Логика: Устаревшие ОС
-    legacy_keys = [k for k in results.keys() if "XP/Vista/7/8" in k or "2008/2012" in k]
-    for lk in legacy_keys:
-        if results.get(lk, 0) > 0:
-            risks.append(("🔴 КРИТИЧНО", f"Использование устаревших ОС ({lk}) в рабочей сети.", 
-                           "Немедленная изоляция хостов в отдельный VLAN или замена на поддерживаемые версии."))
+    # ЛОГИКА: WI-FI (Плотность и Контроллер)
+    if wifi_ap > 0:
+        ratio = pc_cnt / wifi_ap
+        if ratio > 25:
+            risks.append(("🟡 ВНИМАНИЕ", f"Высокая плотность АРМ на одну Wi-Fi точку ({int(ratio)}).", 
+                           "Риск деградации скорости. Рекомендуется установка дополнительных точек доступа."))
+        if wifi_ap > 10 and results.get("WiFi Контроллер") == "Нет":
+            risks.append(("🔴 ВЫСОКИЙ", "Более 10 точек доступа без централизованного контроллера.", 
+                           "Сложность управления и отсутствие бесшовного роуминга. Рекомендуется приобретение контроллера."))
 
-    # Логика: Wi-Fi
-    if wifi_ap > 0 and (pc_cnt / wifi_ap) > 25:
-        risks.append(("🟡 ВНИМАНИЕ", f"Высокая плотность Wi-Fi ({int(pc_cnt/wifi_ap)} чел/ТД).", 
-                       "Установка дополнительных точек доступа или переход на стандарт Wi-Fi 6."))
+    # ЛОГИКА: КАНАЛЫ СВЯЗИ
+    if m_spd > 0 and b_spd > 0:
+        if b_spd < (m_spd * 0.6):
+            risks.append(("🟡 ВНИМАНИЕ", f"Резервный канал ({b_spd} Мбит/с) составляет менее 60% от основного.", 
+                           "В случае отказа основного канала, резервный не справится с пиковой нагрузкой. Рекомендуется расширение."))
 
-    # Логика продуктов ИБ от потребности
-    if results.get("MFA") == "Нет":
-        risks.append(("🔴 КРИТИЧНО", "Отсутствие многофакторной аутентификация (MFA).", "Внедрение MFA — это базовый и обязательный уровень защиты."))
+    # ЛОГИКА: ХРАНЕНИЕ (RAID)
+    raids = results.get("1.4.6. RAID-группы", "")
+    if "RAID 0" in raids or "RAID 1" in raids:
+        risks.append(("🔴 ВЫСОКИЙ", "Использование RAID 0 или RAID 1 в СХД.", 
+                       "RAID 0 не имеет отказоустойчивости, RAID 1 неэффективен для СХД. Рекомендуется переход на RAID 6 или RAID 10."))
 
-    if srv_cnt > 20 and results.get("Блок 2. SIEM") == "Нет":
-        risks.append(("🔴 ВЫСОКИЙ", "Отсутствие системы SIEM при наличии крупного серверного парка.", "Внедрение SIEM необходимо для централизованного выявления инцидентов."))
+    # ЛОГИКА: БЕЗОПАСНОСТЬ (EPP и MFA)
+    if results.get("Блок 2. EPP") == "Нет":
+        risks.append(("🔴 КРИТИЧНО", "Отсутствие базовой антивирусной защиты (EPP).", "Обязательное внедрение EPP на все конечные точки и серверы."))
+    
+    if pc_cnt > 50 and results.get("MFA") == "Нет":
+        risks.append(("🔴 ВЫСОКИЙ", "Отсутствие MFA при штате более 50 сотрудников.", "Критический риск компрометации учетных записей. Требуется внедрение 2FA."))
 
-    if is_dev and results.get("Блок 2. SAST") == "Нет":
-        risks.append(("🔴 КРИТИЧНО", "Отсутствие контроля уязвимостей в коде (SAST/DAST) при наличии разработки.", "Внедрение инструментов анализа безопасности кода в CI/CD пайплайны."))
+    # ЛОГИКА: IAM / NAC
+    if pc_cnt > 100:
+        if results.get("Блок 2. IAM") == "Нет":
+            risks.append(("🟡 ВНИМАНИЕ", "Отсутствие IAM при штате > 100 пользователей.", "Сложность управления правами. Рекомендуется внедрение Identity Access Management."))
+        if results.get("Блок 2. NAC") == "Нет":
+            risks.append(("🟡 ВНИМАНИЕ", "Отсутствие NAC в крупной сети.", "Риск подключения неавторизованных устройств. Рекомендуется внедрение Network Access Control."))
 
-    if results.get("3.2. Frontend") and results.get("Блок 2. WAF") == "Нет":
-        risks.append(("🟡 ВНИМАНИЕ", "Публичные веб-сервисы не защищены WAF.", "Рекомендуется установка Web Application Firewall для защиты от атак на приложения."))
+    # ЛОГИКА: СИНЕРГИЯ ИБ (SOAR, Patch Management)[cite: 2]
+    if results.get("Блок 2. Сканер уязвимостей") != "Нет" and results.get("Блок 2. Patch Management") == "Нет":
+        risks.append(("🟢 ОПТИМИЗАЦИЯ", "Есть сканер, но нет системы управления патчами.", "Внедрение Patch Management автоматизирует устранение найденных уязвимостей."))
+    
+    if results.get("Блок 2. SIEM") != "Нет" and results.get("Блок 2. SOAR") == "Нет":
+        risks.append(("🟢 ОПТИМИЗАЦИЯ", "Наличие SIEM без системы автоматизации SOAR.", "Рекомендуется внедрение SOAR для автоматического реагирования на инциденты из SIEM."))
 
-    # Запись рисков
+    # ЛОГИКА: РАЗРАБОТКА И WEB[cite: 1, 2]
+    if has_dev:
+        if results.get("4.2. CICD") == "Нет":
+            risks.append(("🔴 КРИТИЧНО", "Отсутствие процессов CI/CD при наличии разработки.", "Ручной деплой повышает риск ошибок и замедляет выпуск продукта."))
+        if results.get("Блок 2. SAST") == "Нет" or results.get("Блок 2. DAST") == "Нет":
+            risks.append(("🔴 КРИТИЧНО", "Отсутствие контроля безопасности кода (SAST/DAST).", "Обязательно для компаний с собственной разработкой для исключения 'дыр' в ПО."))
+
+    if results.get("3.2. Frontend") and (results.get("Блок 2. WAF") == "Нет" or results.get("Блок 2. Anti-DDoS") == "Нет"):
+        risks.append(("🔴 ВЫСОКИЙ", "Публичные веб-ресурсы без защиты WAF/Anti-DDoS.", "Риск простоя сервисов из-за атак прикладного уровня."))
+
+    # ЛОГИКА: БЭКАП (Отец-Дед-Сын)[cite: 2]
+    if results.get("Резервное копирование") == "Нет":
+        risks.append(("🔴 КРИТИЧНО", "Отсутствие системы резервного копирования.", 
+                       "Риск полной потери данных. Требуется внедрение схемы GFS (Grandfather-Father-Son) для глубины хранения."))
+
+    # Запись в таблицу рисков
     for priority, desc, rec in risks:
         ws.cell(row=row, column=1, value=priority)
         ws.cell(row=row, column=2, value=desc)
@@ -633,39 +668,28 @@ def make_expert_excel(c_info, results, final_score):
         row += 1
     row += 2
 
-    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ ПАРАМЕТРОВ ---
-    row = write_block(row, "ДЕТАЛЬНАЯ ТЕХНИЧЕСКАЯ ИНВЕНТАРИЗАЦИЯ")
+    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ ---
+    row = write_block(row, "ДЕТАЛЬНЫЙ АНАЛИЗ ПАРАМЕТРОВ")
     headers = ["Параметр", "Значение", "Статус", "Анализ риска", "Рекомендация эксперта"]
     for i, h in enumerate(headers, 1):
-        cell = ws.cell(row=row, column=i, value=h)
-        cell.fill = header_fill
-        cell.font = white_font
+        ws.cell(row=row, column=i, value=h).font = white_font
+        ws.cell(row=row, column=i).fill = header_fill
     row += 1
 
     for k, v in results.items():
         if str(k).startswith("_") or k in ["Город", "Сфера деятельности", "Наименование компании"]: continue
         
-        status, risk_desc, rec_final, fill = "🟢 Норма", "Риск минимален", "-", white_fill
+        status, risk_desc, rec_final, fill = "🟢 Норма", "Соответствует требованиям", "-", white_fill
 
-        # Индивидуальная логика для каждой строки
-        if "XP/Vista/7/8" in str(k) or "2008/2012" in str(k):
-            if v > 0:
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Система без обновлений ИБ", "Замена на Win 10/11 или Server 2022", red_fill
+        # Индивидуальная проверка каждой строки для таблицы[cite: 2]
+        if "Windows Server 2008/2012" in str(k) and v > 0:
+            status, risk_desc, rec_final, fill = "🔴 Критично", "Устаревшая ОС", "Обновить до Server 2019/2022", red_fill
         
         elif "Маршрутизация" in str(k) and "Статическая" in str(v) and pc_cnt > 50:
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск ручной ошибки", "Внедрить OSPF/BGP", red_fill
-            
-        elif "Блок 2." in str(k) and v == "Нет":
-            # Проверка нужно ли это компании
-            is_needed = False
-            if "SIEM" in k and srv_cnt > 20: is_needed = True
-            if "WAF" in k and results.get("3.2. Frontend"): is_needed = True
-            if "PAM" in k and pc_cnt > 100: is_needed = True
-            
-            if is_needed:
-                status, risk_desc, rec_final, fill = "🟡 Рекомендуется", "Отсутствие целевого контроля", f"Внедрить {k.split('. ')[1]}", yellow_fill
-            else:
-                status, risk_desc, rec_final, fill = "⚪ Допустимо", "Продукт не приоритетен для вашего масштаба", "Мониторинг развития", white_fill
+            status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск ручного управления", "Переход на динамическую маршрутизацию", red_fill
+
+        elif "Резервное копирование" in str(k) and v == "Нет":
+            status, risk_desc, rec_final, fill = "🔴 Критично", "Риск потери данных", "Внедрить схему GFS (Grandfather-Father-Son)", red_fill
 
         ws.cell(row=row, column=1, value=k)
         ws.cell(row=row, column=2, value=str(v))
