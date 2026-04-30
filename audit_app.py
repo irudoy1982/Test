@@ -546,6 +546,7 @@ if dev_active:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 
+#ОТЧЕТ#
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
@@ -565,11 +566,9 @@ def make_expert_excel(c_info, results, final_score):
     yellow_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
     white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 
-    # Функция-помощник для безопасного получения числа (защита от TypeError)
     def get_int(val):
         try:
             if val is None: return 0
-            # Убираем лишние пробелы, если это строка
             clean_val = str(val).strip().split()[0] if isinstance(val, str) else val
             return int(float(clean_val))
         except (ValueError, TypeError, IndexError):
@@ -592,26 +591,49 @@ def make_expert_excel(c_info, results, final_score):
         row += 1
     row += 1
 
-    # Извлечение метрик для кросс-анализа
+    # Метрики для анализа
     pc_cnt = get_int(results.get("_user_count", 0))
     wifi_ap_cnt = get_int(results.get("Wi-Fi Точки", 0))
     m_spd = get_int(results.get("_main_speed", 0))
     b_spd = get_int(results.get("_back_speed", 0))
-    has_dev = results.get("4.1. Разработчики", 0) and get_int(results.get("4.1. Разработчики")) > 0
+    srv_v_cnt = get_int(results.get("Серверы (вирт)", 0))
+    has_dev = get_int(results.get("4.1. Разработчики", 0)) > 0
     has_web = results.get("3.2. Frontend") not in [None, [], "", "Нет"]
 
-    # --- 2. КЛЮЧЕВЫЕ РИСКИ (Стратегический блок) ---
+    # --- 2. КЛЮЧЕВЫЕ РИСКИ (Расширенный блок по вашему примеру) ---
     row = write_block(row, "СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
     
     risks_summary = []
+    
+    # Статическая маршрутизация
+    if "Статическая" in str(results.get("1.2.1. Маршрутизация", "")) and pc_cnt > 50:
+        risks_summary.append(("🔴 КРИТИЧНО", "Статическая маршрутизация при наличии более 50 АРМ.", "Переход на динамические протоколы (OSPF/BGP) для исключения ошибок ручного управления."))
+
+    # Устаревшие ОС
+    legacy_keys = ["Windows XP/Vista/7/8", "Windows Server 2008/2012", "Windows Server 2016"]
+    if any(get_int(results.get(k)) > 0 for k in legacy_keys):
+        risks_summary.append(("🔴 КРИТИЧНО", "Использование устаревших ОС в рабочей сети.", "Немедленная изоляция хостов в отдельный VLAN или замена на поддерживаемые версии."))
+
+    # MFA
+    if results.get("MFA") == "Нет" or results.get("Блок 2. MFA") == "Нет":
+        if pc_cnt > 50:
+            risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие многофакторной аутентификации (MFA).", "Внедрение MFA — это базовый и обязательный уровень защиты."))
+
+    # SIEM
+    if results.get("Блок 2. SIEM") == "Нет" and srv_v_cnt > 20:
+        risks_summary.append(("🔴 ВЫСОКИЙ", "Отсутствие системы SIEM при наличии крупного серверного парка.", "Внедрение SIEM необходимо для централизованного выявления инцидентов ИБ."))
+
+    # SAST/DAST
+    if has_dev and (results.get("Блок 2. SAST") == "Нет" or results.get("Блок 2. DAST") == "Нет"):
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие контроля уязвимостей в коде (SAST/DAST) при наличии разработки.", "Внедрение инструментов анализа безопасности кода в CI/CD пайплайны."))
+
+    # WAF
+    if has_web and results.get("Блок 2. WAF") == "Нет":
+        risks_summary.append(("🟡 ВНИМАНИЕ", "Публичные веб-сервисы не защищены WAF.", "Рекомендуется установка Web Application Firewall для защиты от атак на прикладном уровне."))
+
+    # Бэкап
     if results.get("Резервное копирование") == "Нет":
-        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие бэкапа данных", "Внедрить схему GFS (Grandfather-Father-Son)"))
-    if pc_cnt > 50 and results.get("MFA") == "Нет":
-        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие MFA (2FA)", "Обязательно для защиты учетных записей при 50+ АРМ"))
-    if has_dev and results.get("4.2. CICD") == "Нет":
-        risks_summary.append(("🔴 ВЫСОКИЙ", "Отсутствие CI/CD пайплайнов", "Автоматизировать процессы сборки и деплоя"))
-    if wifi_ap_cnt > 10 and results.get("Wi-Fi Контроллер") == "Нет":
-        risks_summary.append(("🔴 ВЫСОКИЙ", "Отсутствие Wi-Fi контроллера", "Необходим для управления парком из 10+ точек"))
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие системы резервного копирования.", "Внедрение стратегии GFS (Grandfather-Father-Son)."))
 
     for priority, desc, rec in risks_summary:
         ws.cell(row=row, column=1, value=priority)
@@ -620,7 +642,7 @@ def make_expert_excel(c_info, results, final_score):
         row += 1
     row += 2
 
-    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ (Технический блок) ---
+    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ (Без дубликатов) ---
     row = write_block(row, "ДЕТАЛЬНАЯ ТЕХНИЧЕСКАЯ ИНВЕНТАРИЗАЦИЯ")
     headers = ["Параметр", "Значение", "Статус", "Анализ риска", "Рекомендация эксперта"]
     for i, h in enumerate(headers, 1):
@@ -629,69 +651,62 @@ def make_expert_excel(c_info, results, final_score):
         cell.font = white_font
     row += 1
 
+    # Группируем похожие ключи, чтобы избежать дублей (MFA, Каналы)
     processed_keys = set()
 
     for k, v in results.items():
-        if str(k).startswith("_") or k in processed_keys or k in ["Город", "Сфера деятельности", "Наименование компании"]: 
+        k_str = str(k)
+        if k_str.startswith("_") or k in processed_keys or k_str in ["Город", "Сфера деятельности", "Наименование компании"]: 
             continue
+            
+        # Нормализация MFA: если мы встретили любое упоминание MFA, помечаем оба ключа как обработанные
+        if "MFA" in k_str:
+            processed_keys.add("MFA")
+            processed_keys.add("Блок 2. MFA")
         
         status, risk_desc, rec_final, fill = "🟢 Норма", "Соответствует", "-", white_fill
         val_str = str(v)
 
-        # 1. Устаревшие ОС (Серверы и АРМ)
-        if any(x in str(k) for x in ["XP", "7", "8", "2008", "2012", "2016"]):
+        # 1. Устаревшие ОС
+        if any(x in k_str for x in ["XP", "7", "8", "2008", "2012", "2016"]):
             if get_int(v) > 0:
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Система без патчей ИБ", "Обновить до актуальных версий (2019/2022/Win11)", red_fill
+                status, risk_desc, rec_final, fill = "🔴 Критично", "ОС без поддержки", "Обновить до актуальных версий", red_fill
 
-        # 2. Wi-Fi: Плотность и Контроллер
-        elif "Wi-Fi Точки" in str(k):
+        # 2. Wi-Fi
+        elif "Wi-Fi Точки" in k_str:
             num_ap = get_int(v)
             if num_ap > 0:
                 ratio = pc_cnt / num_ap
                 if ratio > 25:
-                    status, risk_desc, rec_final, fill = "🟡 Внимание", f"Плотность {int(ratio)} АРМ/Точку", "Добавить точки доступа (цель < 25)", yellow_fill
-        
-        elif "Wi-Fi Контроллер" in str(k):
+                    status, risk_desc, rec_final, fill = "🟡 Внимание", f"Плотность {int(ratio)} АРМ/Точку", "Добавить точки (цель < 25)", yellow_fill
+        elif "Wi-Fi Контроллер" in k_str:
             if v == "Нет" and wifi_ap_cnt > 10:
-                status, risk_desc, rec_final, fill = "🔴 Высокий", "Сложное управление 10+ точками", "Приобрести аппаратный или софтовый контроллер", red_fill
+                status, risk_desc, rec_final, fill = "🔴 Высокий", "Управление 10+ точками вручную", "Необходим Wi-Fi контроллер", red_fill
 
-        # 3. Каналы связи (60% резерв)
-        elif "Резервный канал" in str(k):
+        # 3. Каналы
+        elif "Резервный канал" in k_str:
             if b_spd > 0 and m_spd > 0 and b_spd < (m_spd * 0.6):
-                status, risk_desc, rec_final, fill = "🟡 Внимание", f"Резерв ({b_spd}Мб) < 60% от осн.", "Расширить канал для обеспечения бизнес-непрерывности", yellow_fill
+                status, risk_desc, rec_final, fill = "🟡 Внимание", "Узкий резервный канал", "Расширить канал (минимум 60% от осн.)", yellow_fill
 
         # 4. RAID
-        elif "RAID-группы" in str(k) and ("RAID 0" in val_str or "RAID 1" in val_str):
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Низкая отказоустойчивость/эффективность", "Миграция на RAID 6, 10 или аналоги", red_fill
+        elif "RAID-группы" in k_str and ("RAID 0" in val_str or "RAID 1" in val_str):
+            status, risk_desc, rec_final, fill = "🔴 Высокий", "Неоптимальный RAID", "Переход на RAID 6 / 10", red_fill
 
-        # 5. ИБ Продукты от потребности[cite: 1]
-        elif "Блок 2." in str(k) or k == "MFA":
+        # 5. ИБ Продукты[cite: 1]
+        elif "Блок 2." in k_str or k_str == "MFA":
             if v == "Нет":
-                # Базовый эшелон
-                if "EPP" in k or "Резервное копирование" in k:
-                    status, risk_desc, rec_final, fill = "🔴 Критично", "Отсутствие базовой защиты", "Срочное внедрение (Standard Security)", red_fill
-                # MFA/IAM/NAC от масштаба
-                elif ("MFA" in k or k == "MFA") and pc_cnt > 50:
-                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск захвата учетных записей", "Внедрить 2FA (MFA)", red_fill
-                elif ("IAM" in k or "NAC" in k) and pc_cnt > 100:
-                    status, risk_desc, rec_final, fill = "🟡 Внимание", "Сложный контроль доступа", f"Внедрить {k.split('. ')[1]}", yellow_fill
-                # Разработка
-                elif ("SAST" in k or "DAST" in k) and has_dev:
-                    status, risk_desc, rec_final, fill = "🔴 Критично", "Уязвимости в собственном коде", "Внедрить автоматический анализ кода", red_fill
-                # Web
-                elif ("WAF" in k or "Anti-DDoS" in k) and has_web:
-                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Публичные сервисы не защищены", "Внедрить фильтрацию трафика (WAF)", red_fill
-                # Синергия
-                elif "SOAR" in k and results.get("Блок 2. SIEM") != "Нет":
-                    status, risk_desc, rec_final, fill = "🟢 Оптимизация", "Низкая скорость реагирования", "Рекомендовано для автоматизации SIEM", yellow_fill
-                elif "Patch Management" in k and results.get("Блок 2. Сканер уязвимостей") != "Нет":
-                    status, risk_desc, rec_final, fill = "🟢 Оптимизация", "Ручное закрытие дыр", "Внедрить систему управления патчами", yellow_fill
+                if "EPP" in k_str:
+                    status, risk_desc, rec_final, fill = "🔴 Критично", "Отсутствует антивирус", "Срочно внедрить EPP", red_fill
+                elif "MFA" in k_str and pc_cnt > 50:
+                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск взлома УЗ", "Внедрить 2FA", red_fill
+                elif ("IAM" in k_str or "NAC" in k_str) and pc_cnt > 100:
+                    status, risk_desc, rec_final, fill = "🟡 Внимание", "Сложный доступ", "Рекомендуется внедрение системы", yellow_fill
+                elif ("SAST" in k_str or "DAST" in k_str) and has_dev:
+                    status, risk_desc, rec_final, fill = "🔴 Критично", "Небезопасный код", "Внедрить анализ в CI/CD", red_fill
+                elif ("WAF" in k_str or "Anti-DDoS" in k_str) and has_web:
+                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Веб под угрозой", "Внедрить защиту периметра", red_fill
 
-        # 6. CI/CD
-        elif "4.2. CICD" in str(k) and v == "Нет" and has_dev:
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Неавтоматизированный деплой", "Внедрить пайплайны CI/CD", red_fill
-
-        # Запись в таблицу
+        # Запись
         ws.cell(row=row, column=1, value=k)
         ws.cell(row=row, column=2, value=val_str)
         ws.cell(row=row, column=3, value=status)
@@ -702,7 +717,7 @@ def make_expert_excel(c_info, results, final_score):
         processed_keys.add(k)
         row += 1
 
-    # Форматирование
+    # Ширина колонок
     for col, width in zip(['A','B','C','D','E'], [35, 25, 18, 45, 60]):
         ws.column_dimensions[col].width = width
 
