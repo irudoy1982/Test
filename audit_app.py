@@ -546,127 +546,94 @@ if dev_active:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 
-# --- Отчет: Экспертный анализ CISO и CTO ---
+# --- ПОЛНЫЙ ОБЪЕДИНЕННЫЙ ОТЧЕТ (ТЕХНИЧЕСКИЙ + СТРАТЕГИЧЕСКИЙ) ---
 def make_expert_excel(c_info, answers, output_file="IT_IB_Audit_Report.xlsx"):
-    """
-    Генерация аналитического отчета с расчетом рисков и приоритезацией ИБ-продуктов.
-    Логика: Приоритезация инструментов в зависимости от масштаба и специфики (DevSecOps).
-    """
     from io import BytesIO
     import pandas as pd
     
-    report_rows = []
-
-    def add_finding(product, priority, reason, recommendation):
-        report_rows.append({
-            "Рекомендуемый Продукт / Область": product,
+    # 1. СБОР ТЕХНИЧЕСКИХ ДАННЫХ (Инвентаризация)
+    tech_data = []
+    for key, value in answers.items():
+        if not key.startswith('_') and key not in ['has_legacy_os', 'legacy_isolated', 'routing_type', 'is_dev']:
+            tech_data.append({"Параметр": key, "Значение": value})
+    
+    # 2. ЭКСПЕРТНАЯ АНАЛИТИКА (Риски и Рекомендации)
+    risk_rows = []
+    def add_risk(product, priority, reason, recommendation):
+        risk_rows.append({
+            "Продукт / Область": product,
             "Приоритет": priority,
             "Анализ риска (CISO View)": reason,
-            "Стратегия внедрения / Рекомендация": recommendation
+            "Рекомендация по внедрению": recommendation
         })
 
-    # --- 1. СЕТЬ И ИНФРАСТРУКТУРА ---
-    pc_cnt = answers.get('arm_cnt', 0) or answers.get('1.1. Всего АРМ', 0)
+    # Логика: Масштаб и Сеть
+    pc_cnt = answers.get('1.1. Всего АРМ', 0) or answers.get('arm_cnt', 0)
     routing = answers.get('routing') or answers.get('routing_type', 'Статическая')
-    
-    # Риск статической маршрутизации
     if pc_cnt > 50 and routing == "Статическая":
-        add_finding("Динамическая маршрутизация (OSPF/BGP)", "🔴 КРИТИЧНО", 
-                    f"Для сети в {pc_cnt} АРМ статика создает риск 'человеческой ошибки' и долгого восстановления при сбоях.", 
-                    "Миграция на OSPF для автоматизации отказоустойчивости и упрощения масштабирования.")
-    else:
-        add_finding("Сетевая архитектура", "🟢 ОПТИМАЛЬНО", 
-                    "Метод управления маршрутизацией соответствует текущему масштабу сети.", 
-                    "Проведение регулярного аудита таблиц маршрутизации.")
+        add_risk("Динамическая маршрутизация", "🔴 КРИТИЧНО", 
+                 f"Для сети в {pc_cnt} АРМ статика создает риск 'человеческой ошибки' и долгого простоя.", 
+                 "Миграция на OSPF/BGP для отказоустойчивости.")
 
-    # Плотность Wi-Fi (Корреляция АРМ и ТД)
+    # Логика: Wi-Fi Плотность
     wifi_ap = answers.get('ap_cnt', 0)
-    if wifi_ap > 0 and pc_cnt > 0:
-        ratio = pc_cnt / wifi_ap
-        if ratio > 25:
-            add_finding("Расширение Wi-Fi инфраструктуры", "🟡 ВНИМАНИЕ", 
-                        f"Высокая плотность ({int(ratio)} чел/ТД) ведет к деградации связи и потере пакетов в бизнес-приложениях.", 
-                        "Увеличить количество точек доступа или перейти на стандарт Wi-Fi 6/6E.")
+    if wifi_ap > 0 and pc_cnt / wifi_ap > 25:
+        add_risk("Расширение Wi-Fi", "🟡 ВНИМАНИЕ", 
+                 "Высокая плотность пользователей на точку доступа снижает стабильность связи.", 
+                 "Увеличить кол-во ТД или перейти на Wi-Fi 6.")
 
-    # --- 2. LEGACY СИСТЕМЫ И ИЗОЛЯЦИЯ ---
-    if answers.get('has_legacy'):
+    # Логика: Legacy и Изоляция
+    if answers.get('has_legacy') or answers.get('has_legacy_os'):
         if not answers.get('legacy_isolated'):
-            add_finding("Изоляция Legacy систем (VLAN)", "🔴 КРИТИЧНО", 
-                        "Устаревшие ОС (XP/7) в общем сегменте — это прямой путь для распространения шифровальщиков внутри сети.", 
-                        "Немедленно изолировать устаревшие хосты в закрытый VLAN без доступа в интернет.")
-        else:
-            add_finding("Обновление ОС", "🟡 ВНИМАНИЕ", 
-                        "Legacy системы изолированы, но остаются уязвимыми. Патчи безопасности отсутствуют.", 
-                        "Запланировать бюджет на поэтапную замену оборудования и переход на актуальные версии ОС.")
+            add_risk("Изоляция Legacy (VLAN)", "🔴 КРИТИЧНО", 
+                     "Системы XP/7 в общем сегменте — это критическая уязвимость для всей сети.", 
+                     "Немедленно изолировать legacy-хосты в отдельный VLAN.")
 
-    # --- 3. ЦЕЛЕСООБРАЗНОСТЬ ИБ-ПРОДУКТОВ ---
-    
-    # MFA - Базовый приоритет №1
+    # Логика: Целесообразность ИБ-продуктов
     if not answers.get('has_mfa'):
-        add_finding("MFA (Второй фактор)", "🔴 КРИТИЧНО", 
-                    "90% атак начинаются с кражи пароля. Без MFA защита периметра фактически отсутствует.", 
-                    "Внедрить MFA для VPN, почты и административных панелей в течение 1 месяца.")
+        add_risk("MFA (Второй фактор)", "🔴 КРИТИЧНО", "Отсутствие MFA делает пароли легкой мишенью.", "Внедрить для всех внешних доступов.")
+    
+    if answers.get('is_dev') and not answers.get('has_sast'):
+        add_risk("SAST/DAST", "🔴 КРИТИЧНО", "Выпуск собственного ПО без анализа кода — риск для клиентов.", "Интегрировать сканеры в CI/CD.")
+    
+    srv_cnt = answers.get('virt_srv_count', 0) or answers.get('srv_cnt', 0)
+    if srv_cnt > 15 and not answers.get('has_siem'):
+        add_risk("SIEM-система", "🔴 ВЫСОКИЙ", "Невозможность оперативного выявления атак в инфраструктуре.", "Внедрить мониторинг событий (ELK/SIEM).")
 
-    # DevSecOps - Только если есть разработка[cite: 1]
-    if answers.get('is_dev'):
-        if not answers.get('has_sast'):
-            add_finding("SAST/DAST (Анализ безопасности кода)", "🔴 КРИТИЧНО", 
-                        "Отсутствие контроля уязвимостей в собственных продуктах грозит компрометацией данных клиентов.", 
-                        "Интегрировать автоматизированный поиск уязвимостей в CI/CD пайплайн разработки.")
-    else:
-        add_finding("Анализ кода", "⚪ ДЛЯ РАЗВИТИЯ", 
-                    "Собственная разработка отсутствует, продукт не является приоритетным для бюджета.", 
-                    "Запрашивать отчеты безопасности у внешних вендоров ПО.")
-
-    # SIEM - Целесообразность по масштабу серверов
-    srv_cnt = answers.get('srv_cnt', 0) or answers.get('virt_srv_count', 0)
-    if srv_cnt > 20:
-        if not answers.get('has_siem'):
-            add_finding("SIEM (Мониторинг инцидентов)", "🔴 ВЫСОКИЙ", 
-                        f"При {srv_cnt} серверах ручной анализ логов неэффективен. Атаки могут оставаться незамеченными месяцами.", 
-                        "Внедрить систему сбора и корреляции событий для оперативного реагирования.")
-    else:
-        add_finding("SIEM", "🟡 ДЛЯ РАЗВИТИЯ", 
-                    "При малом количестве серверов SIEM экономически избыточен.", 
-                    "Настроить централизованный сбор критических логов (Log Management) без сложной корреляции.")
-
-    # PAM - Для контроля администраторов в крупных сетях
-    if pc_cnt > 100 or srv_cnt > 30:
-        if not answers.get('has_pam'):
-            add_finding("PAM (Управление привилегиями)", "🔴 ВЫСОКИЙ", 
-                        "Администраторы — цель №1. Отсутствие контроля действий привилегированных пользователей — критический риск.", 
-                        "Внедрить шлюз доступа для инженеров с записью видеосессий и ротацией паролей.")
-
-    # --- ГЕНЕРАЦИЯ ФАЙЛА ---
-    df = pd.DataFrame(report_rows)
+    # --- ФОРМИРОВАНИЕ EXCEL С ДВУМЯ ЛИСТАМИ ---
+    df_tech = pd.DataFrame(tech_data)
+    df_risks = pd.DataFrame(risk_rows)
+    
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Security_Strategy_2026')
-        workbook = writer.book
-        worksheet = writer.sheets['Security_Strategy_2026']
+        # Лист 1: Рекомендации (самое важное - вперед)
+        df_risks.to_excel(writer, index=False, sheet_name='Стратегия и Риски')
+        # Лист 2: Технические данные
+        df_tech.to_excel(writer, index=False, sheet_name='Технический паспорт')
         
-        # Стили
-        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'border': 1})
+        workbook = writer.book
+        
+        # Стили для Стратегии
+        ws1 = writer.sheets['Стратегия и Риски']
+        fmt_header = workbook.add_format({'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'border': 1})
         f_red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006', 'bold': True})
         f_yellow = workbook.add_format({'bg_color': '#FFEB9C', 'font_color': '#9C6500'})
         f_green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
-        f_grey = workbook.add_format({'bg_color': '#F2F2F2', 'font_color': '#7F7F7F'})
-
-        # Применение стилей к заголовкам
-        for col_num, value in enumerate(df.columns.values):
-            worksheet.write(0, col_num, value, header_fmt)
         
-        # Ширина колонок
-        worksheet.set_column('A:A', 35) # Продукт
-        worksheet.set_column('B:B', 20) # Приоритет
-        worksheet.set_column('C:C', 60) # Анализ риска
-        worksheet.set_column('D:D', 50) # Рекомендация
+        for col_num, value in enumerate(df_risks.columns.values):
+            ws1.write(0, col_num, value, fmt_header)
+        
+        ws1.set_column('A:A', 30); ws1.set_column('B:B', 18)
+        ws1.set_column('C:C', 60); ws1.set_column('D:D', 50)
+        ws1.conditional_format('B2:B30', {'type': 'text', 'criteria': 'containing', 'value': '🔴', 'format': f_red})
+        ws1.conditional_format('B2:B30', {'type': 'text', 'criteria': 'containing', 'value': '🟡', 'format': f_yellow})
+        ws1.conditional_format('B2:B30', {'type': 'text', 'criteria': 'containing', 'value': '🟢', 'format': f_green})
 
-        # Условное форматирование по приоритетам
-        worksheet.conditional_format('B2:B50', {'type': 'text', 'criteria': 'containing', 'value': '🔴', 'format': f_red})
-        worksheet.conditional_format('B2:B50', {'type': 'text', 'criteria': 'containing', 'value': '🟡', 'format': f_yellow})
-        worksheet.conditional_format('B2:B50', {'type': 'text', 'criteria': 'containing', 'value': '🟢', 'format': f_green})
-        worksheet.conditional_format('B2:B50', {'type': 'text', 'criteria': 'containing', 'value': '⚪', 'format': f_grey})
+        # Стили для Техпаспорта
+        ws2 = writer.sheets['Технический паспорт']
+        for col_num, value in enumerate(df_tech.columns.values):
+            ws2.write(0, col_num, value, fmt_header)
+        ws2.set_column('A:A', 40); ws2.set_column('B:B', 25)
 
     return output.getvalue()
 
