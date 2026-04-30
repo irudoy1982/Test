@@ -546,94 +546,107 @@ if dev_active:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 
-# --- ПОЛНЫЙ ОБЪЕДИНЕННЫЙ ОТЧЕТ (ТЕХНИЧЕСКИЙ + СТРАТЕГИЧЕСКИЙ) ---
+# --- ЕДИНЫЙ ЭКСПЕРТНЫЙ ОТЧЕТ (ТЕХНИЧЕСКИЙ АУДИТ + CISO АНАЛИТИКА) ---
 def make_expert_excel(c_info, answers, output_file="IT_IB_Audit_Report.xlsx"):
     from io import BytesIO
     import pandas as pd
     
-    # 1. СБОР ТЕХНИЧЕСКИХ ДАННЫХ (Инвентаризация)
-    tech_data = []
-    for key, value in answers.items():
-        if not key.startswith('_') and key not in ['has_legacy_os', 'legacy_isolated', 'routing_type', 'is_dev']:
-            tech_data.append({"Параметр": key, "Значение": value})
-    
-    # 2. ЭКСПЕРТНАЯ АНАЛИТИКА (Риски и Рекомендации)
-    risk_rows = []
-    def add_risk(product, priority, reason, recommendation):
-        risk_rows.append({
-            "Продукт / Область": product,
-            "Приоритет": priority,
-            "Анализ риска (CISO View)": reason,
-            "Рекомендация по внедрению": recommendation
+    report_data = []
+
+    def add_row(block, parameter, value, status, risk_logic, recommendation):
+        report_data.append({
+            "Блок": block,
+            "Параметр": parameter,
+            "Значение": value,
+            "Статус": status,
+            "Анализ риска (CISO View)": risk_logic,
+            "Рекомендация эксперта": recommendation
         })
 
-    # Логика: Масштаб и Сеть
+    # --- 1. АНАЛИЗ СЕТЕВОЙ ИНФРАСТРУКТУРЫ ---
     pc_cnt = answers.get('1.1. Всего АРМ', 0) or answers.get('arm_cnt', 0)
     routing = answers.get('routing') or answers.get('routing_type', 'Статическая')
+    
+    # Логика маршрутизации
     if pc_cnt > 50 and routing == "Статическая":
-        add_risk("Динамическая маршрутизация", "🔴 КРИТИЧНО", 
-                 f"Для сети в {pc_cnt} АРМ статика создает риск 'человеческой ошибки' и долгого простоя.", 
-                 "Миграция на OSPF/BGP для отказоустойчивости.")
+        s, r, rec = "🔴 КРИТИЧНО", "Статика в большой сети — это риск 'человеческой ошибки' и долгого восстановления при сбоях.", "Миграция на OSPF/BGP для автоматизации отказоустойчивости."
+    else:
+        s, r, rec = "🟢 НОРМА", "Метод управления сетью соответствует текущему масштабу.", "Плановый аудит таблицы маршрутов."
+    add_row("1. Сеть", "Маршрутизация", routing, s, r, rec)
 
-    # Логика: Wi-Fi Плотность
+    # Логика Wi-Fi (Корреляция)
     wifi_ap = answers.get('ap_cnt', 0)
-    if wifi_ap > 0 and pc_cnt / wifi_ap > 25:
-        add_risk("Расширение Wi-Fi", "🟡 ВНИМАНИЕ", 
-                 "Высокая плотность пользователей на точку доступа снижает стабильность связи.", 
-                 "Увеличить кол-во ТД или перейти на Wi-Fi 6.")
+    if wifi_ap > 0:
+        ratio = pc_cnt / wifi_ap
+        if ratio > 25:
+            s, r, rec = "🟡 ВНИМАНИЕ", f"Высокая нагрузка ({int(ratio)} чел/ТД). Риск деградации связи и обрывов в бизнес-приложениях.", "Увеличить плотность точек доступа (ТД) или внедрить Wi-Fi 6."
+        else:
+            add_row("1. Сеть", "Wi-Fi Плотность", f"{int(ratio)} чел/ТД", "🟢 НОРМА", "Нагрузка на беспроводную сеть в пределах нормы.", "Регулярная радиоразведка.")
 
-    # Логика: Legacy и Изоляция
-    if answers.get('has_legacy') or answers.get('has_legacy_os'):
-        if not answers.get('legacy_isolated'):
-            add_risk("Изоляция Legacy (VLAN)", "🔴 КРИТИЧНО", 
-                     "Системы XP/7 в общем сегменте — это критическая уязвимость для всей сети.", 
-                     "Немедленно изолировать legacy-хосты в отдельный VLAN.")
+    # --- 2. АНАЛИЗ LEGACY И БЕЗОПАСНОСТИ ОС ---
+    has_legacy = answers.get('has_legacy') or answers.get('has_legacy_os')
+    is_isolated = answers.get('legacy_isolated', False)
+    if has_legacy:
+        if not is_isolated:
+            s, r, rec = "🔴 КРИТИЧНО", "Системы без патчей (XP/7) в общей сети. Прямой риск для работы шифровальщиков.", "Срочная изоляция legacy-хостов в отдельный VLAN."
+        else:
+            s, r, rec = "🟡 ВНИМАНИЕ", "Устаревшие ОС изолированы, но остаются уязвимыми.", "Плановый вывод устаревших систем из эксплуатации."
+    else:
+        add_row("2. ОС", "Устаревшие системы", "Не обнаружены", "🟢 НОРМА", "Критически устаревших ОС в сети не выявлено.", "Контроль версионности обновлений.")
 
-    # Логика: Целесообразность ИБ-продуктов
+    # --- 3. МАТРИЦА ЦЕЛЕСООБРАЗНОСТИ ИБ-ПРОДУКТОВ ---
+    
+    # MFA
     if not answers.get('has_mfa'):
-        add_risk("MFA (Второй фактор)", "🔴 КРИТИЧНО", "Отсутствие MFA делает пароли легкой мишенью.", "Внедрить для всех внешних доступов.")
+        add_row("3. ИБ Продукты", "MFA (Второй фактор)", "Отсутствует", "🔴 КРИТИЧНО", "90% взломов связаны с кражей паролей. Без MFA периметр защиты открыт.", "Внедрить 2FA для VPN, почты и облачных сервисов.")
     
-    if answers.get('is_dev') and not answers.get('has_sast'):
-        add_risk("SAST/DAST", "🔴 КРИТИЧНО", "Выпуск собственного ПО без анализа кода — риск для клиентов.", "Интегрировать сканеры в CI/CD.")
+    # DevSecOps (Только для разработчиков)[cite: 1, 2]
+    if answers.get('is_dev'):
+        if not answers.get('has_sast') and not answers.get('has_code_scan'):
+            add_row("3. ИБ Продукты", "SAST/DAST", "Не внедрено", "🔴 КРИТИЧНО", "Выпуск собственного ПО без анализа кода — риск судебных исков и взлома клиентов.", "Интегрировать автоматический поиск уязвимостей в CI/CD.")
     
+    # SIEM (Приоритет от масштаба)
     srv_cnt = answers.get('virt_srv_count', 0) or answers.get('srv_cnt', 0)
     if srv_cnt > 15 and not answers.get('has_siem'):
-        add_risk("SIEM-система", "🔴 ВЫСОКИЙ", "Невозможность оперативного выявления атак в инфраструктуре.", "Внедрить мониторинг событий (ELK/SIEM).")
+        add_row("3. ИБ Продукты", "SIEM (Мониторинг)", "Отсутствует", "🔴 ВЫСОКИЙ", f"При {srv_cnt} серверах невозможно вручную отследить атаку. События теряются.", "Внедрение системы сбора и корреляции логов.")
+    elif srv_cnt <= 15:
+        add_row("3. ИБ Продукты", "SIEM", "Нет", "🟡 ДЛЯ РАЗВИТИЯ", "При малом парке серверов SIEM может быть избыточен по бюджету.", "Настроить централизованный Log Management.")
 
-    # --- ФОРМИРОВАНИЕ EXCEL С ДВУМЯ ЛИСТАМИ ---
-    df_tech = pd.DataFrame(tech_data)
-    df_risks = pd.DataFrame(risk_rows)
-    
+    # PAM[cite: 2]
+    if pc_cnt > 100 and not answers.get('has_pam'):
+        add_row("3. ИБ Продукты", "PAM (Контроль админов)", "Не используется", "🔴 ВЫСОКИЙ", "Утечка админских прав в крупной сети означает полную потерю инфраструктуры.", "Внедрить контроль сессий и ротацию паролей для инженеров.")
+
+    # --- ГЕНЕРАЦИЯ EXCEL ---
+    df = pd.DataFrame(report_data)
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Лист 1: Рекомендации (самое важное - вперед)
-        df_risks.to_excel(writer, index=False, sheet_name='Стратегия и Риски')
-        # Лист 2: Технические данные
-        df_tech.to_excel(writer, index=False, sheet_name='Технический паспорт')
+        df.to_excel(writer, index=False, sheet_name='Аудит_ИТ_ИБ_2026')
         
         workbook = writer.book
+        worksheet = writer.sheets['Аудит_ИТ_ИБ_2026']
         
-        # Стили для Стратегии
-        ws1 = writer.sheets['Стратегия и Риски']
-        fmt_header = workbook.add_format({'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'border': 1})
+        # Стилизация[cite: 2]
+        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#2F5597', 'font_color': 'white', 'border': 1})
         f_red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006', 'bold': True})
         f_yellow = workbook.add_format({'bg_color': '#FFEB9C', 'font_color': '#9C6500'})
         f_green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
         
-        for col_num, value in enumerate(df_risks.columns.values):
-            ws1.write(0, col_num, value, fmt_header)
+        # Форматируем заголовки
+        for col_num, value in enumerate(df.columns.values):
+            worksheet.write(0, col_num, value, header_fmt)
+            
+        # Ширина колонок для читаемости
+        worksheet.set_column('A:A', 15) # Блок
+        worksheet.set_column('B:B', 25) # Параметр
+        worksheet.set_column('C:C', 20) # Значение
+        worksheet.set_column('D:D', 18) # Статус
+        worksheet.set_column('E:E', 60) # Анализ риска
+        worksheet.set_column('F:F', 50) # Рекомендация
         
-        ws1.set_column('A:A', 30); ws1.set_column('B:B', 18)
-        ws1.set_column('C:C', 60); ws1.set_column('D:D', 50)
-        ws1.conditional_format('B2:B30', {'type': 'text', 'criteria': 'containing', 'value': '🔴', 'format': f_red})
-        ws1.conditional_format('B2:B30', {'type': 'text', 'criteria': 'containing', 'value': '🟡', 'format': f_yellow})
-        ws1.conditional_format('B2:B30', {'type': 'text', 'criteria': 'containing', 'value': '🟢', 'format': f_green})
-
-        # Стили для Техпаспорта
-        ws2 = writer.sheets['Технический паспорт']
-        for col_num, value in enumerate(df_tech.columns.values):
-            ws2.write(0, col_num, value, fmt_header)
-        ws2.set_column('A:A', 40); ws2.set_column('B:B', 25)
+        # Цветовая индикация статусов
+        worksheet.conditional_format('D2:D50', {'type': 'text', 'criteria': 'containing', 'value': '🔴', 'format': f_red})
+        worksheet.conditional_format('D2:D50', {'type': 'text', 'criteria': 'containing', 'value': '🟡', 'format': f_yellow})
+        worksheet.conditional_format('D2:D50', {'type': 'text', 'criteria': 'containing', 'value': '🟢', 'format': f_green})
 
     return output.getvalue()
 
