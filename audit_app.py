@@ -546,11 +546,11 @@ if dev_active:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 
-# --- Отчет ---
+# --- Отчет (Интеграция расширенной логики в существующую структуру) ---
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import Font, Alignment, PatternFill
     from datetime import datetime
 
     output = BytesIO()
@@ -562,10 +562,8 @@ def make_expert_excel(c_info, results, final_score):
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     bold_font = Font(bold=True)
-
     red_fill = PatternFill(start_color="FF4D4D", end_color="FF4D4D", fill_type="solid")
     yellow_fill = PatternFill(start_color="FFD966", end_color="FFD966", fill_type="solid")
-    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
     white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 
     def write_block(row, text):
@@ -582,59 +580,55 @@ def make_expert_excel(c_info, results, final_score):
 
     row = 1
 
-    # --- ШАПКА ---
-    row = write_block(row, "ИНФОРМАЦИОННЫЯ О ЗАКАЗЧИКЕ")
+    # --- 1. ШАПКА: ИНФОРМАЦИЯ О ЗАКАЗЧИКЕ ---
+    row = write_block(row, "ИНФОРМАЦИЯ О ЗАКАЗЧИКЕ")
     row = write_kv(row, "Компания", c_info.get("Наименование компании"))
     row = write_kv(row, "ФИО", c_info.get("ФИО контактного лица"))
     row = write_kv(row, "Должность", c_info.get("Должность"))
-    row = write_kv(row, "Телефон", c_info.get("Контактный телефон"))
-    row = write_kv(row, "Email", c_info.get("Email"))
     row = write_kv(row, "Дата отчета", datetime.now().strftime("%d.%m.%Y %H:%M"))
     row += 1
 
-    # --- РЕЗЮМЕ ---
+    # --- 2. РЕЗЮМЕ И ЗРЕЛОСТЬ ---
     row = write_block(row, "РЕЗЮМЕ ПО ИТ-ИНФРАСТРУКТУРЕ")
-
     maturity = "Начальный"
     if final_score > 80: maturity = "Оптимизированный"
     elif final_score > 60: maturity = "Определенный"
     elif final_score > 40: maturity = "Управляемый"
     elif final_score > 20: maturity = "Базовый"
-
     row = write_kv(row, "Уровень зрелости", f"{final_score}% — {maturity}")
     row += 1
 
-    # --- КЛЮЧЕВЫЕ РИСКИ ---
+    # --- 3. КЛЮЧЕВЫЕ РИСКИ (Расширенная логика) ---
     row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ")
+    
+    # Извлечение данных для анализа
+    pc_cnt = results.get("_user_count", 0)
+    routing = results.get("Маршрутизация", "")
+    wifi_ap = results.get("WiFi Точки", 0)
+    
     risks = []
 
-    m_spd = results.get("_main_speed", 0)
-    b_spd = results.get("_back_speed", 0)
+    # Логика: Статическая маршрутизация
+    if pc_cnt > 50 and "Статическая" in routing:
+        risks.append(f"КРИТИЧНО: Использование статики на {pc_cnt} АРМ. Риск человеческой ошибки и долгого простоя.")
 
-    if b_spd == 0:
-        risks.append(
-            "КРИТИЧНО: Отсутствует резервный интернет-канал. "
-            "При отказе основного провайдера происходит полная остановка бизнес-сервисов."
-        )
-    elif b_spd < (m_spd / 2):
-        risks.append(
-            "ВЫСОКИЙ РИСК: Резервный канал существенно уступает основному по пропускной способности."
-        )
+    # Логика: Устаревшие ОС (Legacy)
+    legacy_os_detected = [k for k in results.keys() if "XP/Vista/7/8" in str(k) or "2008/2012" in str(k)]
+    for os_key in legacy_os_detected:
+        if results.get(os_key, 0) > 0:
+            risks.append(f"КРИТИЧНО: Обнаружены устаревшие ОС ({os_key}). Высокий риск заражения шифровальщиками.")
 
+    # Логика: Плотность Wi-Fi
+    if wifi_ap > 0 and (pc_cnt / wifi_ap) > 25:
+        risks.append(f"ВНИМАНИЕ: Высокая плотность Wi-Fi ({int(pc_cnt/wifi_ap)} чел/ТД). Возможны обрывы связи.")
+
+    # Стандартные проверки ИБ[cite: 2]
     if results.get("Резервное копирование") == "Нет":
-        risks.append(
-            "КРИТИЧНО: Отсутствует система резервного копирования. Данные под угрозой безвозвратной потери."
-        )
-
+        risks.append("КРИТИЧНО: Отсутствует система резервного копирования.")
     if results.get("MFA") == "Нет":
-        risks.append(
-            "КРИТИЧНО: Отсутствует многофакторная аутентификация (MFA)."
-        )
-
+        risks.append("КРИТИЧНО: Отсутствует многофакторная аутентификация (MFA).")
     if results.get("NGFW") in ["Нет", "", None]:
-        risks.append(
-            "ВЫСОКИЙ РИСК: Отсутствует NGFW. Периметр сети не защищен от современных угроз."
-        )
+        risks.append("ВЫСОКИЙ РИСК: Отсутствует NGFW. Периметр сети не защищен.")
 
     if not risks:
         risks.append("Критичных рисков не выявлено.")
@@ -642,63 +636,34 @@ def make_expert_excel(c_info, results, final_score):
     for i, r in enumerate(risks, 1):
         ws.cell(row=row, column=1, value=f"{i}. {r}")
         row += 1
-
     row += 1
 
-    # --- РЕКОМЕНДАЦИИ ---
-    row = write_block(row, "РЕКОМЕНДАЦИИ")
-    recs = []
-
-    if b_spd == 0:
-        recs.append("Рекомендуется подключить резервный интернет-канал.")
-    if results.get("Резервное копирование") == "Нет":
-        recs.append("Внедрить систему резервного копирования (Veeam, Commvault, Veritas).")
-    if results.get("MFA") == "Нет":
-        recs.append("Внедрить MFA (CyberArk, WALLIX, Axidian, Netwrix).")
-    if results.get("NGFW") in ["Нет", "", None]:
-        recs.append("Внедрить NGFW (Check Point, Palo Alto, Fortinet).")
-
-    if not recs:
-        recs.append("Рекомендуется регулярный аудит.")
-
-    for r in recs:
-        ws.cell(row=row, column=1, value=f"- {r}")
-        row += 1
-
-    row += 1
-
-    # --- ДЕТАЛЬНЫЙ АНАЛИЗ (Сюда попадает ВСЁ из словаря) ---
-    row = write_block(row, "ДЕТАЛЬНЫЙ АНАЛИЗ")
-
+    # --- 4. ДЕТАЛЬНЫЙ АНАЛИЗ (Таблица) ---
+    row = write_block(row, "ДЕТАЛЬНЫЙ АНАЛИЗ ПАРАМЕТРОВ")
     headers = ["Параметр", "Значение", "Статус", "Риск", "Рекомендация"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=row, column=i, value=h)
         cell.fill = header_fill
         cell.font = white_font
-
     row += 1
 
-    exclude = [
-        "Город","Сфера деятельности","Наименование компании","Сайт компании",
-        "Email","ФИО контактного лица","Должность","Контактный телефон"
-    ]
+    exclude = ["Город","Сфера деятельности","Наименование компании","Сайт компании", "Email","ФИО контактного лица","Должность","Контактный телефон"]
 
     for k, v in results.items():
         if k in exclude or str(k).startswith("_"):
             continue
 
         val_str = str(v).lower()
-
-        if "нет" in val_str or v == 0:
-            status = "Критично"
-            risk = "Высокий"
-            rec = f"Требуется внедрение '{k}'"
-            fill = red_fill
+        
+        # Динамическое определение статуса[cite: 2]
+        is_bad = "нет" in val_str or v == 0 or ("статическая" in val_str and pc_cnt > 50)
+        
+        if is_bad:
+            status, risk, fill = "Критично", "Высокий", red_fill
+            rec = f"Требуется оптимизация или внедрение '{k}'"
         else:
-            status = "Норма"
-            risk = "Низкий"
+            status, risk, fill = "Норма", "Низкий", white_fill
             rec = "-"
-            fill = white_fill
 
         ws.cell(row=row, column=1, value=k)
         ws.cell(row=row, column=2, value=str(v))
@@ -710,8 +675,9 @@ def make_expert_excel(c_info, results, final_score):
             ws.cell(row=row, column=col).fill = fill
         row += 1
 
+    # Настройка ширины колонок
     for col in ['A','B','C','D','E']:
-        ws.column_dimensions[col].width = 30 if col != 'E' else 60
+        ws.column_dimensions[col].width = 35 if col != 'E' else 65
 
     wb.save(output)
     return output.getvalue()
