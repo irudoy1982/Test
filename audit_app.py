@@ -546,7 +546,7 @@ if dev_active:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 
-# --- Отчет (Интеграция расширенной логики в существующую структуру) ---
+# --- Отчет (Экспертная логика CISO и CTO) ---
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
@@ -562,122 +562,122 @@ def make_expert_excel(c_info, results, final_score):
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     bold_font = Font(bold=True)
-    red_fill = PatternFill(start_color="FF4D4D", end_color="FF4D4D", fill_type="solid")
-    yellow_fill = PatternFill(start_color="FFD966", end_color="FFD966", fill_type="solid")
-    white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+    red_fill = PatternFill(start_color="FFC7CE", end_color="9C0006", fill_type="solid")
+    yellow_fill = PatternFill(start_color="FFEB9C", end_color="9C6500", fill_type="solid")
+    white_fill = PatternFill(start_color="FFFFFF", end_color="000000", fill_type="solid")
 
     def write_block(row, text):
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
         cell = ws.cell(row=row, column=1, value=text)
         cell.fill = header_fill
         cell.font = white_font
-        return row + 1
-
-    def write_kv(row, k, v):
-        ws.cell(row=row, column=1, value=k).font = bold_font
-        ws.cell(row=row, column=2, value=str(v))
+        cell.alignment = Alignment(horizontal="center")
         return row + 1
 
     row = 1
-
-    # --- 1. ШАПКА: ИНФОРМАЦИЯ О ЗАКАЗЧИКЕ ---
-    row = write_block(row, "ИНФОРМАЦИЯ О ЗАКАЗЧИКЕ")
-    row = write_kv(row, "Компания", c_info.get("Наименование компании"))
-    row = write_kv(row, "ФИО", c_info.get("ФИО контактного лица"))
-    row = write_kv(row, "Должность", c_info.get("Должность"))
-    row = write_kv(row, "Дата отчета", datetime.now().strftime("%d.%m.%Y %H:%M"))
+    # --- 1. ШАПКА ---
+    row = write_block(row, "ОБЩАЯ ИНФОРМАЦИЯ")
+    for k, v in c_info.items():
+        ws.cell(row=row, column=1, value=k).font = bold_font
+        ws.cell(row=row, column=2, value=str(v))
+        row += 1
+    row = write_block(row, f"Дата отчета: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
     row += 1
 
-    # --- 2. РЕЗЮМЕ И ЗРЕЛОСТЬ ---
-    row = write_block(row, "РЕЗЮМЕ ПО ИТ-ИНФРАСТРУКТУРЕ")
-    maturity = "Начальный"
-    if final_score > 80: maturity = "Оптимизированный"
-    elif final_score > 60: maturity = "Определенный"
-    elif final_score > 40: maturity = "Управляемый"
-    elif final_score > 20: maturity = "Базовый"
-    row = write_kv(row, "Уровень зрелости", f"{final_score}% — {maturity}")
-    row += 1
-
-    # --- 3. КЛЮЧЕВЫЕ РИСКИ (Расширенная логика) ---
-    row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ")
+    # --- 2. КЛЮЧЕВЫЕ РИСКИ (Аналитический блок) ---
+    row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ И СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
     
-    # Извлечение данных для анализа
     pc_cnt = results.get("_user_count", 0)
+    srv_cnt = results.get("Серверы (вирт)", 0)
     routing = results.get("Маршрутизация", "")
     wifi_ap = results.get("WiFi Точки", 0)
+    is_dev = results.get("4.1. Разработчики", 0) > 0
     
     risks = []
 
-    # Логика: Статическая маршрутизация
+    # Логика: Сетевая архитектура
     if pc_cnt > 50 and "Статическая" in routing:
-        risks.append(f"КРИТИЧНО: Использование статики на {pc_cnt} АРМ. Риск человеческой ошибки и долгого простоя.")
+        risks.append(("🔴 КРИТИЧНО", "Статическая маршрутизация при наличии более 50 АРМ.", 
+                       "Переход на динамические протоколы (OSPF/BGP) для исключения ошибок ручного управления."))
 
-    # Логика: Устаревшие ОС (Legacy)
-    legacy_os_detected = [k for k in results.keys() if "XP/Vista/7/8" in str(k) or "2008/2012" in str(k)]
-    for os_key in legacy_os_detected:
-        if results.get(os_key, 0) > 0:
-            risks.append(f"КРИТИЧНО: Обнаружены устаревшие ОС ({os_key}). Высокий риск заражения шифровальщиками.")
+    # Логика: Устаревшие ОС
+    legacy_keys = [k for k in results.keys() if "XP/Vista/7/8" in k or "2008/2012" in k]
+    for lk in legacy_keys:
+        if results.get(lk, 0) > 0:
+            risks.append(("🔴 КРИТИЧНО", f"Использование устаревших ОС ({lk}) в рабочей сети.", 
+                           "Немедленная изоляция хостов в отдельный VLAN или замена на поддерживаемые версии."))
 
-    # Логика: Плотность Wi-Fi
+    # Логика: Wi-Fi
     if wifi_ap > 0 and (pc_cnt / wifi_ap) > 25:
-        risks.append(f"ВНИМАНИЕ: Высокая плотность Wi-Fi ({int(pc_cnt/wifi_ap)} чел/ТД). Возможны обрывы связи.")
+        risks.append(("🟡 ВНИМАНИЕ", f"Высокая плотность Wi-Fi ({int(pc_cnt/wifi_ap)} чел/ТД).", 
+                       "Установка дополнительных точек доступа или переход на стандарт Wi-Fi 6."))
 
-    # Стандартные проверки ИБ[cite: 2]
-    if results.get("Резервное копирование") == "Нет":
-        risks.append("КРИТИЧНО: Отсутствует система резервного копирования.")
+    # Логика продуктов ИБ от потребности
     if results.get("MFA") == "Нет":
-        risks.append("КРИТИЧНО: Отсутствует многофакторная аутентификация (MFA).")
-    if results.get("NGFW") in ["Нет", "", None]:
-        risks.append("ВЫСОКИЙ РИСК: Отсутствует NGFW. Периметр сети не защищен.")
+        risks.append(("🔴 КРИТИЧНО", "Отсутствие многофакторной аутентификация (MFA).", "Внедрение MFA — это базовый и обязательный уровень защиты."))
 
-    if not risks:
-        risks.append("Критичных рисков не выявлено.")
+    if srv_cnt > 20 and results.get("Блок 2. SIEM") == "Нет":
+        risks.append(("🔴 ВЫСОКИЙ", "Отсутствие системы SIEM при наличии крупного серверного парка.", "Внедрение SIEM необходимо для централизованного выявления инцидентов."))
 
-    for i, r in enumerate(risks, 1):
-        ws.cell(row=row, column=1, value=f"{i}. {r}")
+    if is_dev and results.get("Блок 2. SAST") == "Нет":
+        risks.append(("🔴 КРИТИЧНО", "Отсутствие контроля уязвимостей в коде (SAST/DAST) при наличии разработки.", "Внедрение инструментов анализа безопасности кода в CI/CD пайплайны."))
+
+    if results.get("3.2. Frontend") and results.get("Блок 2. WAF") == "Нет":
+        risks.append(("🟡 ВНИМАНИЕ", "Публичные веб-сервисы не защищены WAF.", "Рекомендуется установка Web Application Firewall для защиты от атак на приложения."))
+
+    # Запись рисков
+    for priority, desc, rec in risks:
+        ws.cell(row=row, column=1, value=priority)
+        ws.cell(row=row, column=2, value=desc)
+        ws.cell(row=row, column=3, value=rec)
         row += 1
-    row += 1
+    row += 2
 
-    # --- 4. ДЕТАЛЬНЫЙ АНАЛИЗ (Таблица) ---
-    row = write_block(row, "ДЕТАЛЬНЫЙ АНАЛИЗ ПАРАМЕТРОВ")
-    headers = ["Параметр", "Значение", "Статус", "Риск", "Рекомендация"]
+    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ ПАРАМЕТРОВ ---
+    row = write_block(row, "ДЕТАЛЬНАЯ ТЕХНИЧЕСКАЯ ИНВЕНТАРИЗАЦИЯ")
+    headers = ["Параметр", "Значение", "Статус", "Анализ риска", "Рекомендация эксперта"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=row, column=i, value=h)
         cell.fill = header_fill
         cell.font = white_font
     row += 1
 
-    exclude = ["Город","Сфера деятельности","Наименование компании","Сайт компании", "Email","ФИО контактного лица","Должность","Контактный телефон"]
-
     for k, v in results.items():
-        if k in exclude or str(k).startswith("_"):
-            continue
+        if str(k).startswith("_") or k in ["Город", "Сфера деятельности", "Наименование компании"]: continue
+        
+        status, risk_desc, rec_final, fill = "🟢 Норма", "Риск минимален", "-", white_fill
 
-        val_str = str(v).lower()
+        # Индивидуальная логика для каждой строки
+        if "XP/Vista/7/8" in str(k) or "2008/2012" in str(k):
+            if v > 0:
+                status, risk_desc, rec_final, fill = "🔴 Критично", "Система без обновлений ИБ", "Замена на Win 10/11 или Server 2022", red_fill
         
-        # Динамическое определение статуса[cite: 2]
-        is_bad = "нет" in val_str or v == 0 or ("статическая" in val_str and pc_cnt > 50)
-        
-        if is_bad:
-            status, risk, fill = "Критично", "Высокий", red_fill
-            rec = f"Требуется оптимизация или внедрение '{k}'"
-        else:
-            status, risk, fill = "Норма", "Низкий", white_fill
-            rec = "-"
+        elif "Маршрутизация" in str(k) and "Статическая" in str(v) and pc_cnt > 50:
+            status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск ручной ошибки", "Внедрить OSPF/BGP", red_fill
+            
+        elif "Блок 2." in str(k) and v == "Нет":
+            # Проверка нужно ли это компании
+            is_needed = False
+            if "SIEM" in k and srv_cnt > 20: is_needed = True
+            if "WAF" in k and results.get("3.2. Frontend"): is_needed = True
+            if "PAM" in k and pc_cnt > 100: is_needed = True
+            
+            if is_needed:
+                status, risk_desc, rec_final, fill = "🟡 Рекомендуется", "Отсутствие целевого контроля", f"Внедрить {k.split('. ')[1]}", yellow_fill
+            else:
+                status, risk_desc, rec_final, fill = "⚪ Допустимо", "Продукт не приоритетен для вашего масштаба", "Мониторинг развития", white_fill
 
         ws.cell(row=row, column=1, value=k)
         ws.cell(row=row, column=2, value=str(v))
         ws.cell(row=row, column=3, value=status)
-        ws.cell(row=row, column=4, value=risk)
-        ws.cell(row=row, column=5, value=rec)
-
-        for col in range(1, 6):
-            ws.cell(row=row, column=col).fill = fill
+        ws.cell(row=row, column=4, value=risk_desc)
+        ws.cell(row=row, column=5, value=rec_final)
+        for col in range(1, 6): ws.cell(row=row, column=col).fill = fill
         row += 1
 
-    # Настройка ширины колонок
-    for col in ['A','B','C','D','E']:
-        ws.column_dimensions[col].width = 35 if col != 'E' else 65
+    # Форматирование колонок
+    for col, width in zip(['A','B','C','D','E'], [35, 30, 18, 50, 60]):
+        ws.column_dimensions[col].width = width
 
     wb.save(output)
     return output.getvalue()
