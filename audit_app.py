@@ -546,7 +546,6 @@ if dev_active:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 
-# --- Итоговый экспертный отчет Khalil Audit v10.2 ---
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
@@ -585,32 +584,31 @@ def make_expert_excel(c_info, results, final_score):
 
     # Извлечение метрик для кросс-анализа
     pc_cnt = results.get("_user_count", 0)
-    srv_v_cnt = results.get("Серверы (вирт)", 0)
-    wifi_ap = results.get("Wi-Fi Точки", 0) # Исправлен ключ
+    wifi_ap = results.get("Wi-Fi Точки", 0)
     m_spd = results.get("_main_speed", 0)
     b_spd = results.get("_back_speed", 0)
     has_dev = results.get("4.1. Разработчики", 0) > 0
     has_web = results.get("3.2. Frontend") not in [None, [], ""]
 
-    # --- 2. КЛЮЧЕВЫЕ РИСКИ (Верхний уровень) ---
-    row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ И СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
+    # --- 2. КЛЮЧЕВЫЕ РИСКИ (Стиль предыдущей версии) ---
+    row = write_block(row, "СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
     
-    risks = []
-    # (Здесь остается логика формирования списка risks из предыдущего шага)
-    # ... [логика для формирования списка risks] ...
-    
-    # Для краткости выведем основные
+    risks_summary = []
     if results.get("Резервное копирование") == "Нет":
-        risks.append(("🔴 КРИТИЧНО", "Отсутствует бэкап", "Внедрить схему GFS"))
-    
-    for priority, desc, rec in risks:
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие бэкапа данных", "Внедрить схему GFS (Grandfather-Father-Son)"))
+    if pc_cnt > 50 and results.get("MFA") == "Нет":
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие MFA (2FA)", "Обязательно для защиты учетных записей"))
+    if has_dev and results.get("4.2. CICD") == "Нет":
+        risks_summary.append(("🔴 ВЫСОКИЙ", "Отсутствие CI/CD", "Автоматизировать процессы деплоя"))
+
+    for priority, desc, rec in risks_summary:
         ws.cell(row=row, column=1, value=priority)
         ws.cell(row=row, column=2, value=desc)
         ws.cell(row=row, column=3, value=rec)
         row += 1
     row += 2
 
-    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ (Исправленная логика) ---
+    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ (Исправленная логика без дублей) ---
     row = write_block(row, "ДЕТАЛЬНАЯ ТЕХНИЧЕСКАЯ ИНВЕНТАРИЗАЦИЯ")
     headers = ["Параметр", "Значение", "Статус", "Анализ риска", "Рекомендация эксперта"]
     for i, h in enumerate(headers, 1):
@@ -619,75 +617,75 @@ def make_expert_excel(c_info, results, final_score):
         cell.font = white_font
     row += 1
 
+    # Список ключей, которые мы уже обработали (чтобы избежать дублей)
+    processed_keys = set()
+
     for k, v in results.items():
-        if str(k).startswith("_") or k in ["Город", "Сфера деятельности", "Наименование компании", "Сайт компании", "Email", "ФИО контактного лица", "Должность", "Контактный телефон"]:
+        if str(k).startswith("_") or k in processed_keys or k in ["Город", "Сфера деятельности", "Наименование компании"]: 
             continue
         
-        status, risk_desc, rec_final, fill = "🟢 Норма", "Риск минимален", "-", white_fill
+        status, risk_desc, rec_final, fill = "🟢 Норма", "Соответствует", "-", white_fill
         val_str = str(v)
 
-        # Логика: Устаревшие ОС (АРМ и Серверы)
-        if any(x in str(k) for x in ["XP/Vista/7/8", "2008/2012", "2016"]) and results.get(k, 0) > 0:
-            status, risk_desc, rec_final, fill = "🔴 Критично", "Система без обновлений", "Обновить до Win 10/11 или Server 2022", red_fill
+        # 1. Устаревшие серверные и клиентские ОС
+        if any(x in str(k) for x in ["XP", "7", "8", "2008", "2012", "2016"]) and results.get(k, 0) > 0:
+            status, risk_desc, rec_final, fill = "🔴 Критично", "Система без патчей ИБ", "Обновить до актуальных версий (2019/2022/Win11)", red_fill
 
-        # Логика: Wi-Fi
+        # 2. Wi-Fi: Плотность и Контроллер
         elif "Wi-Fi Точки" in str(k):
-            if v > 0 and (pc_cnt / v) > 25:
-                status, risk_desc, rec_final, fill = "🟡 Внимание", "Высокая плотность", "Установить доп. точки доступа", yellow_fill
-        elif "Wi-Fi Контроллер" in str(k) and v == "Нет" and wifi_ap > 10:
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Сложность управления", "Приобрести Wi-Fi контроллер", red_fill
+            if v > 0:
+                ratio = pc_cnt / v
+                if ratio > 25:
+                    status, risk_desc, rec_final, fill = "🟡 Внимание", f"Плотность {int(ratio)} АРМ/Точку", "Добавить точки доступа", yellow_fill
+        elif "Wi-Fi Контроллер" in str(k):
+            if v == "Нет" and wifi_ap > 10:
+                status, risk_desc, rec_final, fill = "🔴 Высокий", "Сложное управление 10+ точками", "Приобрести Wi-Fi контроллер", red_fill
 
-        # Логика: Каналы[cite: 2]
+        # 3. Каналы связи (Проверка 60%)
         elif "Резервный канал" in str(k):
             if b_spd > 0 and m_spd > 0 and b_spd < (m_spd * 0.6):
-                status, risk_desc, rec_final, fill = "🟡 Внимание", "Узкий канал", "Расширить резерв до 60% от основного", yellow_fill
+                status, risk_desc, rec_final, fill = "🟡 Внимание", "Резерв < 60% основного", "Расширить канал для отказоустойчивости", yellow_fill
 
-        # Логика: RAID[cite: 2]
+        # 4. RAID
         elif "RAID-группы" in str(k) and ("RAID 0" in val_str or "RAID 1" in val_str):
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Опасная конфигурация", "Переход на RAID 6 / 10", red_fill
+            status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск потери данных или низкая эффективность", "Миграция на RAID 6 или 10", red_fill
 
-        # Логика: ИБ Продукты (EPP, MFA, IAM, NAC)[cite: 2]
-        elif "Блок 2." in str(k) and v == "Нет":
-            # EPP критичен всегда[cite: 2]
-            if "EPP" in k:
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Нет базовой защиты", "Срочно внедрить антивирус (EPP)", red_fill
-            # MFA при 50+ АРМ[cite: 2]
-            elif "MFA" in k and pc_cnt > 50:
-                status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск взлома УЗ", "Внедрить MFA", red_fill
-            # IAM/NAC при 100+[cite: 2]
-            elif ("IAM" in k or "NAC" in k) and pc_cnt > 100:
-                status, risk_desc, rec_final, fill = "🟡 Внимание", "Сложность контроля доступа", f"Внедрить {k.split('. ')[1]}", yellow_fill
-            # SAST/DAST при разработке[cite: 2]
-            elif ("SAST" in k or "DAST" in k) and has_dev:
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Уязвимости в коде", "Внедрить анализ безопасности кода", red_fill
-            # WAF/Anti-DDoS при наличии Frontend[cite: 2]
-            elif ("WAF" in k or "Anti-DDoS" in k) and has_web:
-                status, risk_desc, rec_final, fill = "🔴 Высокий", "Web-ресурсы открыты", "Внедрить защиту периметра", red_fill
+        # 5. Продукты ИБ от потребности (БЕЗ ДУБЛЕЙ MFA)[cite: 2]
+        elif "Блок 2." in str(k) or k == "MFA":
+            if v == "Нет":
+                # Условия важности[cite: 1, 2]
+                if "EPP" in k or "Резервное копирование" in k:
+                    status, risk_desc, rec_final, fill = "🔴 Критично", "Отсутствие базового эшелона", "Срочное внедрение", red_fill
+                elif ("MFA" in k or k == "MFA") and pc_cnt > 50:
+                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск компрометации УЗ", "Внедрить 2FA", red_fill
+                elif ("IAM" in k or "NAC" in k) and pc_cnt > 100:
+                    status, risk_desc, rec_final, fill = "🟡 Внимание", "Сложность контроля доступа", "Внедрить систему управления доступом", yellow_fill
+                elif ("SAST" in k or "DAST" in k) and has_dev:
+                    status, risk_desc, rec_final, fill = "🔴 Критично", "Уязвимости в коде", "Внедрить в пайплайн разработки", red_fill
+                elif ("WAF" in k or "Anti-DDoS" in k) and has_web:
+                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Веб-сервисы без защиты", "Внедрить защиту прикладного уровня", red_fill
+                elif "SOAR" in k and results.get("Блок 2. SIEM") != "Нет":
+                    status, risk_desc, rec_final, fill = "🟢 Оптимизация", "Ручное реагирование", "Рекомендовано для связки с SIEM", yellow_fill
+                elif "Patch Management" in k and results.get("Блок 2. Сканер уязвимостей") != "Нет":
+                    status, risk_desc, rec_final, fill = "🟢 Оптимизация", "Медленный цикл устранения", "Рекомендовано к сканеру", yellow_fill
 
-        # Логика: Синергия (SOAR, Patch Management)[cite: 2]
-        elif "SOAR" in str(k) and v == "Нет" and results.get("Блок 2. SIEM") != "Нет":
-            status, risk_desc, rec_final, fill = "🟢 Рекомендуется", "Ручное реагирование", "Внедрить SOAR для автоматизации SIEM", yellow_fill
-
-        elif "Patch Management" in str(k) and v == "Нет" and results.get("Блок 2. Сканер уязвимостей") != "Нет":
-            status, risk_desc, rec_final, fill = "🟢 Рекомендуется", "Медленное устранение", "Внедрить Patch Management к сканеру", yellow_fill
-
-        # Логика: Разработка и CI/CD[cite: 2]
+        # 6. Разработка и CI/CD[cite: 2]
         elif "4.2. CICD" in str(k) and v == "Нет" and has_dev:
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Ручной деплой", "Автоматизировать через CI/CD", red_fill
+            status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск человеческого фактора", "Внедрить CI/CD", red_fill
 
-        # Логика: Резервное копирование[cite: 2]
-        elif "Резервное копирование" in str(k) and v == "Нет":
-            status, risk_desc, rec_final, fill = "🔴 Критично", "Риск потери данных", "Внедрить GFS (Grandfather-Father-Son)", red_fill
-
+        # Запись строки
         ws.cell(row=row, column=1, value=k)
         ws.cell(row=row, column=2, value=val_str)
         ws.cell(row=row, column=3, value=status)
         ws.cell(row=row, column=4, value=risk_desc)
         ws.cell(row=row, column=5, value=rec_final)
         for col in range(1, 6): ws.cell(row=row, column=col).fill = fill
+        
+        processed_keys.add(k)
         row += 1
 
-    for col, width in zip(['A','B','C','D','E'], [35, 30, 20, 45, 60]):
+    # Автоподбор ширины
+    for col, width in zip(['A','B','C','D','E'], [35, 25, 18, 45, 55]):
         ws.column_dimensions[col].width = width
 
     wb.save(output)
