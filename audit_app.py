@@ -565,6 +565,16 @@ def make_expert_excel(c_info, results, final_score):
     yellow_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
     white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 
+    # Функция-помощник для безопасного получения числа (защита от TypeError)
+    def get_int(val):
+        try:
+            if val is None: return 0
+            # Убираем лишние пробелы, если это строка
+            clean_val = str(val).strip().split()[0] if isinstance(val, str) else val
+            return int(float(clean_val))
+        except (ValueError, TypeError, IndexError):
+            return 0
+
     def write_block(row, text):
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
         cell = ws.cell(row=row, column=1, value=text)
@@ -583,23 +593,25 @@ def make_expert_excel(c_info, results, final_score):
     row += 1
 
     # Извлечение метрик для кросс-анализа
-    pc_cnt = results.get("_user_count", 0)
-    wifi_ap = results.get("Wi-Fi Точки", 0)
-    m_spd = results.get("_main_speed", 0)
-    b_spd = results.get("_back_speed", 0)
-    has_dev = results.get("4.1. Разработчики", 0) > 0
-    has_web = results.get("3.2. Frontend") not in [None, [], ""]
+    pc_cnt = get_int(results.get("_user_count", 0))
+    wifi_ap_cnt = get_int(results.get("Wi-Fi Точки", 0))
+    m_spd = get_int(results.get("_main_speed", 0))
+    b_spd = get_int(results.get("_back_speed", 0))
+    has_dev = results.get("4.1. Разработчики", 0) and get_int(results.get("4.1. Разработчики")) > 0
+    has_web = results.get("3.2. Frontend") not in [None, [], "", "Нет"]
 
-    # --- 2. КЛЮЧЕВЫЕ РИСКИ (Стиль предыдущей версии) ---
+    # --- 2. КЛЮЧЕВЫЕ РИСКИ (Стратегический блок) ---
     row = write_block(row, "СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
     
     risks_summary = []
     if results.get("Резервное копирование") == "Нет":
         risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие бэкапа данных", "Внедрить схему GFS (Grandfather-Father-Son)"))
     if pc_cnt > 50 and results.get("MFA") == "Нет":
-        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие MFA (2FA)", "Обязательно для защиты учетных записей"))
+        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие MFA (2FA)", "Обязательно для защиты учетных записей при 50+ АРМ"))
     if has_dev and results.get("4.2. CICD") == "Нет":
-        risks_summary.append(("🔴 ВЫСОКИЙ", "Отсутствие CI/CD", "Автоматизировать процессы деплоя"))
+        risks_summary.append(("🔴 ВЫСОКИЙ", "Отсутствие CI/CD пайплайнов", "Автоматизировать процессы сборки и деплоя"))
+    if wifi_ap_cnt > 10 and results.get("Wi-Fi Контроллер") == "Нет":
+        risks_summary.append(("🔴 ВЫСОКИЙ", "Отсутствие Wi-Fi контроллера", "Необходим для управления парком из 10+ точек"))
 
     for priority, desc, rec in risks_summary:
         ws.cell(row=row, column=1, value=priority)
@@ -608,7 +620,7 @@ def make_expert_excel(c_info, results, final_score):
         row += 1
     row += 2
 
-    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ (Исправленная логика без дублей) ---
+    # --- 3. ДЕТАЛЬНЫЙ АНАЛИЗ (Технический блок) ---
     row = write_block(row, "ДЕТАЛЬНАЯ ТЕХНИЧЕСКАЯ ИНВЕНТАРИЗАЦИЯ")
     headers = ["Параметр", "Значение", "Статус", "Анализ риска", "Рекомендация эксперта"]
     for i, h in enumerate(headers, 1):
@@ -617,7 +629,6 @@ def make_expert_excel(c_info, results, final_score):
         cell.font = white_font
     row += 1
 
-    # Список ключей, которые мы уже обработали (чтобы избежать дублей)
     processed_keys = set()
 
     for k, v in results.items():
@@ -627,53 +638,60 @@ def make_expert_excel(c_info, results, final_score):
         status, risk_desc, rec_final, fill = "🟢 Норма", "Соответствует", "-", white_fill
         val_str = str(v)
 
-        # 1. Устаревшие серверные и клиентские ОС
-        if any(x in str(k) for x in ["XP", "7", "8", "2008", "2012", "2016"]) and results.get(k, 0) > 0:
-            status, risk_desc, rec_final, fill = "🔴 Критично", "Система без патчей ИБ", "Обновить до актуальных версий (2019/2022/Win11)", red_fill
+        # 1. Устаревшие ОС (Серверы и АРМ)
+        if any(x in str(k) for x in ["XP", "7", "8", "2008", "2012", "2016"]):
+            if get_int(v) > 0:
+                status, risk_desc, rec_final, fill = "🔴 Критично", "Система без патчей ИБ", "Обновить до актуальных версий (2019/2022/Win11)", red_fill
 
         # 2. Wi-Fi: Плотность и Контроллер
         elif "Wi-Fi Точки" in str(k):
-            if v > 0:
-                ratio = pc_cnt / v
+            num_ap = get_int(v)
+            if num_ap > 0:
+                ratio = pc_cnt / num_ap
                 if ratio > 25:
-                    status, risk_desc, rec_final, fill = "🟡 Внимание", f"Плотность {int(ratio)} АРМ/Точку", "Добавить точки доступа", yellow_fill
+                    status, risk_desc, rec_final, fill = "🟡 Внимание", f"Плотность {int(ratio)} АРМ/Точку", "Добавить точки доступа (цель < 25)", yellow_fill
+        
         elif "Wi-Fi Контроллер" in str(k):
-            if v == "Нет" and wifi_ap > 10:
-                status, risk_desc, rec_final, fill = "🔴 Высокий", "Сложное управление 10+ точками", "Приобрести Wi-Fi контроллер", red_fill
+            if v == "Нет" and wifi_ap_cnt > 10:
+                status, risk_desc, rec_final, fill = "🔴 Высокий", "Сложное управление 10+ точками", "Приобрести аппаратный или софтовый контроллер", red_fill
 
-        # 3. Каналы связи (Проверка 60%)
+        # 3. Каналы связи (60% резерв)
         elif "Резервный канал" in str(k):
             if b_spd > 0 and m_spd > 0 and b_spd < (m_spd * 0.6):
-                status, risk_desc, rec_final, fill = "🟡 Внимание", "Резерв < 60% основного", "Расширить канал для отказоустойчивости", yellow_fill
+                status, risk_desc, rec_final, fill = "🟡 Внимание", f"Резерв ({b_spd}Мб) < 60% от осн.", "Расширить канал для обеспечения бизнес-непрерывности", yellow_fill
 
         # 4. RAID
         elif "RAID-группы" in str(k) and ("RAID 0" in val_str or "RAID 1" in val_str):
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск потери данных или низкая эффективность", "Миграция на RAID 6 или 10", red_fill
+            status, risk_desc, rec_final, fill = "🔴 Высокий", "Низкая отказоустойчивость/эффективность", "Миграция на RAID 6, 10 или аналоги", red_fill
 
-        # 5. Продукты ИБ от потребности (БЕЗ ДУБЛЕЙ MFA)[cite: 2]
+        # 5. ИБ Продукты от потребности[cite: 1]
         elif "Блок 2." in str(k) or k == "MFA":
             if v == "Нет":
-                # Условия важности[cite: 1, 2]
+                # Базовый эшелон
                 if "EPP" in k or "Резервное копирование" in k:
-                    status, risk_desc, rec_final, fill = "🔴 Критично", "Отсутствие базового эшелона", "Срочное внедрение", red_fill
+                    status, risk_desc, rec_final, fill = "🔴 Критично", "Отсутствие базовой защиты", "Срочное внедрение (Standard Security)", red_fill
+                # MFA/IAM/NAC от масштаба
                 elif ("MFA" in k or k == "MFA") and pc_cnt > 50:
-                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск компрометации УЗ", "Внедрить 2FA", red_fill
+                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск захвата учетных записей", "Внедрить 2FA (MFA)", red_fill
                 elif ("IAM" in k or "NAC" in k) and pc_cnt > 100:
-                    status, risk_desc, rec_final, fill = "🟡 Внимание", "Сложность контроля доступа", "Внедрить систему управления доступом", yellow_fill
+                    status, risk_desc, rec_final, fill = "🟡 Внимание", "Сложный контроль доступа", f"Внедрить {k.split('. ')[1]}", yellow_fill
+                # Разработка
                 elif ("SAST" in k or "DAST" in k) and has_dev:
-                    status, risk_desc, rec_final, fill = "🔴 Критично", "Уязвимости в коде", "Внедрить в пайплайн разработки", red_fill
+                    status, risk_desc, rec_final, fill = "🔴 Критично", "Уязвимости в собственном коде", "Внедрить автоматический анализ кода", red_fill
+                # Web
                 elif ("WAF" in k or "Anti-DDoS" in k) and has_web:
-                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Веб-сервисы без защиты", "Внедрить защиту прикладного уровня", red_fill
+                    status, risk_desc, rec_final, fill = "🔴 Высокий", "Публичные сервисы не защищены", "Внедрить фильтрацию трафика (WAF)", red_fill
+                # Синергия
                 elif "SOAR" in k and results.get("Блок 2. SIEM") != "Нет":
-                    status, risk_desc, rec_final, fill = "🟢 Оптимизация", "Ручное реагирование", "Рекомендовано для связки с SIEM", yellow_fill
+                    status, risk_desc, rec_final, fill = "🟢 Оптимизация", "Низкая скорость реагирования", "Рекомендовано для автоматизации SIEM", yellow_fill
                 elif "Patch Management" in k and results.get("Блок 2. Сканер уязвимостей") != "Нет":
-                    status, risk_desc, rec_final, fill = "🟢 Оптимизация", "Медленный цикл устранения", "Рекомендовано к сканеру", yellow_fill
+                    status, risk_desc, rec_final, fill = "🟢 Оптимизация", "Ручное закрытие дыр", "Внедрить систему управления патчами", yellow_fill
 
-        # 6. Разработка и CI/CD[cite: 2]
+        # 6. CI/CD
         elif "4.2. CICD" in str(k) and v == "Нет" and has_dev:
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Риск человеческого фактора", "Внедрить CI/CD", red_fill
+            status, risk_desc, rec_final, fill = "🔴 Высокий", "Неавтоматизированный деплой", "Внедрить пайплайны CI/CD", red_fill
 
-        # Запись строки
+        # Запись в таблицу
         ws.cell(row=row, column=1, value=k)
         ws.cell(row=row, column=2, value=val_str)
         ws.cell(row=row, column=3, value=status)
@@ -684,8 +702,8 @@ def make_expert_excel(c_info, results, final_score):
         processed_keys.add(k)
         row += 1
 
-    # Автоподбор ширины
-    for col, width in zip(['A','B','C','D','E'], [35, 25, 18, 45, 55]):
+    # Форматирование
+    for col, width in zip(['A','B','C','D','E'], [35, 25, 18, 45, 60]):
         ws.column_dimensions[col].width = width
 
     wb.save(output)
