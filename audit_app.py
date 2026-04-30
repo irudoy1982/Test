@@ -493,41 +493,28 @@ if web_active:
 st.divider()
 
 # --- БЛОК 4: РАЗРАБОТКА ---
-st.header("Блок 4: Разработка")
-dev_active = st.toggle("Разработка", key="dev_toggle")
-if dev_active:
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        dev_count = st.number_input("Кол-во разработчиков*", min_value=0, key="dev_cnt_f")
-        data['4.1. Разработчики'] = dev_count
-        cicd_active = st.checkbox("Используется CI/CD", key="cicd_f")
-        data['4.2. CICD'] = "Да" if cicd_active else "Нет"
-        if dev_count == 0: validation_errors.append("Укажите количество разработчиков")
-    with col_d2:
-        lang_list = ["Python", "JavaScript/TypeScript", "Java", "C# / .NET", "PHP", "Go", "C++", "Swift/Kotlin", "Другое"]
-        sel_langs = st.multiselect("Языки программирования*", lang_list, key="langs_f")
-        if not sel_langs:
-            validation_errors.append("Выберите языки разработки")
-            data['4.3. Языки разработки'] = "Не указаны"
-        elif "Другое" in sel_langs:
-            other_l = st.text_input("Укажите другие языки", key="other_langs_f")
-            data['4.3. Языки разработки'] = f"{', '.join([l for l in sel_langs if l != 'Другое'])}, {other_l}"
-        else:
-            data['4.3. Языки разработки'] = ", ".join(sel_langs)
-    data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
-
-
-# --- ГЕНЕРАЦИЯ EXCEL (v10) ---
 def make_expert_excel(c_info, results, final_score):
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from datetime import datetime
+
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
     ws.title = "Отчет ИТ и ИБ"
 
+    # --- СТИЛИ ---
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     white_font = Font(color="FFFFFF", bold=True)
     bold_font = Font(bold=True)
-    
+
+    red_fill = PatternFill(start_color="FF4D4D", end_color="FF4D4D", fill_type="solid")
+    yellow_fill = PatternFill(start_color="FFD966", end_color="FFD966", fill_type="solid")
+    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+
+    # --- ВСПОМОГАТЕЛЬНЫЕ ---
     def write_block(row, text):
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
         cell = ws.cell(row=row, column=1, value=text)
@@ -541,98 +528,159 @@ def make_expert_excel(c_info, results, final_score):
         return row + 1
 
     row = 1
+
+    # --- ШАПКА ---
+    row = write_block(row, "ИНФОРМАЦИЯ О ЗАКАЗЧИКЕ")
+    row = write_kv(row, "Компания", c_info.get("Наименование компании"))
+    row = write_kv(row, "ФИО", c_info.get("ФИО контактного лица"))
+    row = write_kv(row, "Должность", c_info.get("Должность"))
+    row = write_kv(row, "Телефон", c_info.get("Контактный телефон"))
+    row = write_kv(row, "Email", c_info.get("Email"))
+    row = write_kv(row, "Дата отчета", datetime.now().strftime("%d.%m.%Y %H:%M"))
+    row += 1
+
+    # --- РЕЗЮМЕ ---
     row = write_block(row, "РЕЗЮМЕ ПО ИТ-ИНФРАСТРУКТУРЕ")
-    
+
     maturity = "Начальный"
     if final_score > 80: maturity = "Оптимизированный"
     elif final_score > 60: maturity = "Определенный"
     elif final_score > 40: maturity = "Управляемый"
     elif final_score > 20: maturity = "Базовый"
 
-    row = write_kv(row, "Компания", c_info.get("Наименование компании"))
     row = write_kv(row, "Уровень зрелости", f"{final_score}% — {maturity}")
     row += 1
 
-    # --- КЛЮЧЕВЫЕ РИСКИ И ЛОГИКА ---
-    row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ (CISO / CTO View)")
+    # --- РИСКИ ---
+    row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ")
     risks = []
-    
-    # Логика каналов
+
     m_spd = results.get("_main_speed", 0)
     b_spd = results.get("_back_speed", 0)
+
     if b_spd == 0:
-        risks.append("ОТКРЫТЫЙ РИСК: Отсутствие резервного канала — единая точка отказа.")
+        risks.append("Критично: отсутствует резервный канал.")
     elif b_spd < (m_spd / 2):
-        risks.append("ВНИМАНИЕ: резервный канал не покрывает производительность основного. Риск деградации сервисов при переключении.")
+        risks.append("Важно: слабый резервный канал.")
 
-    # Логика WiFi
-    u_cnt = results.get("_user_count", 0)
-    a_cnt = results.get("_ap_cnt", 0)
-    has_ctrl = results.get("WiFi Контроллер") not in ["Нет", None, ""]
-    if a_cnt > 0:
-        if u_cnt / a_cnt > 20:
-            risks.append(f"ПЕРЕГРУЗКА WIFI: На одну точку приходится более 20 устройств. Рекомендация: увеличить плотность покрытия.")
-        if a_cnt > 3 and not has_ctrl:
-            risks.append("ПРОБЛЕМА: Отсутствие контроллера при наличии нескольких точек доступа. Отсутствует бесшовный роуминг и централизованное управление.")
-
-    # Резервное копирование
     if results.get("Резервное копирование") == "Нет":
-        risks.append("КРИТИЧНО: Отсутствие системы бэкапа — риск безвозвратной потери данных.")
+        risks.append("Критично: нет резервного копирования.")
 
-    # ИБ
     if results.get("MFA") == "Нет":
-        risks.append("ВЫСОКИЙ РИСК: Отсутствие MFA открывает вектор атак через компрометацию учетных записей.")
-    
-    # СХД
-    if "RAID 0" in str(results.get("RAID-группы", "")) or "JBOD" in str(results.get("RAID-группы", "")):
-        risks.append("РИСК СХД: Использование RAID 0/JBOD недопустимо для бизнес-данных из-за отсутствия отказоустойчивости.")
+        risks.append("Критично: нет MFA.")
 
-    # Разработка
-    if results.get("Разработчики", 0) > 0 and results.get("CICD") == "Нет":
-        risks.append("CTO ALERT: Процесс разработки не автоматизирован (нет CI/CD). Высокий риск ошибок и низкая скорость поставки ПО.")
+    if not risks:
+        risks.append("Критичных рисков не выявлено.")
 
     for i, r in enumerate(risks, 1):
         ws.cell(row=row, column=1, value=f"{i}. {r}")
         row += 1
+
     row += 1
 
     # --- РЕКОМЕНДАЦИИ ---
-    row = write_block(row, "СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
+    row = write_block(row, "РЕКОМЕНДАЦИИ")
     recs = []
-    if b_spd < (m_spd / 2): recs.append("Расширить пропускную способность резервного канала до уровня основного.")
-    if a_cnt > 3 and not has_ctrl: recs.append("Внедрить аппаратный или программный Wi-Fi контроллер.")
-    if results.get("MFA") == "Нет": recs.append("Внедрить MFA для VPN, почты и критических систем.")
-    if results.get("Резервное копирование") == "Нет": recs.append("Внедрить систему резервного копирования (Veeam, Кибер Бэкап и др.).")
-    if results.get("CICD") == "Нет" and results.get("Разработчики", 0) > 0: recs.append("Внедрить CI/CD пайплайны для автоматизации сборки и деплоя.")
-    
-    if not recs: recs = ["Поддерживать текущую инфраструктуру", "Провести плановое обновление ПО"]
-    
+
+    # Интернет
+    if b_spd == 0:
+        recs.append("Подключить резервный канал (Cisco, Fortinet, Huawei).")
+    elif b_spd < (m_spd / 2):
+        recs.append("Увеличить резервный канал (Cisco, Fortinet, Huawei).")
+
+    # WiFi
+    if results.get("WiFi Контроллер") in ["Нет", "", None]:
+        recs.append("Внедрить Wi-Fi контроллер (Cisco, Huawei).")
+
+    # Backup
+    if results.get("Резервное копирование") == "Нет":
+        recs.append("Внедрить резервное копирование (Veeam, Commvault, Veritas).")
+
+    # MFA / PAM
+    if results.get("MFA") == "Нет":
+        recs.append("Внедрить управление доступом (CyberArk, WALLIX, Axidian, Netwrix, Fudo, JumpServer).")
+
+    # NGFW
+    if results.get("NGFW") in ["Нет", "", None]:
+        recs.append("Внедрить NGFW (Check Point, Palo Alto, Fortinet, Forcepoint, Cisco, Huawei).")
+
+    # DLP
+    if results.get("DLP") == "Нет":
+        recs.append("Внедрить DLP (Symantec, Forcepoint, Zecurion, ibatyr, Strac).")
+
+    # Шифрование
+    if results.get("DLP") == "Нет":
+        recs.append("Внедрить шифрование данных (Thales, Imperva, Гарда, Symantec).")
+
+    # IDS/IPS
+    if results.get("IDS/IPS") == "Нет":
+        recs.append("Внедрить IDS/IPS (Trend Micro, Forcepoint).")
+
+    # WAF
+    if results.get("WAF") == "Нет":
+        recs.append("Внедрить WAF (Check Point, Radware, A10, Cloudflare).")
+
+    # Anti-DDoS
+    if results.get("Anti-DDoS") == "Нет":
+        recs.append("Внедрить защиту от DDoS (F5, Radware, Check Point).")
+
+    if not recs:
+        recs.append("Рекомендуется плановое развитие инфраструктуры.")
+
     for r in recs:
         ws.cell(row=row, column=1, value=f"- {r}")
         row += 1
+
     row += 1
 
-    # --- ПОЛНЫЙ ДЕТАЛЬНЫЙ АНАЛИЗ ---
-    row = write_block(row, "ДЕТАЛЬНЫЙ АНАЛИЗ ВСЕХ БЛОКОВ")
+    # --- ДЕТАЛЬНЫЙ АНАЛИЗ ---
+    row = write_block(row, "ДЕТАЛЬНЫЙ АНАЛИЗ")
+
     headers = ["Параметр", "Значение", "Статус", "Риск", "Рекомендация"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=row, column=i, value=h)
         cell.fill = header_fill
         cell.font = white_font
+
     row += 1
 
-    for k, v in results.items():
-        if k.startswith("_"): continue # Пропускаем служебные поля
-        status, risk, rec = "Норма", "Низкий", "Ок"
+    full_data = {}
+    full_data.update(results)
+    full_data.update(c_info)
+
+    for k, v in full_data.items():
+        if k.startswith("_"):
+            continue
+
         val_str = str(v).lower()
+
         if "нет" in val_str or v == 0 or "не указан" in val_str:
-            status, risk, rec = "Проблема", "Средний/Высокий", "Требует внимания"
-        
+            status = "Критично"
+            risk = "Высокий"
+            rec = f"Отсутствует '{k}'. Требуется внедрение."
+            fill = red_fill
+
+        elif "да" in val_str:
+            status = "Хорошо"
+            risk = "Низкий"
+            rec = f"'{k}' реализован."
+            fill = green_fill
+
+        else:
+            status = "Норма"
+            risk = "Низкий"
+            rec = f"'{k}' без рисков."
+            fill = white_fill
+
         ws.cell(row=row, column=1, value=k)
         ws.cell(row=row, column=2, value=str(v))
         ws.cell(row=row, column=3, value=status)
         ws.cell(row=row, column=4, value=risk)
         ws.cell(row=row, column=5, value=rec)
+
+        for col in range(1, 6):
+            ws.cell(row=row, column=col).fill = fill
+
         row += 1
 
     for col in ['A', 'B', 'C', 'D', 'E']:
