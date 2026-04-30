@@ -548,173 +548,133 @@ if dev_active:
 
 # --- Отчет ---
 def make_expert_excel(c_info, results, final_score):
-    from io import BytesIO
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
-    from datetime import datetime
+import pandas as pd
 
-    output = BytesIO()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Отчет ИТ и ИБ"
+def generate_professional_excel_report(answers, output_file="IT_IB_Audit_Report.xlsx"):
+    """
+    Генерация экспертного отчета в Excel с расширенной логикой взаимосвязей ИТ и ИБ.
+    """
+    report_data = []
 
-    # --- СТИЛИ ---
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    white_font = Font(color="FFFFFF", bold=True)
-    bold_font = Font(bold=True)
+    def add_row(block, parameter, value, status, logic, recommendation):
+        report_data.append({
+            "Блок опросника": block,
+            "Параметр": parameter,
+            "Текущее значение": value,
+            "Статус": status,
+            "Логическое обоснование (Риск)": logic,
+            "Рекомендация": recommendation
+        })
 
-    red_fill = PatternFill(start_color="FF4D4D", end_color="FF4D4D", fill_type="solid")
-    yellow_fill = PatternFill(start_color="FFD966", end_color="FFD966", fill_type="solid")
-    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-    white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+    # --- 1. ИНФРАСТРУКТУРА: СЕТЬ И МАСШТАБ ---
+    infra_size = answers.get('infra_size', 'small')
+    routing = answers.get('routing_type', 'static')
+    
+    # Логика: Масштаб vs Маршрутизация
+    if infra_size == 'large' and routing == 'static':
+        s, l, r = "🔴 Критично", "Для крупной сети ручное управление маршрутами ведет к каскадным сбоям и долгому восстановлению.", "Внедрение динамических протоколов (OSPF/BGP) совместно со статикой."
+    elif infra_size == 'medium' and routing == 'static':
+        s, l, r = "🟡 Внимание", "Статическая маршрутизация затрудняет масштабирование и автоматизацию.", "Миграция на смешанную модель (Static + Dynamic)."
+    else:
+        s, l, r = "🟢 Норма", "Метод маршрутизации адекватен размеру сети.", "Регулярный аудит связности."
+    add_row("1. Сеть", "Маршрутизация", routing.capitalize(), s, l, r)
 
-    def write_block(row, text):
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
-        cell = ws.cell(row=row, column=1, value=text)
-        cell.fill = header_fill
-        cell.font = white_font
-        return row + 1
+    # Логика: Резервирование каналов
+    has_reserve = answers.get('has_reserve_link', False)
+    if not has_reserve and infra_size in ['medium', 'large']:
+        s, l, r = "🔴 Высокий", "Единая точка отказа в интернет-канале. Риск полной остановки бизнес-процессов.", "Подключение резервного провайдера (второй ввод)."
+    else:
+        s, l, r = "🟢 Ок", "Обеспечена базовая отказоустойчивость внешнего канала.", "Проверка автоматического переключения (Failover)."
+    add_row("1. Сеть", "Отказоустойчивость WAN", "Есть" if has_reserve else "Нет", s, l, r)
 
-    def write_kv(row, k, v):
-        ws.cell(row=row, column=1, value=k).font = bold_font
-        ws.cell(row=row, column=2, value=str(v))
-        return row + 1
-
-    row = 1
-
-    # --- ШАПКА ---
-    row = write_block(row, "ИНФОРМАЦИОННЫЯ О ЗАКАЗЧИКЕ")
-    row = write_kv(row, "Компания", c_info.get("Наименование компании"))
-    row = write_kv(row, "ФИО", c_info.get("ФИО контактного лица"))
-    row = write_kv(row, "Должность", c_info.get("Должность"))
-    row = write_kv(row, "Телефон", c_info.get("Контактный телефон"))
-    row = write_kv(row, "Email", c_info.get("Email"))
-    row = write_kv(row, "Дата отчета", datetime.now().strftime("%d.%m.%Y %H:%M"))
-    row += 1
-
-    # --- РЕЗЮМЕ ---
-    row = write_block(row, "РЕЗЮМЕ ПО ИТ-ИНФРАСТРУКТУРЕ")
-
-    maturity = "Начальный"
-    if final_score > 80: maturity = "Оптимизированный"
-    elif final_score > 60: maturity = "Определенный"
-    elif final_score > 40: maturity = "Управляемый"
-    elif final_score > 20: maturity = "Базовый"
-
-    row = write_kv(row, "Уровень зрелости", f"{final_score}% — {maturity}")
-    row += 1
-
-    # --- КЛЮЧЕВЫЕ РИСКИ ---
-    row = write_block(row, "КЛЮЧЕВЫЕ РИСКИ")
-    risks = []
-
-    m_spd = results.get("_main_speed", 0)
-    b_spd = results.get("_back_speed", 0)
-
-    if b_spd == 0:
-        risks.append(
-            "КРИТИЧНО: Отсутствует резервный интернет-канал. "
-            "При отказе основного провайдера происходит полная остановка бизнес-сервисов."
-        )
-    elif b_spd < (m_spd / 2):
-        risks.append(
-            "ВЫСОКИЙ РИСК: Резервный канал существенно уступает основному по пропускной способности."
-        )
-
-    if results.get("Резервное копирование") == "Нет":
-        risks.append(
-            "КРИТИЧНО: Отсутствует система резервного копирования. Данные под угрозой безвозвратной потери."
-        )
-
-    if results.get("MFA") == "Нет":
-        risks.append(
-            "КРИТИЧНО: Отсутствует многофакторная аутентификация (MFA)."
-        )
-
-    if results.get("NGFW") in ["Нет", "", None]:
-        risks.append(
-            "ВЫСОКИЙ РИСК: Отсутствует NGFW. Периметр сети не защищен от современных угроз."
-        )
-
-    if not risks:
-        risks.append("Критичных рисков не выявлено.")
-
-    for i, r in enumerate(risks, 1):
-        ws.cell(row=row, column=1, value=f"{i}. {r}")
-        row += 1
-
-    row += 1
-
-    # --- РЕКОМЕНДАЦИИ ---
-    row = write_block(row, "РЕКОМЕНДАЦИИ")
-    recs = []
-
-    if b_spd == 0:
-        recs.append("Рекомендуется подключить резервный интернет-канал.")
-    if results.get("Резервное копирование") == "Нет":
-        recs.append("Внедрить систему резервного копирования (Veeam, Commvault, Veritas).")
-    if results.get("MFA") == "Нет":
-        recs.append("Внедрить MFA (CyberArk, WALLIX, Axidian, Netwrix).")
-    if results.get("NGFW") in ["Нет", "", None]:
-        recs.append("Внедрить NGFW (Check Point, Palo Alto, Fortinet).")
-
-    if not recs:
-        recs.append("Рекомендуется регулярный аудит.")
-
-    for r in recs:
-        ws.cell(row=row, column=1, value=f"- {r}")
-        row += 1
-
-    row += 1
-
-    # --- ДЕТАЛЬНЫЙ АНАЛИЗ (Сюда попадает ВСЁ из словаря) ---
-    row = write_block(row, "ДЕТАЛЬНЫЙ АНАЛИЗ")
-
-    headers = ["Параметр", "Значение", "Статус", "Риск", "Рекомендация"]
-    for i, h in enumerate(headers, 1):
-        cell = ws.cell(row=row, column=i, value=h)
-        cell.fill = header_fill
-        cell.font = white_font
-
-    row += 1
-
-    exclude = [
-        "Город","Сфера деятельности","Наименование компании","Сайт компании",
-        "Email","ФИО контактного лица","Должность","Контактный телефон"
-    ]
-
-    for k, v in results.items():
-        if k in exclude or str(k).startswith("_"):
-            continue
-
-        val_str = str(v).lower()
-
-        if "нет" in val_str or v == 0:
-            status = "Критично"
-            risk = "Высокий"
-            rec = f"Требуется внедрение '{k}'"
-            fill = red_fill
+    # --- 2. ИБ: УСТАРЕВШИЕ СИСТЕМЫ (LEGACY) ---
+    # Мы проверяем наличие систем Win XP, 7, 8 или Server 2008
+    has_legacy_os = answers.get('has_legacy_os', False) 
+    is_isolated = answers.get('legacy_isolated', False)
+    
+    if has_legacy_os:
+        if not is_isolated:
+            s, l, r = "🔴 Критично", "Использование систем без патчей безопасности (XP/7/8) в общем сегменте. Высокий риск эксплойтов и шифровальщиков.", "Полная изоляция legacy-узлов в отдельный VLAN без доступа к интернет или замена оборудования."
         else:
-            status = "Норма"
-            risk = "Низкий"
-            rec = "-"
-            fill = white_fill
+            s, l, r = "🟡 Внимание", "Устаревшие ОС изолированы. Риск сохраняется на уровне смежных систем.", "Плановый вывод из эксплуатации и переход на Win 10/11."
+    else:
+        s, l, r = "🟢 Ок", "В инфраструктуре отсутствуют критически устаревшие ОС.", "Поддержка жизненного цикла ПО."
+    add_row("2. Безопасность", "Устаревшие ОС (Legacy)", "Присутствуют" if has_legacy_os else "Отсутствуют", s, l, r)
 
-        ws.cell(row=row, column=1, value=k)
-        ws.cell(row=row, column=2, value=str(v))
-        ws.cell(row=row, column=3, value=status)
-        ws.cell(row=row, column=4, value=risk)
-        ws.cell(row=row, column=5, value=rec)
+    # --- 3. ИБ: ПЕРИМЕТР И ДОСТУП ---
+    has_web = answers.get('has_external_web', False)
+    has_waf = answers.get('has_waf', False)
+    if has_web and not has_waf:
+        s, l, r = "🔴 Обязательно", "Публичные веб-сервисы не защищены на уровне L7. Уязвимость перед SQLi и XSS.", "Внедрение WAF (Web Application Firewall)."
+    else:
+        s, l, r = "🟢 Ок", "Защита прикладного уровня соответствует рискам.", "Периодический пентест веб-ресурсов."
+    add_row("3. Периметр", "Защита Web (WAF)", "Да" if has_web else "Нет", s, l, r)
 
-        for col in range(1, 6):
-            ws.cell(row=row, column=col).fill = fill
-        row += 1
+    has_vpn = answers.get('has_vpn', False)
+    has_mfa = answers.get('has_mfa', False)
+    if has_vpn and not has_mfa:
+        s, l, r = "🔴 Критично", "VPN доступ по паролю крайне небезопасен. Риск перехвата учетных данных.", "Срочное внедрение MFA (второго фактора)."
+    else:
+        s, l, r = "🟢 Ок", "Удаленные подключения защищены вторым фактором.", "Аудит активных VPN-сессий."
+    add_row("3. Периметр", "Удаленный доступ (MFA)", "Да" if has_mfa else "Нет", s, l, r)
 
-    for col in ['A','B','C','D','E']:
-        ws.column_dimensions[col].width = 30 if col != 'E' else 60
+    # --- 4. РАЗРАБОТКА И DEVSECOPS ---
+    # Поскольку вы коммерческая компания по разработке ПО[cite: 1]
+    is_dev = answers.get('is_dev', True)
+    has_sast = answers.get('has_code_scan', False)
+    if is_dev and not has_sast:
+        s, l, r = "🔴 Высокий", "Отсутствие контроля уязвимостей в исходном коде продуктов.", "Внедрение SAST/DAST инструментов в CI/CD."
+    else:
+        s, l, r = "🟢 Ок", "Процессы безопасной разработки внедрены.", "Регулярный анализ сторонних библиотек (SCA)."
+    add_row("4. Разработка", "Безопасность кода", "Да" if has_sast else "Нет", s, l, r)
 
-    wb.save(output)
-    return output.getvalue()
+    # --- 5. ИТ-ПРОЦЕССЫ И СЕРВИС ---
+    pc_count = answers.get('pc_count', 0)
+    has_hd = answers.get('has_helpdesk', False)
+    if pc_count > 50 and not has_hd:
+        s, l, r = "🔴 Требуется", f"Для парка в {pc_count} ПК ручное управление заявками неэффективно.", "Внедрение системы Helpdesk (Service Desk)."
+    else:
+        s, l, r = "🟢 Ок", "Учет заявок автоматизирован.", "Мониторинг времени решения инцидентов."
+    add_row("5. ИТ-Сервис", "Управление инцидентами", f"{pc_count} ПК", s, l, r)
+
+    # --- 6. МОНИТОРИНГ ---
+    server_count = answers.get('server_count', 0)
+    has_siem = answers.get('has_siem', False)
+    if server_count > 15 and not has_siem:
+        s, l, r = "🔴 Требуется", "Большое количество серверов требует автоматизированной корреляции событий.", "Рассмотреть внедрение SIEM."
+    elif server_count <= 5 and has_siem:
+        s, l, r = "🟡 Избыточно", "Затраты на поддержку SIEM могут превышать пользу для малого сегмента.", "Переход на упрощенный Log Management."
+    else:
+        s, l, r = "🟢 Ок", "Система мониторинга соответствует сложности сети.", "Оптимизация правил алертинга."
+    add_row("6. Мониторинг", "Система SIEM", f"{server_count} серв.", s, l, r)
+
+    # Создание DataFrame и запись
+    df = pd.DataFrame(report_data)
+    writer = pd.ExcelWriter(output_file, engine='xlsxwriter')
+    df.to_excel(writer, index=False, sheet_name='Audit_Summary')
+
+    workbook  = writer.book
+    worksheet = writer.sheets['Audit_Summary']
+
+    # Цветовое форматирование
+    f_red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+    f_yellow = workbook.add_format({'bg_color': '#FFEB9C', 'font_color': '#9C6500'})
+    f_green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
+    f_header = workbook.add_format({'bold': True, 'bg_color': '#2F5597', 'font_color': 'white', 'border': 1})
+
+    for col_num, value in enumerate(df.columns.values):
+        worksheet.write(0, col_num, value, f_header)
+
+    worksheet.conditional_format(1, 3, len(df), 3, {'type': 'text', 'criteria': 'containing', 'value': '🔴', 'format': f_red})
+    worksheet.conditional_format(1, 3, len(df), 3, {'type': 'text', 'criteria': 'containing', 'value': '🟡', 'format': f_yellow})
+    worksheet.conditional_format(1, 3, len(df), 3, {'type': 'text', 'criteria': 'containing', 'value': '🟢', 'format': f_green})
+
+    for i, col in enumerate(df.columns):
+        column_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+        worksheet.set_column(i, i, column_len)
+
+    writer.close()
+    return f"Отчет сформирован: {output_file}"
 
 # --- ФИНАЛ ---
 st.divider()
