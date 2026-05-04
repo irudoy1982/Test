@@ -550,162 +550,139 @@ if dev_active:
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Отчет ИТ и ИБ"
+    ws.title = "Аудит ИТ и ИБ"
 
-    # --- СТИЛИ ---
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    white_font = Font(color="FFFFFF", bold=True)
-    bold_font = Font(bold=True)
-    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-    yellow_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-    white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+    # --- ЦВЕТОВАЯ ПАЛИТРА ---
+    HEADER_COLOR = "2F5597"  # Темно-синий
+    CRITICAL_FILL = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid") # Светло-красный
+    WARNING_FILL = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")  # Светло-желтый
+    SUCCESS_FILL = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # Светло-зеленый
+    WHITE_FONT = Font(color="FFFFFF", bold=True)
+    BOLD_FONT = Font(bold=True)
+    BORDER = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
     def get_int(val):
         try:
-            if val is None or val == "" or val == "Нет": return 0
-            clean_val = str(val).strip().split()[0] if isinstance(val, str) else val
-            return int(float(clean_val))
-        except (ValueError, TypeError, IndexError):
-            return 0
+            if val in [None, "", "Нет"]: return 0
+            return int(float(str(val).split()[0]))
+        except: return 0
 
-    def write_block(row, text):
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
-        cell = ws.cell(row=row, column=1, value=text)
-        cell.fill = header_fill
-        cell.font = white_font
-        cell.alignment = Alignment(horizontal="center")
-        return row + 1
+    # Сбор ключевых метрик для логики
+    pc_cnt = get_int(results.get("_user_count", 0))
+    wifi_ap = get_int(results.get("Wi-Fi Точки доступа", results.get("WiFi Точки", 0)))
+    srv_cnt = get_int(results.get("1.3.1. Физические серверы", 0)) + get_int(results.get("1.3.2. Виртуальные серверы", 0))
+    m_spd = get_int(results.get("_main_speed", 0))
+    b_spd = get_int(results.get("_back_speed", 0))
+    is_fin = any(x in str(c_info.get("Сфера деятельности", "")) for x in ["Фин", "Банк", "Инвест"])
+    has_web = results.get("3.2. Frontend") not in [None, [], "", "Нет"]
+    has_dev = get_int(results.get("4.1. Разработчики", 0)) > 0
 
-    row = 1
-    # --- 1. ШАПКА ---
-    row = write_block(row, "ОБЩАЯ ИНФОРМАЦИЯ")
+    # --- 1. ОБЩАЯ ИНФОРМАЦИЯ ---
+    ws.merge_cells("A1:E1")
+    ws["A1"] = "ОТЧЕТ ПО РЕЗУЛЬТАТАМ ТЕХНИЧЕСКОГО АУДИТА"
+    ws["A1"].font = Font(size=14, bold=True, color="FFFFFF")
+    ws["A1"].fill = PatternFill(start_color=HEADER_COLOR, end_color=HEADER_COLOR, fill_type="solid")
+    ws["A1"].alignment = Alignment(horizontal="center")
+
+    row = 2
     for k, v in c_info.items():
-        ws.cell(row=row, column=1, value=k).font = bold_font
-        ws.cell(row=row, column=2, value=str(v) if v else "Нет")
+        ws.cell(row=row, column=1, value=k).font = BOLD_FONT
+        ws.cell(row=row, column=2, value=str(v) if v else "Не указано")
         row += 1
     row += 1
 
-    # Метрики для логики
-    pc_cnt = get_int(results.get("_user_count", 0))
-    wifi_ap_cnt = get_int(results.get("Wi-Fi Точки", 0))
-    m_spd = get_int(results.get("_main_speed", 0))
-    b_spd = get_int(results.get("_back_speed", 0))
-    srv_cnt = get_int(results.get("Серверы (вирт)", 0)) + get_int(results.get("Серверы (физ)", 0))
-    has_dev = get_int(results.get("4.1. Разработчики", 0)) > 0
-    has_web = results.get("3.2. Frontend") not in [None, [], "", "Нет"]
-    mail_sys = str(results.get("1.4. Почтовая система", ""))
-    industry = str(c_info.get("Сфера деятельности", ""))
-    is_fin = any(x in industry for x in ["Банк", "Фин", "Провайдер"])
-    
-    wifi_density = pc_cnt / wifi_ap_cnt if wifi_ap_cnt > 0 else 0
+    # --- 2. СТРАТЕГИЧЕСКИЙ АНАЛИЗ (Риски) ---
+    ws.merge_cells(f"A{row}:E{row}")
+    cell = ws.cell(row=row, column=1, value="КЛЮЧЕВЫЕ ТЕХНИЧЕСКИЕ РИСКИ")
+    cell.fill = PatternFill(start_color="808080", end_color="808080", fill_type="solid")
+    cell.font = WHITE_FONT
+    row += 1
 
-    # --- 2. СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ ---
-    row = write_block(row, "СТРАТЕГИЧЕСКИЕ РЕКОМЕНДАЦИИ")
-    risks_summary = []
-    
+    risks = []
+    if pc_cnt > 50 and "Статическая" in str(results.get("1.2.1. Маршрутизация")):
+        risks.append(("КРИТИЧНО", "Статическая маршрутизация при 50+ АРМ", "Риск деградации сети. Необходим переход на динамические протоколы (OSPF/BGP)."))
+    if wifi_ap > 10 and results.get("Wi-Fi Контроллер") == "Нет":
+        risks.append(("ВЫСОКИЙ", f"Отсутствие контроллера для {wifi_ap} точек", "Проблемы с бесшовным роумингом и безопасностью. Внедрить контроллер."))
     if b_spd > 0 and m_spd > (b_spd * 1.6):
-        risks_summary.append(("🔴 ВЫСОКИЙ", "Слабый резервный канал (разрыв > 60%).", "При аварии основного канала емкости резерва не хватит для работы бизнеса."))
-    
-    if "Статическая" in str(results.get("1.2.1. Маршрутизация")) and pc_cnt > 50:
-        risks_summary.append(("🔴 КРИТИЧНО", "Статическая маршрутизация (50+ АРМ).", "Риск ошибок конфигурации и простоев. Нужен OSPF/BGP."))
+        risks.append(("ВЫСОКИЙ", "Недостаточная емкость резервного канала", "Резерв не обеспечит работу бизнеса при аварии основного линка."))
+    if pc_cnt > 100 and results.get("1.5. Helpdesk") == "Нет":
+        risks.append(("СРЕДНИЙ", "Отсутствие Helpdesk-системы", "Риск потери заявок и низкой эффективности ИТ-отдела."))
 
-    if wifi_ap_cnt > 10 and results.get("Wi-Fi Контроллер") == "Нет":
-        risks_summary.append(("🔴 ВЫСОКИЙ", f"Нет контроллера для {wifi_ap_cnt} точек.", "Неуправляемый роуминг и сложность администрирования."))
-
-    legacy_os = [k for k in ["Windows XP/Vista/7/8", "Windows Server 2008/2012 R2", "Windows Server 2016"] if get_int(results.get(k)) > 0]
-    if legacy_os:
-        risks_summary.append(("🔴 КРИТИЧНО", f"Устаревшие ОС: {', '.join(legacy_os)}.", "Системы без патчей. Срочно обновить или изолировать."))
-
-    if (results.get("MFA") == "Нет" or results.get("Блок 2. MFA") == "Нет"):
-        risks_summary.append(("🔴 КРИТИЧНО", "Отсутствие MFA.", "Высокий риск взлома учетных записей. Внедрить обязательно."))
-
-    for priority, desc, rec in risks_summary:
-        ws.cell(row=row, column=1, value=priority); ws.cell(row=row, column=2, value=desc); ws.cell(row=row, column=3, value=rec)
+    for level, desc, rec in risks:
+        ws.cell(row=row, column=1, value=level).font = BOLD_FONT
+        ws.cell(row=row, column=2, value=desc)
+        ws.cell(row=row, column=3, value=rec)
         row += 1
     row += 2
 
-    # --- 3. ДЕТАЛЬНАЯ ТАБЛИЦА (Порядок опросника) ---
-    row = write_block(row, "ДЕТАЛЬНАЯ ТЕХНИЧЕСКАЯ ИНВЕНТАРИЗАЦИЯ")
+    # --- 3. ПОЛНАЯ ТАБЛИЦА ПАРАМЕТРОВ ---
     headers = ["Параметр", "Значение", "Статус", "Анализ риска", "Рекомендация эксперта"]
     for i, h in enumerate(headers, 1):
-        cell = ws.cell(row=row, column=i, value=h); cell.fill = header_fill; cell.font = white_font
+        cell = ws.cell(row=row, column=i, value=h)
+        cell.fill = PatternFill(start_color=HEADER_COLOR, end_color=HEADER_COLOR, fill_type="solid")
+        cell.font = WHITE_FONT
     row += 1
 
-    processed_keys = set()
-    
-    # Итерируемся по результатам в порядке их добавления (как в опроснике)
-    for k, v in results.items():
-        k_str = str(k)
-        if k_str in ["Город", "Сфера деятельности", "Наименование компании"] or k_str.startswith("__"): continue
-        if k_str in processed_keys: continue
+    # Список ВСЕХ параметров для вывода (в нужном порядке)
+    master_keys = [
+        "1.1. Всего АРМ", "ОС АРМ (Windows XP/Vista/7/8)", "ОС АРМ (Windows 10/11)",
+        "1.2.1. Основной канал", "1.2.2. Резервный канал", "1.2.3. Маршрутизация",
+        "Wi-Fi Точки доступа", "Wi-Fi Контроллер", "1.3.1. Физические серверы",
+        "1.3.2. Виртуальные серверы", "ОС Сервера (Windows Server 2008/2012 R2)",
+        "1.5. Почтовая система", "1.5. Helpdesk", "Блок 2. EDR", "Блок 2. DLP",
+        "Блок 2. Mail Security", "Блок 2. CASB", "Блок 2. WAF", "Блок 2. Anti-DDoS",
+        "Блок 2. SAST", "Блок 2. DAST", "Блок 2. IAM", "Блок 2. MFA", "Блок 2. PAM", "Блок 2. SIEM"
+    ]
+
+    for key in master_keys:
+        val = results.get(key, "Нет")
+        if val in [None, "", []]: val = "Нет"
         
-        status, risk_desc, rec_final, fill = "🟢 Соответствие", "Риск приемлем", "-", white_fill
-        val_str = str(v) if v not in [None, ""] else "Нет"
+        status, risk, recommendation, fill = "🟢 OK", "Приемлемо", "-", SUCCESS_FILL
 
-        # 1. Маршрутизация и Сеть
-        if "1.2.1. Маршрутизация" in k_str:
-            if "Статическая" in val_str and pc_cnt > 50:
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Неэффективно для 50+ АРМ", "Переход на OSPF/BGP", red_fill
+        # ЛОГИКА ПРОВЕРОК
+        if "Маршрутизация" in key and "Статическая" in str(val) and pc_cnt > 50:
+            status, risk, recommendation, fill = "🔴 КРИТИЧНО", "Сложность управления", "Внедрить OSPF/BGP", CRITICAL_FILL
         
-        elif "Резервный канал" in k_str or "_back_speed" in k_str:
-            if b_spd > 0 and m_spd > (b_spd * 1.6):
-                status, risk_desc, rec_final, fill = "🔴 Высокий", "Разница скоростей > 60%", "Расширить резервный канал", red_fill
+        elif "Контроллер" in key and val == "Нет" and wifi_ap > 10:
+            status, risk, recommendation, fill = "🔴 ВЫСОКИЙ", "Неуправляемый Wi-Fi", "Внедрить контроллер", CRITICAL_FILL
+            
+        elif "Helpdesk" in key and val == "Нет" and pc_cnt > 100:
+            status, risk, recommendation, fill = "🟡 ВНИМАНИЕ", "Риск хаоса в заявках", "Внедрить ITSM/Helpdesk", WARNING_FILL
 
-        # 2. Wi-Fi (Плотность и Контроллер)
-        elif "Wi-Fi Точки" in k_str:
-            if wifi_density > 25:
-                status, risk_desc, rec_final, fill = "🟡 Внимание", f"Плотность {int(wifi_density)} АРМ/Точку", "Добавить точки доступа", yellow_fill
-        elif "Wi-Fi Контроллер" in k_str:
-            if (val_str == "Нет" or val_str == "0") and wifi_ap_cnt > 10:
-                status, risk_desc, rec_final, fill = "🔴 Высокий", "10+ точек без управления", "Внедрить Wi-Fi контроллер", red_fill
+        elif "DLP" in key and val == "Нет" and pc_cnt > 50:
+            status, risk, recommendation, fill = "🔴 КРИТИЧНО", "Риск утечки данных", "Внедрить DLP", CRITICAL_FILL
 
-        # 3. ОС
-        elif any(x in k_str for x in ["XP", "7", "8", "2008", "2012", "2016"]):
-            if get_int(v) > 0:
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Уязвимая ОС", "Срочно обновить", red_fill
+        elif "MFA" in key and val == "Нет":
+            status, risk, recommendation, fill = "🔴 КРИТИЧНО", "Уязвимость учетных записей", "Обязательно внедрить MFA", CRITICAL_FILL
 
-        # 4. MFA и ИБ (Синхронизация)
-        elif "MFA" in k_str:
-            processed_keys.add("MFA"); processed_keys.add("Блок 2. MFA")
-            if val_str == "Нет" or val_str == "0":
-                status, risk_desc, rec_final, fill = "🔴 Критично", "Риск компрометации УЗ", "Внедрить 2FA/MFA", red_fill
+        elif any(x in key for x in ["XP", "2008", "2012"]) and get_int(val) > 0:
+            status, risk, recommendation, fill = "🔴 КРИТИЧНО", "Устаревшее ПО", "Обновить ОС", CRITICAL_FILL
 
-        # 5. Хелпдеск
-        elif "Helpdesk" in k_str or "1.5." in k_str:
-            if val_str == "Нет" and pc_cnt > 100:
-                status, risk_desc, rec_final, fill = "🟡 Внимание", "Сложность поддержки 100+ АРМ", "Внедрить ITSM систему", yellow_fill
+        elif "WAF" in key and val == "Нет" and (is_fin or has_web):
+            status, risk, recommendation, fill = "🔴 ВЫСОКИЙ", "Атаки на веб-приложения", "Внедрить WAF", CRITICAL_FILL
 
-        # 6. Остальные продукты ИБ по условиям
-        elif "DLP" in k_str and pc_cnt > 50 and val_str == "Нет":
-            status, risk_desc, rec_final, fill = "🔴 Критично", "Риск утечки данных", "Внедрить DLP", red_fill
-        elif "PAM" in k_str and srv_cnt > 15 and val_str == "Нет":
-            status, risk_desc, rec_final, fill = "🔴 Критично", "Контроль привилегий", "Внедрить PAM", red_fill
-        elif "IAM" in k_str and pc_cnt > 100 and val_str == "Нет":
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Управление доступом", "Внедрить IAM", red_fill
-        elif "CASB" in k_str and any(x in mail_sys for x in ["365", "Google"]) and val_str == "Нет":
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Облачная безопасность", "Внедрить CASB", red_fill
-        elif ("SAST" in k_str or "DAST" in k_str) and has_dev and val_str == "Нет":
-            status, risk_desc, rec_final, fill = "🔴 Критично", "Уязвимости кода", "Внедрить анализ кода", red_fill
-        elif "SIEM" in k_str and (srv_cnt > 20 or pc_cnt > 150) and val_str == "Нет":
-            status, risk_desc, rec_final, fill = "🔴 Высокий", "Нет мониторинга", "Внедрить SIEM", red_fill
+        elif "SIEM" in key and val == "Нет" and (pc_cnt > 150 or srv_cnt > 20):
+            status, risk, recommendation, fill = "🔴 ВЫСОКИЙ", "Слепая зона в мониторинге", "Внедрить SIEM", CRITICAL_FILL
 
-        # Запись строки (даже если данных нет, выводим ключ)
-        ws.cell(row=row, column=1, value=k_str)
-        ws.cell(row=row, column=2, value=val_str)
-        ws.cell(row=row, column=3, value=status)
-        ws.cell(row=row, column=4, value=risk_desc)
-        ws.cell(row=row, column=5, value=rec_final)
-        for col in range(1, 6): ws.cell(row=row, column=col).fill = fill
-        
-        processed_keys.add(k_str)
+        # Запись в таблицу
+        ws.cell(row=row, column=1, value=key).border = BORDER
+        ws.cell(row=row, column=2, value=str(val)).border = BORDER
+        ws.cell(row=row, column=3, value=status).fill = fill
+        ws.cell(row=row, column=3).border = BORDER
+        ws.cell(row=row, column=4, value=risk).border = BORDER
+        ws.cell(row=row, column=5, value=recommendation).border = BORDER
         row += 1
 
-    for col, width in zip(['A','B','C','D','E'], [35, 25, 18, 45, 60]): ws.column_dimensions[col].width = width
+    # Авто-ширина колонок
+    for col, width in zip(['A','B','C','D','E'], [35, 25, 18, 40, 50]):
+        ws.column_dimensions[col].width = width
+
     wb.save(output)
     return output.getvalue()
 
