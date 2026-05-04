@@ -555,131 +555,150 @@ def make_expert_excel(c_info, results, final_score):
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Аудит ИТ и ИБ"
+    ws.title = "Executive Audit Report"
 
-    # --- СТИЛИ ---
-    HEADER_BLUE = "2F5597"
-    GRAY_SUBHEADER = "808080"
-    LIGHT_RED = "FFC7CE"
-    LIGHT_YELLOW = "FFEB9C"
-    LIGHT_GREEN = "C6EFCE"
+    # --- СТИЛИ (CISO STYLE) ---
+    CISO_BLUE = "1F4E78" # Темно-синий, солидный
+    GRAY_LINE = "D9D9D9"
+    STATUS_RED = "C00000"
+    STATUS_YELLOW = "FFC000"
+    STATUS_GREEN = "70AD47"
     
-    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-    centered = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    left_aligned = Alignment(horizontal="left", vertical="center", wrap_text=True)
-
+    border_thin = Border(left=Side(style='thin', color="808080"), 
+                         right=Side(style='thin', color="808080"), 
+                         top=Side(style='thin', color="808080"), 
+                         bottom=Side(style='thin', color="808080"))
+    
+    header_font = Font(name='Calibri', size=11, bold=True, color="FFFFFF")
+    
     def get_int(val):
         try:
             if val in [None, "", "Нет"]: return 0
             return int(float(str(val).split()[0]))
         except: return 0
 
-    # Сбор метрик
+    # Метрики
     pc_cnt = get_int(results.get("1.1. Всего АРМ", 0))
-    m_spd = get_int(results.get("1.2.1. Основной канал", 0))
-    b_spd = get_int(results.get("1.2.2. Резервный канал", 0))
-    mail_val = str(results.get("1.5. Почтовая система", "Нет"))
-    is_cloud_mail = any(x in mail_val for x in ["Google", "365", "Workspace"])
+    is_fintech = any(x in str(c_info.get("Сфера деятельности", "")).lower() for x in ["it", "разработка", "фин", "банк"])
     
-    # --- 1. ШАПКА ---
+    # --- 1. ШАПКА ЗАКАЗЧИКА ---
     ws.merge_cells("A1:E1")
-    ws["A1"] = "ОБЩАЯ ИНФОРМАЦИЯ О ЗАКАЗЧИКЕ"
-    ws["A1"].font = Font(size=12, bold=True, color="FFFFFF")
-    ws["A1"].fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
-    ws["A1"].alignment = centered
+    ws["A1"] = f"ОТЧЕТ ПО РЕЗУЛЬТАТАМ АУДИТА ИТ-ИНФРАСТРУКТУРЫ И ИБ: {c_info.get('Наименование компании', 'Project')}"
+    ws["A1"].font = Font(size=14, bold=True, color="FFFFFF")
+    ws["A1"].fill = PatternFill(start_color=CISO_BLUE, end_color=CISO_BLUE, fill_type="solid")
+    ws["A1"].alignment = Alignment(horizontal="center")
     
     row = 2
     for k, v in c_info.items():
-        ws.cell(row=row, column=1, value=k).font = Font(bold=True)
-        ws.cell(row=row, column=1).border = border
-        ws.cell(row=row, column=2, value=str(v) if v else "-").border = border
+        cell_k = ws.cell(row=row, column=1, value=k)
+        cell_k.font = Font(bold=True)
+        cell_k.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        ws.cell(row=row, column=2, value=str(v) if v else "Не указано")
         ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=5)
         row += 1
     row += 2
 
-    # --- 2. ЗАГОЛОВОК ТАБЛИЦЫ ---
-    ws.merge_cells(f"A{row}:E{row}")
-    ws.cell(row=row, column=1, value="АНАЛИЗ ТЕХНОЛОГИЧЕСКОГО СТЕКА И КИБЕРРИСКОВ").font = Font(size=12, bold=True, color="FFFFFF")
-    ws.cell(row=row, column=1).fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
-    row += 1
-
-    headers = ["Параметр / Система", "Текущее состояние", "Статус", "Аналитический отчет по рискам", "Рекомендация эксперта"]
+    # --- 2. ТАБЛИЦА АНАЛИЗА ---
+    headers = ["Технологический домен", "Текущий стек", "Статус", "Аналитическое заключение", "Стратегическая рекомендация"]
     for i, h in enumerate(headers, 1):
         cell = ws.cell(row=row, column=i, value=h)
-        cell.fill = PatternFill(start_color=GRAY_SUBHEADER, end_color=GRAY_SUBHEADER, fill_type="solid")
-        cell.font = Font(color="FFFFFF", bold=True)
-        cell.alignment = centered
+        cell.font = header_font
+        cell.fill = PatternFill(start_color=CISO_BLUE, end_color=CISO_BLUE, fill_type="solid")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = border_thin
     row += 1
 
-    # --- 3. MASTER KEYS ---
-    master_keys = [
-        "1.1. Всего АРМ", "ОС АРМ (Windows XP/Vista/7/8)", "ОС АРМ (Windows 10/11)",
-        "1.2.1. Основной канал", "1.2.2. Резервный канал", "1.2.3. Маршрутизация",
-        "Wi-Fi Точки доступа", "Wi-Fi Контроллер", 
-        "1.3.1. Физические серверы", "1.3.2. Виртуальные серверы",
-        "ОС Сервера (Windows Server 2008/2012 R2)", "ОС Сервера (Linux)", 
-        "1.5. Почтовая система", "Учет (Бухгалтерия)", "1.5. Helpdesk", 
-        "Блок 2. EDR", "Блок 2. DLP", "Блок 2. CASB", "Блок 2. MFA", "Блок 2. SIEM"
+    # Группировка всех полей опросника
+    sections = [
+        ("Инфраструктура рабочих мест", [
+            ("1.1. Всего АРМ", "Общее количество рабочих станций"),
+            ("ОС АРМ (Windows XP/Vista/7/8)", "Устаревшие клиентские ОС"),
+            ("ОС АРМ (Windows 10/11)", "Актуальные клиентские ОС"),
+        ]),
+        ("Сети и Каналы связи", [
+            ("1.2.1. Основной канал", "Пропускная способность WAN"),
+            ("1.2.2. Резервный канал", "Отказоустойчивость каналов"),
+            ("1.2.3. Маршрутизация", "Стек протоколов маршрутизации"),
+            ("Wi-Fi Точки доступа", "Плотность беспроводной сети"),
+            ("Wi-Fi Контроллер", "Централизованное управление Wi-Fi"),
+        ]),
+        ("Серверный сегмент", [
+            ("1.3.1. Физические серверы", "Аппаратные мощности"),
+            ("1.3.2. Виртуальные серверы", "Слой виртуализации"),
+            ("ОС Сервера (Windows Server 2008/2012 R2)", "Legacy серверные ОС"),
+            ("ОС Сервера (Windows Server 2016/2019/2022)", "Modern серверные ОС"),
+            ("ОС Сервера (Linux)", "Open Source системы"),
+        ]),
+        ("Информационные системы", [
+            ("1.5. Почтовая система", "Корпоративная почта"),
+            ("Учет (Бухгалтерия)", "Финансовый учет и ERP"),
+            ("1.5. Helpdesk", "Система техподдержки (ITSM)"),
+        ]),
+        ("Кибербезопасность (NG-Security)", [
+            ("Блок 2. EDR", "Endpoint Detection & Response"),
+            ("Блок 2. DLP", "Data Loss Prevention"),
+            ("Блок 2. CASB", "Cloud Security Broker"),
+            ("Блок 2. WAF", "Web Application Firewall"),
+            ("Блок 2. MFA", "Многофакторная аутентификация"),
+            ("Блок 2. SIEM", "Security Monitoring"),
+        ])
     ]
 
-    for key in master_keys:
-        val = results.get(key, "Нет")
-        if val in [None, "", []]: val = "Нет"
-        
-        status, risk, recommendation, fill = "🟢 OK", "Риски в норме", "-", PatternFill(start_color=LIGHT_GREEN, end_color=LIGHT_GREEN, fill_type="solid")
-
-        # --- КРИТИЧЕСКАЯ ЛОГИКА ---
-        
-        # Устаревшие АРМ (у вас их 250!)
-        if "XP/Vista/7/8" in key and get_int(val) > 0:
-            status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-            risk = f"Обнаружено {val} АРМ на устаревших ОС. Это критическая точка входа для шифровальщиков и хакеров."
-            recommendation = "Срочное обновление до Windows 10/11 или миграция на защищенные Linux-дистрибутивы."
-
-        # Резервный канал (слабее основного)
-        elif "Резервный канал" in key and b_spd > 0 and m_spd > (b_spd * 1.5):
-            status, fill = "🔴 ВЫСОКИЙ", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-            risk = f"Пропускная способность резерва ({b_spd} Мбит) значительно ниже основного канала. Риск отказа бизнес-сервисов при аварии."
-            recommendation = "Увеличение емкости резервного канала до уровня 80-100% от основного."
-
-        # Маршрутизация (Статика при 500 АРМ)
-        elif "Маршрутизация" in key and "Статическая" in str(val) and pc_cnt > 100:
-            status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-            risk = "Статическая маршрутизация в сети 100+ узлов ведет к ошибкам конфигурации и долгому восстановлению после сбоев."
-            recommendation = "Внедрение протоколов динамической маршрутизации (OSPF или BGP)."
-
-        # Почта (Если облако)
-        elif "Почтовая система" in key:
-            if is_cloud_mail:
-                status, fill = "🟡 ВНИМАНИЕ", PatternFill(start_color=LIGHT_YELLOW, end_color=LIGHT_YELLOW, fill_type="solid")
-                risk = f"Используется {val}. Облачные среды требуют усиленного контроля доступа и защиты от утечек."
-                recommendation = "Обязательное внедрение CASB и MFA для защиты облачной почты."
-            elif val == "Нет":
-                status, fill = "🔴 ВЫСОКИЙ", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-                risk = "Отсутствие корпоративной почты ведет к использованию личных аккаунтов. Полная потеря контроля над данными."
-                recommendation = "Развертывание корпоративного почтового сервера."
-
-        # CASB (сработка при облачной почте)
-        elif "CASB" in key and val == "Нет" and is_cloud_mail:
-            status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-            risk = "Использование Google/M365 без CASB — это 'слепая зона' в безопасности облачных данных."
-            recommendation = "Внедрение решения класса CASB для мониторинга активности в облаке."
-
-        # Запись
-        ws.cell(row=row, column=1, value=key).border = border
-        ws.cell(row=row, column=2, value=str(val)).alignment = centered
-        ws.cell(row=row, column=2).border = border
-        ws.cell(row=row, column=3, value=status).fill = fill
-        ws.cell(row=row, column=3).alignment = centered
-        ws.cell(row=row, column=3).border = border
-        ws.cell(row=row, column=4, value=risk).alignment = left_aligned
-        ws.cell(row=row, column=4).border = border
-        ws.cell(row=row, column=5, value=recommendation).alignment = left_aligned
-        ws.cell(row=row, column=5).border = border
+    for section_name, keys in sections:
+        # Заголовок секции
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+        sec_cell = ws.cell(row=row, column=1, value=section_name.upper())
+        sec_cell.font = Font(bold=True, color="44546A")
+        sec_cell.fill = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
         row += 1
 
-    # Ширина
-    widths = [35, 25, 20, 55, 65]
+        for key, label in keys:
+            val = results.get(key, "Нет")
+            if val in [None, "", []]: val = "Нет"
+            
+            # Дефолтные значения
+            status, risk, rec = "🟢 Оптимально", "Показатели соответствуют бизнес-требованиям.", "Поддержка текущего состояния."
+            color = STATUS_GREEN
+
+            # --- EXPERT LOGIC (CISO/CTO LEVEL) ---
+            
+            # Маршрутизация (Статика + OSPF = Хорошо)
+            if "1.2.3" in key:
+                if "Статическая" in str(val) and "OSPF" in str(val):
+                    status, risk, rec = "🟢 Гибридно", "Комбинация статики и OSPF обеспечивает баланс между контролем и масштабируемостью.", "Продолжить использование текущей схемы."
+                elif "Статическая" in str(val) and pc_cnt > 100:
+                    status, risk, rec, color = "🔴 Риск", "Высокий риск человеческой ошибки при масштабировании.", "Переход на динамические протоколы (OSPF/BGP).", STATUS_RED
+
+            # Legacy ОС (250 АРМ - это катастрофа)
+            elif "XP/Vista/7/8" in key and get_int(val) > 0:
+                status, risk, rec, color = "🔴 Критично", f"Критическая уязвимость ({val} хостов). Высокий риск атаки нулевого дня.", "Немедленная миграция или изоляция в VLAN.", STATUS_RED
+
+            # Helpdesk
+            elif "Helpdesk" in key and val == "Нет" and pc_cnt >= 150:
+                status, risk, rec, color = "🟡 Низкая зрелость", "Потеря управления инцидентами при текущем масштабе пользователей.", "Внедрение ITSM-решения (Jira/GLPI/OTRS).", STATUS_YELLOW
+
+            # ИБ системы (Если их нет при 500 АРМ)
+            elif any(x in key for x in ["EDR", "DLP", "WAF", "MFA", "SIEM"]) and val == "Нет":
+                status, risk, rec, color = "🔴 Незащищено", f"Отсутствие контроля в домене {key.split('.')[-1]}. Несоответствие стандартам ИБ.", f"Приоритетное внедрение системы класса {key.split('.')[-1]}.", STATUS_RED
+
+            # Заполнение ячеек
+            ws.cell(row=row, column=1, value=label).border = border_thin
+            ws.cell(row=row, column=2, value=str(val)).alignment = centered
+            ws.cell(row=row, column=2).border = border_thin
+            
+            st_cell = ws.cell(row=row, column=3, value=status)
+            st_cell.font = Font(bold=True, color=color)
+            st_cell.alignment = centered
+            st_cell.border = border_thin
+            
+            ws.cell(row=row, column=4, value=risk).alignment = left_aligned
+            ws.cell(row=row, column=4).border = border_thin
+            ws.cell(row=row, column=5, value=rec).alignment = left_aligned
+            ws.cell(row=row, column=5).border = border_thin
+            row += 1
+
+    # Настройка ширины
+    widths = [30, 25, 20, 50, 60]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[chr(64+i)].width = w
 
