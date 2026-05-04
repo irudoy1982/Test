@@ -695,18 +695,7 @@ for r in ai_data:
     ws.cell(row=row, column=1, value=f"Вендоры: {vendors}")
     row += 2
 
-    # --- RECOMMENDATIONS ---
-    ws.cell(row=row, column=1, value="РЕКОМЕНДАЦИИ").font = Font(bold=True)
-    row += 1
-
-        ws.cell(row=row, column=1, value=f"{rec['title']} ({rec['priority']})")
-        row += 1
-        ws.cell(row=row, column=1, value=rec["text"])
-        row += 1
-        ws.cell(row=row, column=1, value=f"Почему: {rec['why']}")
-        row += 1
-        ws.cell(row=row, column=1, value=f"Рекомендуемые вендоры: {', '.join(rec['vendors'])}")
-        row += 2
+ 
 
     # --- ДЕТАЛЬНЫЙ АНАЛИЗ ---
     ws.cell(row=row, column=1, value="ДЕТАЛЬНЫЙ АНАЛИЗ").font = Font(bold=True)
