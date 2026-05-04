@@ -674,12 +674,8 @@ def make_expert_excel(c_info, results, final_score):
     )
     row += 2
 
-    # --- RISKS ---
-    ws.cell(row=row, column=1, value="КЛЮЧЕВЫЕ РИСКИ").font = Font(bold=True)
-    row += 1
-
-    for r in risks:
-        ws.cell(row=row, column=1, value="AI АНАЛИЗ").font = Font(bold=True)
+    # --- AI РИСКИ И РЕКОМЕНДАЦИИ ---
+ws.cell(row=row, column=1, value="AI АНАЛИЗ (CISO УРОВЕНЬ)").font = Font(bold=True)
 row += 1
 
 for r in ai_data:
@@ -703,7 +699,6 @@ for r in ai_data:
     ws.cell(row=row, column=1, value="РЕКОМЕНДАЦИИ").font = Font(bold=True)
     row += 1
 
-    for rec in recs:
         ws.cell(row=row, column=1, value=f"{rec['title']} ({rec['priority']})")
         row += 1
         ws.cell(row=row, column=1, value=rec["text"])
