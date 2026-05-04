@@ -3,5 +3,4 @@ pandas
 requests
 openpyxl
 xlsxwriter
-openai
 google-generativeai
