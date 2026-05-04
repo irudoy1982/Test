@@ -35,23 +35,42 @@ def ai_generate_risks_and_recs(c_info, results):
     if not api_key:
         return []
 
-    genai.configure(api_key=api_key)
-    
-    # Пытаемся использовать модель. В 2026 году это может быть gemini-1.5-flash-latest или gemini-2.0-flash
-    model_name = 'gemini-1.5-flash-latest' 
-    
-    safe_client, safe_results = sanitize_for_ai(c_info, results)
-    prompt = f"CISO Analysis. Return JSON: {safe_client} {safe_results}"
-
     try:
-        model = genai.GenerativeModel(model_name)
+        genai.configure(api_key=api_key)
+        
+        # Автоматический поиск доступной модели
+        # Ищем ту, которая поддерживает генерацию контента
+        available_models = [
+            m.name for m in genai.list_models() 
+            if 'generateContent' in m.supported_generation_methods
+        ]
+        
+        if not available_models:
+            st.error("Нет доступных моделей для вашего API-ключа.")
+            return []
+
+        # Выбираем первую подходящую (например, flash или pro)
+        # В 2026 году это может быть 'models/gemini-2.0-flash' или аналоги
+        selected_model = available_models[0] 
+        model = genai.GenerativeModel(selected_model)
+
+        safe_client, safe_results = sanitize_for_ai(c_info, results)
+        prompt = f"""
+        Ты выступаешь как CISO. Проанализируй данные и верни строго JSON массив:
+        Контекст: {safe_client}
+        Данные: {safe_results}
+        """
+
         response = model.generate_content(
             prompt,
             generation_config={"response_mime_type": "application/json"}
         )
+        
         return json.loads(response.text)
+        
     except Exception as e:
-        st.error(f"Ошибка ИИ: {e}")
+        # Если ошибка все равно произошла, выводим её детали
+        st.error(f"Ошибка ИИ ({selected_model if 'selected_model' in locals() else 'N/A'}): {e}")
         return []
         
     except Exception as e:
