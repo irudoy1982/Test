@@ -557,7 +557,7 @@ def make_expert_excel(c_info, results, final_score):
     ws = wb.active
     ws.title = "Аудит ИТ и ИБ"
 
-    # --- ЦВЕТА И СТИЛИ ---
+    # --- СТИЛИ ---
     HEADER_BLUE = "2F5597"
     GRAY_SUBHEADER = "808080"
     LIGHT_RED = "FFC7CE"
@@ -574,15 +574,14 @@ def make_expert_excel(c_info, results, final_score):
             return int(float(str(val).split()[0]))
         except: return 0
 
-    # Метрики для логики
-    pc_cnt = get_int(results.get("1.1. Всего АРМ", results.get("_user_count", 0)))
-    wifi_ap = get_int(results.get("Wi-Fi Точки доступа", 0))
-    is_fin = any(x in str(c_info.get("Сфера деятельности", "")) for x in ["Фин", "Банк", "Инвест"])
-    has_dev = get_int(results.get("4.1. Разработчики", 0)) > 0
+    # Сбор метрик
+    pc_cnt = get_int(results.get("1.1. Всего АРМ", 0))
+    m_spd = get_int(results.get("1.2.1. Основной канал", 0))
+    b_spd = get_int(results.get("1.2.2. Резервный канал", 0))
+    mail_val = str(results.get("1.5. Почтовая система", "Нет"))
+    is_cloud_mail = any(x in mail_val for x in ["Google", "365", "Workspace"])
     
-    wifi_density = pc_cnt / wifi_ap if wifi_ap > 0 else 0
-
-    # --- 1. ШАПКА: ОБЩАЯ ИНФОРМАЦИЯ ---
+    # --- 1. ШАПКА ---
     ws.merge_cells("A1:E1")
     ws["A1"] = "ОБЩАЯ ИНФОРМАЦИЯ О ЗАКАЗЧИКЕ"
     ws["A1"].font = Font(size=12, bold=True, color="FFFFFF")
@@ -590,21 +589,18 @@ def make_expert_excel(c_info, results, final_score):
     ws["A1"].alignment = centered
     
     row = 2
-    # Поля из c_info (Компания, Город, Сфера, Телефон, Email и т.д.)
     for k, v in c_info.items():
         ws.cell(row=row, column=1, value=k).font = Font(bold=True)
         ws.cell(row=row, column=1).border = border
         ws.cell(row=row, column=2, value=str(v) if v else "-").border = border
         ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=5)
         row += 1
-    
-    row += 2 # Отступ перед основной таблицей
+    row += 2
 
-    # --- 2. ЗАГОЛОВОК ТАБЛИЦЫ АНАЛИЗА ---
+    # --- 2. ЗАГОЛОВОК ТАБЛИЦЫ ---
     ws.merge_cells(f"A{row}:E{row}")
-    ws.cell(row=row, column=1, value="РЕЗУЛЬТАТЫ ТЕХНИЧЕСКОГО АУДИТА И АНАЛИЗ РИСКОВ").font = Font(size=12, bold=True, color="FFFFFF")
+    ws.cell(row=row, column=1, value="АНАЛИЗ ТЕХНОЛОГИЧЕСКОГО СТЕКА И КИБЕРРИСКОВ").font = Font(size=12, bold=True, color="FFFFFF")
     ws.cell(row=row, column=1).fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
-    ws.cell(row=row, column=1).alignment = centered
     row += 1
 
     headers = ["Параметр / Система", "Текущее состояние", "Статус", "Аналитический отчет по рискам", "Рекомендация эксперта"]
@@ -615,77 +611,61 @@ def make_expert_excel(c_info, results, final_score):
         cell.alignment = centered
     row += 1
 
-    # --- 3. MASTER KEYS (Все параметры из опросника) ---
+    # --- 3. MASTER KEYS ---
     master_keys = [
         "1.1. Всего АРМ", "ОС АРМ (Windows XP/Vista/7/8)", "ОС АРМ (Windows 10/11)",
         "1.2.1. Основной канал", "1.2.2. Резервный канал", "1.2.3. Маршрутизация",
         "Wi-Fi Точки доступа", "Wi-Fi Контроллер", 
         "1.3.1. Физические серверы", "1.3.2. Виртуальные серверы",
-        "ОС Сервера (Windows Server 2008/2012 R2)", "ОС Сервера (Windows Server 2016)", 
-        "ОС Сервера (Windows Server 2019)", "ОС Сервера (Windows Server 2022)", 
-        "ОС Сервера (Linux)", "ОС Сервера (Unix)",
-        "1.5. Почтовая система", "1.5. Helpdesk", 
-        "Блок 2. EPP", "Блок 2. EDR", "Блок 2. DLP", "Блок 2. Mail Security", 
-        "Блок 2. CASB", "Блок 2. WAF", "Блок 2. Anti-DDoS", "Блок 2. IAM", 
-        "Блок 2. MFA", "Блок 2. PAM", "Блок 2. SIEM", "Блок 2. SOAR",
-        "3.2. Frontend", "4.1. Разработчики"
+        "ОС Сервера (Windows Server 2008/2012 R2)", "ОС Сервера (Linux)", 
+        "1.5. Почтовая система", "Учет (Бухгалтерия)", "1.5. Helpdesk", 
+        "Блок 2. EDR", "Блок 2. DLP", "Блок 2. CASB", "Блок 2. MFA", "Блок 2. SIEM"
     ]
 
     for key in master_keys:
         val = results.get(key, "Нет")
         if val in [None, "", []]: val = "Нет"
         
-        status, risk, recommendation, fill = "🟢 OK", "Риски не выявлены", "-", PatternFill(start_color=LIGHT_GREEN, end_color=LIGHT_GREEN, fill_type="solid")
+        status, risk, recommendation, fill = "🟢 OK", "Риски в норме", "-", PatternFill(start_color=LIGHT_GREEN, end_color=LIGHT_GREEN, fill_type="solid")
 
-        # --- ЛОГИКА ЭКСПЕРТНЫХ СРАБОТОК ---
+        # --- КРИТИЧЕСКАЯ ЛОГИКА ---
+        
+        # Устаревшие АРМ (у вас их 250!)
+        if "XP/Vista/7/8" in key and get_int(val) > 0:
+            status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
+            risk = f"Обнаружено {val} АРМ на устаревших ОС. Это критическая точка входа для шифровальщиков и хакеров."
+            recommendation = "Срочное обновление до Windows 10/11 или миграция на защищенные Linux-дистрибутивы."
 
-        # Helpdesk (строго от 150 АРМ)
-        if "Helpdesk" in key and val == "Нет":
-            if pc_cnt >= 150:
-                status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-                risk = f"При штате {pc_cnt} АРМ отсутствие Helpdesk ведет к хаосу в обработке заявок и потере контроля над инцидентами."
-                recommendation = "Внедрение Service Desk (ИТСМ) для централизации обращений и контроля SLA."
-            else:
-                status, risk = "🟢 OK", "Объем инфраструктуры позволяет работать без выделенной системы"
-
-        # Почтовая система
-        elif "Почтовая система" in key and val == "Нет":
-            status, fill = "🟡 ВНИМАНИЕ", PatternFill(start_color=LIGHT_YELLOW, end_color=LIGHT_YELLOW, fill_type="solid")
-            risk = "Использование публичных почтовых сервисов создает риски утечки корпоративной информации и отсутствия контроля."
-            recommendation = "Миграция на корпоративную почту (Exchange / M365 / Google Workspace / Zimbra)."
-
-        # Wi-Fi Плотность
-        elif "Wi-Fi Точки доступа" in key and wifi_density >= 25:
+        # Резервный канал (слабее основного)
+        elif "Резервный канал" in key and b_spd > 0 and m_spd > (b_spd * 1.5):
             status, fill = "🔴 ВЫСОКИЙ", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-            risk = f"Перегрузка точек: {int(wifi_density)} устройств на 1 АП. Высокий риск обрывов связи и низкой скорости."
-            recommendation = "Увеличить количество точек доступа (целевой показатель: <20 устройств на точку)."
+            risk = f"Пропускная способность резерва ({b_spd} Мбит) значительно ниже основного канала. Риск отказа бизнес-сервисов при аварии."
+            recommendation = "Увеличение емкости резервного канала до уровня 80-100% от основного."
 
-        # Системы ИБ (Для 150+ АРМ или Финтеха - отсутствие критично)
-        elif any(x in key for x in ["EDR", "DLP", "SIEM", "IAM", "Anti-DDoS", "WAF"]) and val == "Нет":
-            if pc_cnt >= 150 or is_fin:
-                status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-                risk = f"Отсутствие {key.split('.')[-1].strip()} делает компанию 'слепой' к современным угрозам и атакам на данные."
-                recommendation = f"Обязательное включение решения класса {key.split('.')[-1].strip()} в стратегию защиты."
-
-        # MFA
-        elif "MFA" in key and val == "Нет":
+        # Маршрутизация (Статика при 500 АРМ)
+        elif "Маршрутизация" in key and "Статическая" in str(val) and pc_cnt > 100:
             status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-            risk = "Критическая уязвимость: парольная защита легко обходится фишингом. Риск компрометации админ-аккаунтов."
-            recommendation = "Внедрение многофакторной аутентификации для всех критичных доступов."
+            risk = "Статическая маршрутизация в сети 100+ узлов ведет к ошибкам конфигурации и долгому восстановлению после сбоев."
+            recommendation = "Внедрение протоколов динамической маршрутизации (OSPF или BGP)."
 
-        # Устаревшие серверные ОС
-        elif any(x in key for x in ["2008", "2012"]) and get_int(val) > 0:
+        # Почта (Если облако)
+        elif "Почтовая система" in key:
+            if is_cloud_mail:
+                status, fill = "🟡 ВНИМАНИЕ", PatternFill(start_color=LIGHT_YELLOW, end_color=LIGHT_YELLOW, fill_type="solid")
+                risk = f"Используется {val}. Облачные среды требуют усиленного контроля доступа и защиты от утечек."
+                recommendation = "Обязательное внедрение CASB и MFA для защиты облачной почты."
+            elif val == "Нет":
+                status, fill = "🔴 ВЫСОКИЙ", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
+                risk = "Отсутствие корпоративной почты ведет к использованию личных аккаунтов. Полная потеря контроля над данными."
+                recommendation = "Развертывание корпоративного почтового сервера."
+
+        # CASB (сработка при облачной почте)
+        elif "CASB" in key and val == "Нет" and is_cloud_mail:
             status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-            risk = "Эксплуатация ОС без обновлений безопасности. Уязвимость перед шифровальщиками."
-            recommendation = "Срочное обновление до Windows Server 2022 или миграция на Linux."
+            risk = "Использование Google/M365 без CASB — это 'слепая зона' в безопасности облачных данных."
+            recommendation = "Внедрение решения класса CASB для мониторинга активности в облаке."
 
-        # SAST/DAST (если есть разработчики)
-        elif ("SAST" in key or "DAST" in key) and val == "Нет" and has_dev:
-            status, fill = "🔴 КРИТИЧНО", PatternFill(start_color=LIGHT_RED, end_color=LIGHT_RED, fill_type="solid")
-            risk = "Отсутствие контроля безопасности кода. Риск наличия бэкдоров и уязвимостей в собственном ПО."
-            recommendation = "Внедрение инструментов статического и динамического анализа в процесс разработки."
-
-        # Запись строки
+        # Запись
         ws.cell(row=row, column=1, value=key).border = border
         ws.cell(row=row, column=2, value=str(val)).alignment = centered
         ws.cell(row=row, column=2).border = border
@@ -698,8 +678,8 @@ def make_expert_excel(c_info, results, final_score):
         ws.cell(row=row, column=5).border = border
         row += 1
 
-    # Настройка ширины
-    widths = [35, 25, 20, 50, 60]
+    # Ширина
+    widths = [35, 25, 20, 55, 65]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[chr(64+i)].width = w
 
