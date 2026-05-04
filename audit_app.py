@@ -545,172 +545,216 @@ if dev_active:
         else:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
+#----Подготовка---
+def build_context(results, client_info):
+    context = {}
 
-#ОТЧЕТ#
+    context["industry"] = client_info.get("Сфера деятельности", "")
+    context["has_dev"] = "Разработчики" in str(results)
+    context["has_critical_systems"] = any(x in str(results) for x in ["ERP", "CRM", "Учет"])
+    context["has_personal_data"] = context["has_critical_systems"]
+    context["infra_size"] = results.get("_user_count", 0)
+
+    context["is_finance"] = "Финтех" in context["industry"]
+    context["is_gov"] = "Госсектор" in context["industry"]
+
+    return context
+
+
+def generate_risks(results, context):
+    risks = []
+
+    def add(level, title, desc, impact, regulator):
+        risks.append({
+            "level": level,
+            "title": title,
+            "desc": desc,
+            "impact": impact,
+            "regulator": regulator
+        })
+
+    # --- BACKUP ---
+    if results.get("Резервное копирование") == "Нет":
+        if results.get("Серверы (вирт)", 0) > 0:
+            add(
+                "КРИТИЧНО",
+                "Отсутствует резервное копирование",
+                "При наличии виртуальной инфраструктуры отсутствует централизованное резервное копирование.",
+                "Полная потеря данных и остановка бизнеса",
+                "Закон РК о ПДн + ISO 27001 A.12.3"
+            )
+
+    # --- MFA ---
+    if results.get("MFA") == "Нет":
+        if context["has_critical_systems"]:
+            add(
+                "КРИТИЧНО",
+                "Отсутствует MFA",
+                "Доступ к бизнес-критичным системам осуществляется без многофакторной аутентификации.",
+                "Компрометация учетных записей",
+                "Требования "
+            )
+
+    # --- NGFW ---
+    if results.get("NGFW") in ["Нет", "", None]:
+        add(
+            "ВЫСОКИЙ",
+            "Отсутствует защита периметра",
+            "Сетевая инфраструктура не защищена NGFW.",
+            "Внешние атаки, эксплуатация уязвимостей",
+            "Рекомендации "
+        )
+
+    # --- DEV SECURITY ---
+    if context["has_dev"]:
+        if results.get("Блок 2. SAST") == "Нет":
+            add(
+                "ВЫСОКИЙ",
+                "Отсутствует SAST",
+                "Исходный код не проходит статический анализ.",
+                "Уязвимости в коде",
+                "OWASP / Secure SDLC"
+            )
+
+    # --- PATCH ---
+    if results.get("Блок 2. Patch Management") == "Нет":
+        add(
+            "ВЫСОКИЙ",
+            "Отсутствует управление обновлениями",
+            "Нет централизованного патч-менеджмента.",
+            "Эксплуатация известных уязвимостей",
+            "ISO 27001 A.12.6"
+        )
+
+    return risks
+#----Рекомендации-----
+def generate_recommendations(risks):
+    recs = []
+
+    def add(title, text, vendors, why, priority):
+        recs.append({
+            "title": title,
+            "text": text,
+            "vendors": vendors,
+            "why": why,
+            "priority": priority
+        })
+
+    for r in risks:
+        if "резервное копирование" in r["title"].lower():
+            add(
+                "Внедрение Backup",
+                "Развернуть централизованную систему резервного копирования",
+                ["Veeam", "Commvault", "Veritas"],
+                "Обеспечивает восстановление после инцидентов",
+                "КРИТИЧНО"
+            )
+
+        if "mfa" in r["title"].lower():
+            add(
+                "Внедрение MFA",
+                "Включить MFA для всех критичных систем",
+                ["CyberArk", "Wallix", "Okta"],
+                "Снижает риск компрометации учетных записей",
+                "КРИТИЧНО"
+            )
+
+        if "периметра" in r["title"].lower():
+            add(
+                "Внедрение NGFW",
+                "Развернуть NGFW на границе сети",
+                ["Check Point", "Palo Alto", "Fortinet"],
+                "Фильтрация угроз и контроль трафика",
+                "ВЫСОКИЙ"
+            )
+
+        if "patch" in r["title"].lower():
+            add(
+                "Patch Management",
+                "Внедрить централизованное управление обновлениями",
+                ["ManageEngine", "Microsoft WSUS", "Ivanti"],
+                "Закрытие известных уязвимостей",
+                "ВЫСОКИЙ"
+            )
+
+    return recs
+# --- Отчет ---
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.styles import Font
+    from datetime import datetime
 
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Executive Audit Report"
 
-    # --- ОПРЕДЕЛЕНИЕ СТИЛЕЙ (Исправление NameError) ---
-    CISO_BLUE = "1F4E78"
-    STATUS_RED = "C00000"
-    STATUS_YELLOW = "FFC000"
-    STATUS_GREEN = "70AD47"
-    
-    # Стили выравнивания
-    centered = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    left_aligned = Alignment(horizontal="left", vertical="center", wrap_text=True)
-    
-    # Стили границ
-    border_thin = Border(
-        left=Side(style='thin', color="808080"), 
-        right=Side(style='thin', color="808080"), 
-        top=Side(style='thin', color="808080"), 
-        bottom=Side(style='thin', color="808080")
+    row = 1
+
+    # --- КОНТЕКСТ ---
+    context = build_context(results, c_info)
+    risks = generate_risks(results, context)
+    recs = generate_recommendations(risks)
+
+    # --- EXECUTIVE SUMMARY ---
+    ws.cell(row=row, column=1, value="EXECUTIVE SUMMARY").font = Font(bold=True)
+    row += 1
+
+    ws.cell(row=row, column=1, value=
+        f"Компания: {c_info.get('Наименование компании')}"
     )
-    
-    header_font = Font(name='Calibri', size=11, bold=True, color="FFFFFF")
+    row += 1
 
-    def get_int(val):
-        try:
-            if val in [None, "", "Нет"]: return 0
-            return int(float(str(val).split()[0]))
-        except: return 0
+    ws.cell(row=row, column=1, value=
+        f"Уровень зрелости: {final_score}%"
+    )
+    row += 2
 
-    # Метрики
-    pc_cnt = get_int(results.get("1.1. Всего АРМ", 0))
-    is_fintech = any(x in str(c_info.get("Сфера деятельности", "")).lower() for x in ["it", "разработка", "фин", "банк"])
-    has_dev = get_int(results.get("4.1. Разработчики", 0)) > 0
+    ws.cell(row=row, column=1, value=
+        "В ходе анализа выявлены системные недостатки в архитектуре ИТ и ИБ, "
+        "которые могут привести к компрометации данных и остановке бизнес-процессов."
+    )
+    row += 2
 
-    # --- 1. ШАПКА ЗАКАЗЧИКА ---
-    ws.merge_cells("A1:E1")
-    ws["A1"] = f"ОТЧЕТ ПО РЕЗУЛЬТАТАМ АУДИТА ИТ-ИНФРАСТРУКТУРЫ И ИБ: {c_info.get('Наименование компании', 'Project')}"
-    ws["A1"].font = Font(size=14, bold=True, color="FFFFFF")
-    ws["A1"].fill = PatternFill(start_color=CISO_BLUE, end_color=CISO_BLUE, fill_type="solid")
-    ws["A1"].alignment = Alignment(horizontal="center")
-    
-    current_row = 2
-    for k, v in c_info.items():
-        cell_k = ws.cell(row=current_row, column=1, value=k)
-        cell_k.font = Font(bold=True)
-        cell_k.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-        cell_k.border = border_thin
-        
-        cell_v = ws.cell(row=current_row, column=2, value=str(v) if v else "Не указано")
-        cell_v.border = border_thin
-        ws.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=5)
-        current_row += 1
-    
-    current_row += 2
+    # --- RISKS ---
+    ws.cell(row=row, column=1, value="КЛЮЧЕВЫЕ РИСКИ").font = Font(bold=True)
+    row += 1
 
-    # --- 2. ТАБЛИЦА АНАЛИЗА ---
-    headers = ["Технологический домен", "Текущий стек", "Статус", "Аналитическое заключение", "Стратегическая рекомендация"]
-    for i, h in enumerate(headers, 1):
-        cell = ws.cell(row=current_row, column=i, value=h)
-        cell.font = header_font
-        cell.fill = PatternFill(start_color=CISO_BLUE, end_color=CISO_BLUE, fill_type="solid")
-        cell.alignment = centered
-        cell.border = border_thin
-    current_row += 1
+    for r in risks:
+        ws.cell(row=row, column=1, value=f"{r['level']}: {r['title']}")
+        row += 1
+        ws.cell(row=row, column=1, value=f"{r['desc']}")
+        row += 1
+        ws.cell(row=row, column=1, value=f"Влияние: {r['impact']}")
+        row += 1
+        ws.cell(row=row, column=1, value=f"Регулятор: {r['regulator']}")
+        row += 2
 
-    # Структура всех полей опросника
-    sections = [
-        ("Инфраструктура рабочих мест", [
-            ("1.1. Всего АРМ", "Общее количество рабочих станций"),
-            ("ОС АРМ (Windows XP/Vista/7/8)", "Устаревшие клиентские ОС"),
-            ("ОС АРМ (Windows 10/11)", "Актуальные клиентские ОС"),
-        ]),
-        ("Сети и Каналы связи", [
-            ("1.2.1. Основной канал", "Пропускная способность WAN"),
-            ("1.2.2. Резервный канал", "Отказоустойчивость каналов"),
-            ("1.2.3. Маршрутизация", "Стек протоколов маршрутизации"),
-            ("Wi-Fi Точки доступа", "Плотность беспроводной сети"),
-            ("Wi-Fi Контроллер", "Централизованное управление Wi-Fi"),
-        ]),
-        ("Серверный сегмент", [
-            ("1.3.1. Физические серверы", "Аппаратные мощности"),
-            ("1.3.2. Виртуальные серверы", "Слой виртуализации"),
-            ("ОС Сервера (Windows Server 2008/2012 R2)", "Legacy серверные ОС"),
-            ("ОС Сервера (Linux)", "Open Source системы (Linux/Unix)"),
-        ]),
-        ("Информационные системы", [
-            ("1.5. Почтовая система", "Корпоративная почта"),
-            ("Учет (Бухгалтерия)", "Системы финансового учета"),
-            ("1.5. Helpdesk", "Система техподдержки (ITSM)"),
-        ]),
-        ("Кибербезопасность (NG-Security)", [
-            ("Блок 2. EDR", "Endpoint Detection & Response"),
-            ("Блок 2. DLP", "Data Loss Prevention"),
-            ("Блок 2. CASB", "Cloud Security Broker"),
-            ("Блок 2. MFA", "Многофакторная аутентификация"),
-            ("Блок 2. SIEM", "Security Monitoring"),
-        ])
-    ]
+    # --- RECOMMENDATIONS ---
+    ws.cell(row=row, column=1, value="РЕКОМЕНДАЦИИ").font = Font(bold=True)
+    row += 1
 
-    for section_name, keys in sections:
-        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=5)
-        sec_cell = ws.cell(row=current_row, column=1, value=section_name.upper())
-        sec_cell.font = Font(bold=True, color="44546A")
-        sec_cell.fill = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
-        sec_cell.alignment = Alignment(horizontal="left")
-        current_row += 1
+    for rec in recs:
+        ws.cell(row=row, column=1, value=f"{rec['title']} ({rec['priority']})")
+        row += 1
+        ws.cell(row=row, column=1, value=rec["text"])
+        row += 1
+        ws.cell(row=row, column=1, value=f"Почему: {rec['why']}")
+        row += 1
+        ws.cell(row=row, column=1, value=f"Рекомендуемые вендоры: {', '.join(rec['vendors'])}")
+        row += 2
 
-        for key, label in keys:
-            val = results.get(key, "Нет")
-            if val in [None, "", []]: val = "Нет"
-            
-            status, risk, rec = "🟢 Оптимально", "Показатели соответствуют бизнес-требованиям.", "Поддержка текущего состояния."
-            color = STATUS_GREEN
+    # --- ДЕТАЛЬНЫЙ АНАЛИЗ ---
+    ws.cell(row=row, column=1, value="ДЕТАЛЬНЫЙ АНАЛИЗ").font = Font(bold=True)
+    row += 1
 
-            # Экспертная логика
-            if "1.2.3" in key:
-                if "Статическая" in str(val) and "OSPF" in str(val):
-                    status, risk, rec = "🟢 Гибридно", "Комбинация статики и динамики обеспечивает гибкость и отказоустойчивость.", "Текущая схема эффективна."
-                elif "Статическая" in str(val) and pc_cnt > 100:
-                    status, risk, rec, color = "🔴 Риск", "Высокая вероятность ошибок при масштабировании.", "Переход на OSPF/BGP.", STATUS_RED
+    for k, v in results.items():
+        if str(k).startswith("_"):
+            continue
 
-            elif "XP/Vista/7/8" in key and get_int(val) > 0:
-                status, risk, rec, color = "🔴 Критично", f"Обнаружено {val} хостов на устаревших ОС. Прямая угроза взлома.", "Срочная миграция.", STATUS_RED
-
-            elif "Helpdesk" in key and val == "Нет" and pc_cnt >= 150:
-                status, risk, rec, color = "🟡 Зрелость", "Затруднено управление инцидентами при текущем масштабе.", "Внедрение Service Desk.", STATUS_YELLOW
-
-            elif any(x in key for x in ["EDR", "DLP", "MFA", "SIEM"]) and val == "Нет":
-                if pc_cnt > 100 or is_fintech:
-                    status, risk, rec, color = "🔴 Незащищено", f"Отсутствие {key.split('.')[-1]} повышает риск скрытых атак.", "Приоритетное внедрение.", STATUS_RED
-
-            # Заполнение строки
-            ws.cell(row=current_row, column=1, value=label).border = border_thin
-            
-            cell_val = ws.cell(row=current_row, column=2, value=str(val))
-            cell_val.alignment = centered
-            cell_val.border = border_thin
-            
-            st_cell = ws.cell(row=current_row, column=3, value=status)
-            st_cell.font = Font(bold=True, color=color)
-            st_cell.alignment = centered
-            st_cell.border = border_thin
-            
-            risk_cell = ws.cell(row=current_row, column=4, value=risk)
-            risk_cell.alignment = left_aligned
-            risk_cell.border = border_thin
-            
-            rec_cell = ws.cell(row=current_row, column=5, value=rec)
-            rec_cell.alignment = left_aligned
-            rec_cell.border = border_thin
-            
-            current_row += 1
-
-    # Настройка колонок
-    widths = [30, 25, 20, 50, 60]
-    for i, w in enumerate(widths, 1):
-        ws.column_dimensions[chr(64+i)].width = w
+        ws.cell(row=row, column=1, value=k)
+        ws.cell(row=row, column=2, value=str(v))
+        row += 1
 
     wb.save(output)
     return output.getvalue()
