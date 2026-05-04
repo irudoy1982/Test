@@ -641,73 +641,82 @@ def build_context(results, client_info):
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Font, Alignment
 
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
+    ws.title = "Аудит"
 
     row = 1
+
+    # --- EXECUTIVE SUMMARY ---
+    ws.cell(row=row, column=1, value="EXECUTIVE SUMMARY").font = Font(bold=True, size=14)
+    row += 1
+    ws.cell(row=row, column=1, value=f"Компания: {c_info.get('Наименование компании', 'Не указано')}")
+    row += 1
+    ws.cell(row=row, column=1, value=f"Уровень зрелости: {final_score}%")
+    row += 2
+    
+    summary_text = "В ходе анализа выявлены системные недостатки в архитектуре ИТ и ИБ, которые могут привести к компрометации данных и остановке бизнес-процессов."
+    ws.cell(row=row, column=1, value=summary_text)
+    ws.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
+    row += 2
 
     # --- AI ДАННЫЕ ---
     ai_data = ai_generate_risks_and_recs(c_info, results)
 
-    # --- EXECUTIVE SUMMARY ---
-    ws.cell(row=row, column=1, value="EXECUTIVE SUMMARY").font = Font(bold=True)
+    ws.cell(row=row, column=1, value="AI АНАЛИЗ (CISO УРОВЕНЬ)").font = Font(bold=True, size=12)
     row += 1
 
-    ws.cell(row=row, column=1, value=f"Компания: {c_info.get('Наименование компании')}")
-    row += 1
-
-    ws.cell(row=row, column=1, value=f"Уровень зрелости: {final_score}%")
-    row += 2
-
-    ws.cell(
-        row=row,
-        column=1,
-        value="В ходе анализа выявлены системные недостатки в архитектуре ИТ и ИБ, которые могут привести к компрометации данных и остановке бизнес-процессов."
-    )
-    row += 2
-
-    # --- AI АНАЛИЗ ---
-    ws.cell(row=row, column=1, value="AI АНАЛИЗ (CISO УРОВЕНЬ)").font = Font(bold=True)
-    row += 1
-
-    if not ai_data:
-        ws.cell(row=row, column=1, value="AI анализ недоступен")
+    if not ai_data or not isinstance(ai_data, list):
+        ws.cell(row=row, column=1, value="AI анализ временно недоступен или вернул пустой результат.")
         row += 2
     else:
         for r in ai_data:
-            ws.cell(row=row, column=1, value=f"{r.get('level','')} - {r.get('risk','')}")
+            # Заголовок риска (Уровень - Название)
+            level = r.get('level', 'СРЕДНИЙ')
+            risk_name = r.get('risk', 'Не указан')
+            ws.cell(row=row, column=1, value=f"[{level}] {risk_name}").font = Font(bold=True)
             row += 1
 
-            ws.cell(row=row, column=1, value=str(r.get("description", ""))[:800])
+            # Описание
+            desc = r.get('description', '-')
+            ws.cell(row=row, column=1, value=f"Описание: {desc}")
+            ws.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
             row += 1
 
-            ws.cell(row=row, column=1, value=f"Влияние: {r.get('impact','')}")
+            # Влияние
+            impact = r.get('impact', '-')
+            ws.cell(row=row, column=1, value=f"Влияние: {impact}")
             row += 1
 
-            ws.cell(row=row, column=1, value=f"Рекомендация: {r.get('recommendation','')}")
+            # Рекомендация
+            rec = r.get('recommendation', '-')
+            ws.cell(row=row, column=1, value=f"Рекомендация: {rec}")
             row += 1
 
-            vendors = ", ".join(r.get("vendors", []))
-            ws.cell(row=row, column=1, value=f"Вендоры: {vendors}")
-            row += 2
+            # Вендоры
+            vendors = r.get('vendors', [])
+            v_str = ", ".join(vendors) if isinstance(vendors, list) else str(vendors)
+            ws.cell(row=row, column=1, value=f"Рекомендуемые решения: {v_str}")
+            row += 2 # Пропуск строки между рисками
 
-    # --- ДЕТАЛЬНЫЙ АНАЛИЗ ---
-    ws.cell(row=row, column=1, value="ДЕТАЛЬНЫЙ АНАЛИЗ").font = Font(bold=True)
+    # --- ДЕТАЛЬНЫЙ АНАЛИЗ (ТЕХНИЧЕСКИЕ ДАННЫЕ) ---
+    ws.cell(row=row, column=1, value="ТЕХНИЧЕСКИЕ ДАННЫЕ АУДИТА").font = Font(bold=True)
     row += 1
 
     for k, v in results.items():
-        if str(k).startswith("_"):
-            continue
+        if not str(k).startswith("_"):
+            ws.cell(row=row, column=1, value=str(k))
+            ws.cell(row=row, column=2, value=str(v))
+            row += 1
 
-        ws.cell(row=row, column=1, value=k)
-        ws.cell(row=row, column=2, value=str(v))
-        row += 1
+    # Настройка ширины колонок для читаемости
+    ws.column_dimensions['A'].width = 80
+    ws.column_dimensions['B'].width = 30
 
     wb.save(output)
-
     return output.getvalue()
 
 # --- ФИНАЛ ---
