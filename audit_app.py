@@ -650,81 +650,85 @@ def build_context(results, client_info):
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
     output = BytesIO()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Аудит"
+    ws.title = "Аудит ИТ и ИБ"
 
-    row = 1
+    # Стили
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True, size=12)
+    risk_crit_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-    # --- EXECUTIVE SUMMARY ---
-    ws.cell(row=row, column=1, value="EXECUTIVE SUMMARY").font = Font(bold=True, size=14)
-    row += 1
-    ws.cell(row=row, column=1, value=f"Компания: {c_info.get('Наименование компании', 'Не указано')}")
-    row += 1
-    ws.cell(row=row, column=1, value=f"Уровень зрелости: {final_score}%")
-    row += 2
+    # Заголовок
+    ws.merge_cells('A1:B1')
+    ws['A1'] = f"ЭКСПЕРТНЫЙ ОТЧЕТ: {c_info.get('Наименование company', 'Аудит')}"
+    ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
     
-    summary_text = "В ходе анализа выявлены системные недостатки в архитектуре ИТ и ИБ, которые могут привести к компрометации данных и остановке бизнес-процессов."
-    ws.cell(row=row, column=1, value=summary_text)
-    ws.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
-    row += 2
+    ws['A3'] = "Параметр"; ws['B3'] = "Значение"
+    for cell in [ws['A3'], ws['B3']]:
+        cell.fill = header_fill
+        cell.font = header_font
 
-    # --- AI ДАННЫЕ ---
+    # Основная инфо
+    data_info = [
+        ("Компания", c_info.get('Наименование компании')),
+        ("Сфера", c_info.get('Сфера деятельности')),
+        ("Уровень зрелости ИТ/ИБ", f"{final_score}%")
+    ]
+    curr_row = 4
+    for label, val in data_info:
+        ws.cell(row=curr_row, column=1, value=label).border = border
+        ws.cell(row=curr_row, column=2, value=val).border = border
+        curr_row += 1
+
+    curr_row += 2
+    ws.merge_cells(f'A{curr_row}:B{curr_row}')
+    ws.cell(row=curr_row, column=1, value="ВЫЯВЛЕННЫЕ РИСКИ И РЕКОМЕНДАЦИИ").font = Font(bold=True, size=14)
+    curr_row += 1
+
+    # AI Анализ
     ai_data = ai_generate_risks_and_recs(c_info, results)
+    if ai_data:
+        for item in ai_data:
+            # Уровень и Название
+            lvl = item.get('level', 'СРЕДНИЙ')
+            ws.merge_cells(f'A{curr_row}:B{curr_row}')
+            cell = ws.cell(row=curr_row, column=1, value=f"[{lvl}] {item.get('risk', 'Риск')}")
+            cell.font = Font(bold=True)
+            if "КРИТ" in str(lvl).upper(): cell.fill = risk_crit_fill
+            curr_row += 1
 
-    ws.cell(row=row, column=1, value="AI АНАЛИЗ (CISO УРОВЕНЬ)").font = Font(bold=True, size=12)
-    row += 1
+            # Описание, Влияние, Рекомендация
+            fields = [
+                ("Описание", item.get('description', '-')),
+                ("Влияние", item.get('impact', '-')),
+                ("Рекомендация", item.get('recommendation', '-')),
+                ("Решения", ", ".join(item.get('vendors', [])) if isinstance(item.get('vendors'), list) else "-")
+            ]
+            for f_label, f_val in fields:
+                ws.cell(row=curr_row, column=1, value=f_label).font = Font(italic=True)
+                ws.cell(row=curr_row, column=2, value=f_val).alignment = Alignment(wrap_text=True)
+                ws.cell(row=curr_row, column=1).border = border
+                ws.cell(row=curr_row, column=2).border = border
+                curr_row += 1
+            curr_row += 1 # Отступ
 
-    if not ai_data or not isinstance(ai_data, list):
-        ws.cell(row=row, column=1, value="AI анализ временно недоступен или вернул пустой результат.")
-        row += 2
-    else:
-        for r in ai_data:
-            # Заголовок риска (Уровень - Название)
-            level = r.get('level', 'СРЕДНИЙ')
-            risk_name = r.get('risk', 'Не указан')
-            ws.cell(row=row, column=1, value=f"[{level}] {risk_name}").font = Font(bold=True)
-            row += 1
-
-            # Описание
-            desc = r.get('description', '-')
-            ws.cell(row=row, column=1, value=f"Описание: {desc}")
-            ws.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
-            row += 1
-
-            # Влияние
-            impact = r.get('impact', '-')
-            ws.cell(row=row, column=1, value=f"Влияние: {impact}")
-            row += 1
-
-            # Рекомендация
-            rec = r.get('recommendation', '-')
-            ws.cell(row=row, column=1, value=f"Рекомендация: {rec}")
-            row += 1
-
-            # Вендоры
-            vendors = r.get('vendors', [])
-            v_str = ", ".join(vendors) if isinstance(vendors, list) else str(vendors)
-            ws.cell(row=row, column=1, value=f"Рекомендуемые решения: {v_str}")
-            row += 2 # Пропуск строки между рисками
-
-    # --- ДЕТАЛЬНЫЙ АНАЛИЗ (ТЕХНИЧЕСКИЕ ДАННЫЕ) ---
-    ws.cell(row=row, column=1, value="ТЕХНИЧЕСКИЕ ДАННЫЕ АУДИТА").font = Font(bold=True)
-    row += 1
-
+    # Технические данные
+    ws.cell(row=curr_row, column=1, value="ТЕХНИЧЕСКИЙ ДЕТАЛИЗАЦИЯ").font = Font(bold=True)
+    curr_row += 1
     for k, v in results.items():
         if not str(k).startswith("_"):
-            ws.cell(row=row, column=1, value=str(k))
-            ws.cell(row=row, column=2, value=str(v))
-            row += 1
+            ws.cell(row=curr_row, column=1, value=k).border = border
+            ws.cell(row=curr_row, column=2, value=str(v)).border = border
+            curr_row += 1
 
-    # Настройка ширины колонок для читаемости
-    ws.column_dimensions['A'].width = 80
-    ws.column_dimensions['B'].width = 30
-
+    ws.column_dimensions['A'].width = 30
+    ws.column_dimensions['B'].width = 90
+    
     wb.save(output)
     return output.getvalue()
 
