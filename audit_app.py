@@ -643,7 +643,6 @@ def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
     from openpyxl import Workbook
     from openpyxl.styles import Font
-    from datetime import datetime
 
     output = BytesIO()
     wb = Workbook()
@@ -651,51 +650,50 @@ def make_expert_excel(c_info, results, final_score):
 
     row = 1
 
-    # --- КОНТЕКСТ ---
+    # --- AI ДАННЫЕ ---
     ai_data = ai_generate_risks_and_recs(c_info, results)
 
     # --- EXECUTIVE SUMMARY ---
     ws.cell(row=row, column=1, value="EXECUTIVE SUMMARY").font = Font(bold=True)
     row += 1
 
-    ws.cell(row=row, column=1, value=
-        f"Компания: {c_info.get('Наименование компании')}"
-    )
+    ws.cell(row=row, column=1, value=f"Компания: {c_info.get('Наименование компании')}")
     row += 1
 
-    ws.cell(row=row, column=1, value=
-        f"Уровень зрелости: {final_score}%"
-    )
+    ws.cell(row=row, column=1, value=f"Уровень зрелости: {final_score}%")
     row += 2
 
-    ws.cell(row=row, column=1, value=
-        "В ходе анализа выявлены системные недостатки в архитектуре ИТ и ИБ, "
-        "которые могут привести к компрометации данных и остановке бизнес-процессов."
+    ws.cell(
+        row=row,
+        column=1,
+        value="В ходе анализа выявлены системные недостатки в архитектуре ИТ и ИБ, которые могут привести к компрометации данных и остановке бизнес-процессов."
     )
     row += 2
 
-    # --- AI РИСКИ И РЕКОМЕНДАЦИИ ---
-ws.cell(row=row, column=1, value="AI АНАЛИЗ (CISO УРОВЕНЬ)").font = Font(bold=True)
-row += 1
-
-for r in ai_data:
-    ws.cell(row=row, column=1, value=f"{r.get('level','')} - {r.get('risk','')}")
+    # --- AI АНАЛИЗ ---
+    ws.cell(row=row, column=1, value="AI АНАЛИЗ (CISO УРОВЕНЬ)").font = Font(bold=True)
     row += 1
 
-    ws.cell(row=row, column=1, value=r.get("description", ""))
-    row += 1
+    if not ai_data:
+        ws.cell(row=row, column=1, value="AI анализ недоступен")
+        row += 2
+    else:
+        for r in ai_data:
+            ws.cell(row=row, column=1, value=f"{r.get('level','')} - {r.get('risk','')}")
+            row += 1
 
-    ws.cell(row=row, column=1, value=f"Влияние: {r.get('impact','')}")
-    row += 1
+            ws.cell(row=row, column=1, value=str(r.get("description", ""))[:800])
+            row += 1
 
-    ws.cell(row=row, column=1, value=f"Рекомендация: {r.get('recommendation','')}")
-    row += 1
+            ws.cell(row=row, column=1, value=f"Влияние: {r.get('impact','')}")
+            row += 1
 
-    vendors = ", ".join(r.get("vendors", []))
-    ws.cell(row=row, column=1, value=f"Вендоры: {vendors}")
-    row += 2
+            ws.cell(row=row, column=1, value=f"Рекомендация: {r.get('recommendation','')}")
+            row += 1
 
- 
+            vendors = ", ".join(r.get("vendors", []))
+            ws.cell(row=row, column=1, value=f"Вендоры: {vendors}")
+            row += 2
 
     # --- ДЕТАЛЬНЫЙ АНАЛИЗ ---
     ws.cell(row=row, column=1, value="ДЕТАЛЬНЫЙ АНАЛИЗ").font = Font(bold=True)
@@ -710,6 +708,7 @@ for r in ai_data:
         row += 1
 
     wb.save(output)
+
     return output.getvalue()
 
 # --- ФИНАЛ ---
