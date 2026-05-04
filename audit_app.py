@@ -31,56 +31,51 @@ def ai_generate_risks_and_recs(c_info, results):
     import json
     import streamlit as st
 
-    # 1. Получаем ключ из Secrets (убедитесь, что добавили его в настройки Streamlit)
     api_key = st.secrets.get("GEMINI_API_KEY")
-    
     if not api_key:
-        st.warning("⚠️ Ключ GEMINI_API_KEY не найден в Secrets. Отчет будет создан без ИИ-анализа.")
         return []
 
-    # 2. Настройка модели Gemini
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Попробуем использовать актуальную стабильную версию модели
+        # Если 1.5-flash недоступна, можно попробовать 'gemini-pro'
+        model_name = 'gemini-1.5-flash' 
+        model = genai.GenerativeModel(model_name)
 
         safe_client, safe_results = sanitize_for_ai(c_info, results)
 
         prompt = f"""
-Ты выступаешь как CISO и CTO. Проанализируй ИТ и ИБ состояние компании.
-Контекст: {safe_client}
-Данные аудита: {safe_results}
+        Ты выступаешь как CISO и CTO. Проанализируй ИТ и ИБ состояние компании.
+        Контекст: {safe_client}
+        Данные аудита: {safe_results}
+        Верни строго JSON массив объектов:
+        [
+          {{
+            "level": "КРИТИЧНО/ВЫСОКИЙ/СРЕДНИЙ",
+            "risk": "Название",
+            "description": "Описание",
+            "impact": "Влияние",
+            "recommendation": "Что делать",
+            "vendors": ["Vendor1", "Vendor2"]
+          }}
+        ]
+        """
 
-Требования:
-- Учитывай взаимосвязи систем
-- Не пиши банальные риски
-- Учитывай требования Казахстана (Закон о ПДн, ISO 27001)
-
-Верни строго JSON массив объектов (без лишнего текста, без пояснений, без ```json):
-[
-  {{
-    "level": "КРИТИЧНО/ВЫСОКИЙ/СРЕДНИЙ",
-    "risk": "Название",
-    "description": "Описание",
-    "impact": "Влияние",
-    "recommendation": "Что делать",
-    "vendors": ["Vendor1", "Vendor2"]
-  }}
-]
-"""
-        # 3. Запрос к API
-        response = model.generate_content(prompt)
+        # Добавляем генерацию с явным указанием ожидания JSON
+        response = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"}
+        )
         
-        # Очистка ответа от лишних символов
-        text = response.text.strip()
-        if "```" in text:
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        
-        return json.loads(text)
+        return json.loads(response.text)
         
     except Exception as e:
-        st.error(f"Ошибка при работе с Gemini: {e}")
+        # Если модель не найдена (404), выведем более понятное сообщение
+        if "404" in str(e):
+            st.error(f"Модель {model_name} не найдена. Проверьте доступность API в Google AI Studio.")
+        else:
+            st.error(f"Ошибка Gemini: {e}")
         return []
 
 # --- AI BLOCK END ---
