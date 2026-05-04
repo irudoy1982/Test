@@ -557,20 +557,26 @@ def make_expert_excel(c_info, results, final_score):
     ws = wb.active
     ws.title = "Executive Audit Report"
 
-    # --- СТИЛИ (CISO STYLE) ---
-    CISO_BLUE = "1F4E78" # Темно-синий, солидный
-    GRAY_LINE = "D9D9D9"
+    # --- ОПРЕДЕЛЕНИЕ СТИЛЕЙ (Исправление NameError) ---
+    CISO_BLUE = "1F4E78"
     STATUS_RED = "C00000"
     STATUS_YELLOW = "FFC000"
     STATUS_GREEN = "70AD47"
     
-    border_thin = Border(left=Side(style='thin', color="808080"), 
-                         right=Side(style='thin', color="808080"), 
-                         top=Side(style='thin', color="808080"), 
-                         bottom=Side(style='thin', color="808080"))
+    # Стили выравнивания
+    centered = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left_aligned = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    
+    # Стили границ
+    border_thin = Border(
+        left=Side(style='thin', color="808080"), 
+        right=Side(style='thin', color="808080"), 
+        top=Side(style='thin', color="808080"), 
+        bottom=Side(style='thin', color="808080")
+    )
     
     header_font = Font(name='Calibri', size=11, bold=True, color="FFFFFF")
-    
+
     def get_int(val):
         try:
             if val in [None, "", "Нет"]: return 0
@@ -580,7 +586,8 @@ def make_expert_excel(c_info, results, final_score):
     # Метрики
     pc_cnt = get_int(results.get("1.1. Всего АРМ", 0))
     is_fintech = any(x in str(c_info.get("Сфера деятельности", "")).lower() for x in ["it", "разработка", "фин", "банк"])
-    
+    has_dev = get_int(results.get("4.1. Разработчики", 0)) > 0
+
     # --- 1. ШАПКА ЗАКАЗЧИКА ---
     ws.merge_cells("A1:E1")
     ws["A1"] = f"ОТЧЕТ ПО РЕЗУЛЬТАТАМ АУДИТА ИТ-ИНФРАСТРУКТУРЫ И ИБ: {c_info.get('Наименование компании', 'Project')}"
@@ -588,27 +595,31 @@ def make_expert_excel(c_info, results, final_score):
     ws["A1"].fill = PatternFill(start_color=CISO_BLUE, end_color=CISO_BLUE, fill_type="solid")
     ws["A1"].alignment = Alignment(horizontal="center")
     
-    row = 2
+    current_row = 2
     for k, v in c_info.items():
-        cell_k = ws.cell(row=row, column=1, value=k)
+        cell_k = ws.cell(row=current_row, column=1, value=k)
         cell_k.font = Font(bold=True)
         cell_k.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-        ws.cell(row=row, column=2, value=str(v) if v else "Не указано")
-        ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=5)
-        row += 1
-    row += 2
+        cell_k.border = border_thin
+        
+        cell_v = ws.cell(row=current_row, column=2, value=str(v) if v else "Не указано")
+        cell_v.border = border_thin
+        ws.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=5)
+        current_row += 1
+    
+    current_row += 2
 
     # --- 2. ТАБЛИЦА АНАЛИЗА ---
     headers = ["Технологический домен", "Текущий стек", "Статус", "Аналитическое заключение", "Стратегическая рекомендация"]
     for i, h in enumerate(headers, 1):
-        cell = ws.cell(row=row, column=i, value=h)
+        cell = ws.cell(row=current_row, column=i, value=h)
         cell.font = header_font
         cell.fill = PatternFill(start_color=CISO_BLUE, end_color=CISO_BLUE, fill_type="solid")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.alignment = centered
         cell.border = border_thin
-    row += 1
+    current_row += 1
 
-    # Группировка всех полей опросника
+    # Структура всех полей опросника
     sections = [
         ("Инфраструктура рабочих мест", [
             ("1.1. Всего АРМ", "Общее количество рабочих станций"),
@@ -626,78 +637,77 @@ def make_expert_excel(c_info, results, final_score):
             ("1.3.1. Физические серверы", "Аппаратные мощности"),
             ("1.3.2. Виртуальные серверы", "Слой виртуализации"),
             ("ОС Сервера (Windows Server 2008/2012 R2)", "Legacy серверные ОС"),
-            ("ОС Сервера (Windows Server 2016/2019/2022)", "Modern серверные ОС"),
-            ("ОС Сервера (Linux)", "Open Source системы"),
+            ("ОС Сервера (Linux)", "Open Source системы (Linux/Unix)"),
         ]),
         ("Информационные системы", [
             ("1.5. Почтовая система", "Корпоративная почта"),
-            ("Учет (Бухгалтерия)", "Финансовый учет и ERP"),
+            ("Учет (Бухгалтерия)", "Системы финансового учета"),
             ("1.5. Helpdesk", "Система техподдержки (ITSM)"),
         ]),
         ("Кибербезопасность (NG-Security)", [
             ("Блок 2. EDR", "Endpoint Detection & Response"),
             ("Блок 2. DLP", "Data Loss Prevention"),
             ("Блок 2. CASB", "Cloud Security Broker"),
-            ("Блок 2. WAF", "Web Application Firewall"),
             ("Блок 2. MFA", "Многофакторная аутентификация"),
             ("Блок 2. SIEM", "Security Monitoring"),
         ])
     ]
 
     for section_name, keys in sections:
-        # Заголовок секции
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
-        sec_cell = ws.cell(row=row, column=1, value=section_name.upper())
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=5)
+        sec_cell = ws.cell(row=current_row, column=1, value=section_name.upper())
         sec_cell.font = Font(bold=True, color="44546A")
         sec_cell.fill = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
-        row += 1
+        sec_cell.alignment = Alignment(horizontal="left")
+        current_row += 1
 
         for key, label in keys:
             val = results.get(key, "Нет")
             if val in [None, "", []]: val = "Нет"
             
-            # Дефолтные значения
             status, risk, rec = "🟢 Оптимально", "Показатели соответствуют бизнес-требованиям.", "Поддержка текущего состояния."
             color = STATUS_GREEN
 
-            # --- EXPERT LOGIC (CISO/CTO LEVEL) ---
-            
-            # Маршрутизация (Статика + OSPF = Хорошо)
+            # Экспертная логика
             if "1.2.3" in key:
                 if "Статическая" in str(val) and "OSPF" in str(val):
-                    status, risk, rec = "🟢 Гибридно", "Комбинация статики и OSPF обеспечивает баланс между контролем и масштабируемостью.", "Продолжить использование текущей схемы."
+                    status, risk, rec = "🟢 Гибридно", "Комбинация статики и динамики обеспечивает гибкость и отказоустойчивость.", "Текущая схема эффективна."
                 elif "Статическая" in str(val) and pc_cnt > 100:
-                    status, risk, rec, color = "🔴 Риск", "Высокий риск человеческой ошибки при масштабировании.", "Переход на динамические протоколы (OSPF/BGP).", STATUS_RED
+                    status, risk, rec, color = "🔴 Риск", "Высокая вероятность ошибок при масштабировании.", "Переход на OSPF/BGP.", STATUS_RED
 
-            # Legacy ОС (250 АРМ - это катастрофа)
             elif "XP/Vista/7/8" in key and get_int(val) > 0:
-                status, risk, rec, color = "🔴 Критично", f"Критическая уязвимость ({val} хостов). Высокий риск атаки нулевого дня.", "Немедленная миграция или изоляция в VLAN.", STATUS_RED
+                status, risk, rec, color = "🔴 Критично", f"Обнаружено {val} хостов на устаревших ОС. Прямая угроза взлома.", "Срочная миграция.", STATUS_RED
 
-            # Helpdesk
             elif "Helpdesk" in key and val == "Нет" and pc_cnt >= 150:
-                status, risk, rec, color = "🟡 Низкая зрелость", "Потеря управления инцидентами при текущем масштабе пользователей.", "Внедрение ITSM-решения (Jira/GLPI/OTRS).", STATUS_YELLOW
+                status, risk, rec, color = "🟡 Зрелость", "Затруднено управление инцидентами при текущем масштабе.", "Внедрение Service Desk.", STATUS_YELLOW
 
-            # ИБ системы (Если их нет при 500 АРМ)
-            elif any(x in key for x in ["EDR", "DLP", "WAF", "MFA", "SIEM"]) and val == "Нет":
-                status, risk, rec, color = "🔴 Незащищено", f"Отсутствие контроля в домене {key.split('.')[-1]}. Несоответствие стандартам ИБ.", f"Приоритетное внедрение системы класса {key.split('.')[-1]}.", STATUS_RED
+            elif any(x in key for x in ["EDR", "DLP", "MFA", "SIEM"]) and val == "Нет":
+                if pc_cnt > 100 or is_fintech:
+                    status, risk, rec, color = "🔴 Незащищено", f"Отсутствие {key.split('.')[-1]} повышает риск скрытых атак.", "Приоритетное внедрение.", STATUS_RED
 
-            # Заполнение ячеек
-            ws.cell(row=row, column=1, value=label).border = border_thin
-            ws.cell(row=row, column=2, value=str(val)).alignment = centered
-            ws.cell(row=row, column=2).border = border_thin
+            # Заполнение строки
+            ws.cell(row=current_row, column=1, value=label).border = border_thin
             
-            st_cell = ws.cell(row=row, column=3, value=status)
+            cell_val = ws.cell(row=current_row, column=2, value=str(val))
+            cell_val.alignment = centered
+            cell_val.border = border_thin
+            
+            st_cell = ws.cell(row=current_row, column=3, value=status)
             st_cell.font = Font(bold=True, color=color)
             st_cell.alignment = centered
             st_cell.border = border_thin
             
-            ws.cell(row=row, column=4, value=risk).alignment = left_aligned
-            ws.cell(row=row, column=4).border = border_thin
-            ws.cell(row=row, column=5, value=rec).alignment = left_aligned
-            ws.cell(row=row, column=5).border = border_thin
-            row += 1
+            risk_cell = ws.cell(row=current_row, column=4, value=risk)
+            risk_cell.alignment = left_aligned
+            risk_cell.border = border_thin
+            
+            rec_cell = ws.cell(row=current_row, column=5, value=rec)
+            rec_cell.alignment = left_aligned
+            rec_cell.border = border_thin
+            
+            current_row += 1
 
-    # Настройка ширины
+    # Настройка колонок
     widths = [30, 25, 20, 50, 60]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[chr(64+i)].width = w
