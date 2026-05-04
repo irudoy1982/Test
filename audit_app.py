@@ -19,45 +19,43 @@ def sanitize_for_ai(c_info, results):
         "Должность",
         "Контактный телефон"
     ]
-
-    safe_client = {
-        k: v for k, v in c_info.items()
-        if k not in forbidden
-    }
-
+    safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
     safe_results = {
         k: v for k, v in results.items()
         if not any(f.lower() in str(k).lower() for f in forbidden)
     }
-
     return safe_client, safe_results
 
-
 def ai_generate_risks_and_recs(c_info, results):
-    from openai import OpenAI
+    import google.generativeai as genai
     import json
+    import streamlit as st
 
-    client = OpenAI()
+    # 1. Получаем ключ из Secrets (убедитесь, что добавили его в настройки Streamlit)
+    api_key = st.secrets.get("GEMINI_API_KEY")
+    
+    if not api_key:
+        st.warning("⚠️ Ключ GEMINI_API_KEY не найден в Secrets. Отчет будет создан без ИИ-анализа.")
+        return []
 
-    safe_client, safe_results = sanitize_for_ai(c_info, results)
+    # 2. Настройка модели Gemini
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
-    prompt = f"""
-Ты выступаешь как CISO и CTO.
+        safe_client, safe_results = sanitize_for_ai(c_info, results)
 
-Проанализируй ИТ и ИБ состояние компании.
-
-Контекст:
-{safe_client}
-
-Данные аудита:
-{safe_results}
+        prompt = f"""
+Ты выступаешь как CISO и CTO. Проанализируй ИТ и ИБ состояние компании.
+Контекст: {safe_client}
+Данные аудита: {safe_results}
 
 Требования:
 - Учитывай взаимосвязи систем
 - Не пиши банальные риски
 - Учитывай требования Казахстана (Закон о ПДн, ISO 27001)
 
-Верни JSON:
+Верни строго JSON массив объектов (без лишнего текста, без пояснений, без ```json):
 [
   {{
     "level": "КРИТИЧНО/ВЫСОКИЙ/СРЕДНИЙ",
@@ -69,17 +67,20 @@ def ai_generate_risks_and_recs(c_info, results):
   }}
 ]
 """
-
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    text = response.choices[0].message.content
-
-    try:
+        # 3. Запрос к API
+        response = model.generate_content(prompt)
+        
+        # Очистка ответа от лишних символов
+        text = response.text.strip()
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        
         return json.loads(text)
-    except:
+        
+    except Exception as e:
+        st.error(f"Ошибка при работе с Gemini: {e}")
         return []
 
 # --- AI BLOCK END ---
