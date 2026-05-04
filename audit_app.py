@@ -37,45 +37,36 @@ def ai_generate_risks_and_recs(c_info, results):
 
     try:
         genai.configure(api_key=api_key)
-        
-        # Автоматический поиск доступной модели
-        # Ищем ту, которая поддерживает генерацию контента
-        available_models = [
-            m.name for m in genai.list_models() 
-            if 'generateContent' in m.supported_generation_methods
-        ]
-        
-        if not available_models:
-            st.error("Нет доступных моделей для вашего API-ключа.")
-            return []
-
-        # Выбираем первую подходящую (например, flash или pro)
-        # В 2026 году это может быть 'models/gemini-2.0-flash' или аналоги
-        selected_model = available_models[0] 
-        model = genai.GenerativeModel(selected_model)
+        # Авто-подбор модели
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        model_name = available_models[0] if available_models else 'gemini-1.5-flash'
+        model = genai.GenerativeModel(model_name)
 
         safe_client, safe_results = sanitize_for_ai(c_info, results)
-       prompt = f"""
+
+        # Строго задаем формат JSON, чтобы все поля заполнились
+        prompt = f"""
 Выступай как CISO и CTO. Проанализируй данные аудита: {safe_results}.
 Верни ТОЛЬКО JSON массив объектов с ТАКИМИ ЖЕ ключами:
 [
   {{
     "level": "КРИТИЧНО", 
     "risk": "Название риска", 
-    "description": "Подробное описание", 
-    "impact": "Что будет плохого", 
-    "recommendation": "Что конкретно сделать", 
-    "vendors": ["Вендор1", "Вендор2"]
+    "description": "Подробное описание выявленной проблемы", 
+    "impact": "Бизнес-эффект и последствия", 
+    "recommendation": "Технический план устранения", 
+    "vendors": ["Решение1", "Решение2"]
   }}
 ]
 """
-
         response = model.generate_content(
             prompt,
             generation_config={"response_mime_type": "application/json"}
         )
-        
         return json.loads(response.text)
+    except Exception as e:
+        st.error(f"Ошибка ИИ: {e}")
+        return []
         
     except Exception as e:
         # Если ошибка все равно произошла, выводим её детали
