@@ -7,6 +7,83 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
+#----------ИИ-----------
+# --- AI BLOCK START ---
+
+def sanitize_for_ai(c_info, results):
+    forbidden = [
+        "Наименование компании",
+        "Сайт компании",
+        "Email",
+        "ФИО контактного лица",
+        "Должность",
+        "Контактный телефон"
+    ]
+
+    safe_client = {
+        k: v for k, v in c_info.items()
+        if k not in forbidden
+    }
+
+    safe_results = {
+        k: v for k, v in results.items()
+        if not any(f.lower() in str(k).lower() for f in forbidden)
+    }
+
+    return safe_client, safe_results
+
+
+def ai_generate_risks_and_recs(c_info, results):
+    from openai import OpenAI
+    import json
+
+    client = OpenAI()
+
+    safe_client, safe_results = sanitize_for_ai(c_info, results)
+
+    prompt = f"""
+Ты выступаешь как CISO и CTO.
+
+Проанализируй ИТ и ИБ состояние компании.
+
+Контекст:
+{safe_client}
+
+Данные аудита:
+{safe_results}
+
+Требования:
+- Учитывай взаимосвязи систем
+- Не пиши банальные риски
+- Учитывай требования Казахстана (Закон о ПДн, ISO 27001)
+
+Верни JSON:
+[
+  {{
+    "level": "КРИТИЧНО/ВЫСОКИЙ/СРЕДНИЙ",
+    "risk": "Название",
+    "description": "Описание",
+    "impact": "Влияние",
+    "recommendation": "Что делать",
+    "vendors": ["Vendor1", "Vendor2"]
+  }}
+]
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-5",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    text = response.choices[0].message.content
+
+    try:
+        return json.loads(text)
+    except:
+        return []
+
+# --- AI BLOCK END ---
+
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
 
@@ -561,123 +638,6 @@ def build_context(results, client_info):
     return context
 
 
-def generate_risks(results, context):
-    risks = []
-
-    def add(level, title, desc, impact, regulator):
-        risks.append({
-            "level": level,
-            "title": title,
-            "desc": desc,
-            "impact": impact,
-            "regulator": regulator
-        })
-
-    # --- BACKUP ---
-    if results.get("Резервное копирование") == "Нет":
-        if results.get("Серверы (вирт)", 0) > 0:
-            add(
-                "КРИТИЧНО",
-                "Отсутствует резервное копирование",
-                "При наличии виртуальной инфраструктуры отсутствует централизованное резервное копирование.",
-                "Полная потеря данных и остановка бизнеса",
-                "Закон РК о ПДн + ISO 27001 A.12.3"
-            )
-
-    # --- MFA ---
-    if results.get("MFA") == "Нет":
-        if context["has_critical_systems"]:
-            add(
-                "КРИТИЧНО",
-                "Отсутствует MFA",
-                "Доступ к бизнес-критичным системам осуществляется без многофакторной аутентификации.",
-                "Компрометация учетных записей",
-                "Требования "
-            )
-
-    # --- NGFW ---
-    if results.get("NGFW") in ["Нет", "", None]:
-        add(
-            "ВЫСОКИЙ",
-            "Отсутствует защита периметра",
-            "Сетевая инфраструктура не защищена NGFW.",
-            "Внешние атаки, эксплуатация уязвимостей",
-            "Рекомендации "
-        )
-
-    # --- DEV SECURITY ---
-    if context["has_dev"]:
-        if results.get("Блок 2. SAST") == "Нет":
-            add(
-                "ВЫСОКИЙ",
-                "Отсутствует SAST",
-                "Исходный код не проходит статический анализ.",
-                "Уязвимости в коде",
-                "OWASP / Secure SDLC"
-            )
-
-    # --- PATCH ---
-    if results.get("Блок 2. Patch Management") == "Нет":
-        add(
-            "ВЫСОКИЙ",
-            "Отсутствует управление обновлениями",
-            "Нет централизованного патч-менеджмента.",
-            "Эксплуатация известных уязвимостей",
-            "ISO 27001 A.12.6"
-        )
-
-    return risks
-#----Рекомендации-----
-def generate_recommendations(risks):
-    recs = []
-
-    def add(title, text, vendors, why, priority):
-        recs.append({
-            "title": title,
-            "text": text,
-            "vendors": vendors,
-            "why": why,
-            "priority": priority
-        })
-
-    for r in risks:
-        if "резервное копирование" in r["title"].lower():
-            add(
-                "Внедрение Backup",
-                "Развернуть централизованную систему резервного копирования",
-                ["Veeam", "Commvault", "Veritas"],
-                "Обеспечивает восстановление после инцидентов",
-                "КРИТИЧНО"
-            )
-
-        if "mfa" in r["title"].lower():
-            add(
-                "Внедрение MFA",
-                "Включить MFA для всех критичных систем",
-                ["CyberArk", "Wallix", "Okta"],
-                "Снижает риск компрометации учетных записей",
-                "КРИТИЧНО"
-            )
-
-        if "периметра" in r["title"].lower():
-            add(
-                "Внедрение NGFW",
-                "Развернуть NGFW на границе сети",
-                ["Check Point", "Palo Alto", "Fortinet"],
-                "Фильтрация угроз и контроль трафика",
-                "ВЫСОКИЙ"
-            )
-
-        if "patch" in r["title"].lower():
-            add(
-                "Patch Management",
-                "Внедрить централизованное управление обновлениями",
-                ["ManageEngine", "Microsoft WSUS", "Ivanti"],
-                "Закрытие известных уязвимостей",
-                "ВЫСОКИЙ"
-            )
-
-    return recs
 # --- Отчет ---
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
@@ -692,9 +652,7 @@ def make_expert_excel(c_info, results, final_score):
     row = 1
 
     # --- КОНТЕКСТ ---
-    context = build_context(results, c_info)
-    risks = generate_risks(results, context)
-    recs = generate_recommendations(risks)
+    ai_data = ai_generate_risks_and_recs(c_info, results)
 
     # --- EXECUTIVE SUMMARY ---
     ws.cell(row=row, column=1, value="EXECUTIVE SUMMARY").font = Font(bold=True)
@@ -721,14 +679,25 @@ def make_expert_excel(c_info, results, final_score):
     row += 1
 
     for r in risks:
-        ws.cell(row=row, column=1, value=f"{r['level']}: {r['title']}")
-        row += 1
-        ws.cell(row=row, column=1, value=f"{r['desc']}")
-        row += 1
-        ws.cell(row=row, column=1, value=f"Влияние: {r['impact']}")
-        row += 1
-        ws.cell(row=row, column=1, value=f"Регулятор: {r['regulator']}")
-        row += 2
+        ws.cell(row=row, column=1, value="AI АНАЛИЗ").font = Font(bold=True)
+row += 1
+
+for r in ai_data:
+    ws.cell(row=row, column=1, value=f"{r.get('level','')} - {r.get('risk','')}")
+    row += 1
+
+    ws.cell(row=row, column=1, value=r.get("description", ""))
+    row += 1
+
+    ws.cell(row=row, column=1, value=f"Влияние: {r.get('impact','')}")
+    row += 1
+
+    ws.cell(row=row, column=1, value=f"Рекомендация: {r.get('recommendation','')}")
+    row += 1
+
+    vendors = ", ".join(r.get("vendors", []))
+    ws.cell(row=row, column=1, value=f"Вендоры: {vendors}")
+    row += 2
 
     # --- RECOMMENDATIONS ---
     ws.cell(row=row, column=1, value="РЕКОМЕНДАЦИИ").font = Font(bold=True)
