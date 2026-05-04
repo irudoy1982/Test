@@ -55,11 +55,20 @@ def ai_generate_risks_and_recs(c_info, results):
         model = genai.GenerativeModel(selected_model)
 
         safe_client, safe_results = sanitize_for_ai(c_info, results)
-        prompt = f"""
-        Ты выступаешь как CISO. Проанализируй данные и верни строго JSON массив:
-        Контекст: {safe_client}
-        Данные: {safe_results}
-        """
+       prompt = f"""
+Выступай как CISO и CTO. Проанализируй данные аудита: {safe_results}.
+Верни ТОЛЬКО JSON массив объектов с ТАКИМИ ЖЕ ключами:
+[
+  {{
+    "level": "КРИТИЧНО", 
+    "risk": "Название риска", 
+    "description": "Подробное описание", 
+    "impact": "Что будет плохого", 
+    "recommendation": "Что конкретно сделать", 
+    "vendors": ["Вендор1", "Вендор2"]
+  }}
+]
+"""
 
         response = model.generate_content(
             prompt,
