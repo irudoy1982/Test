@@ -71,7 +71,7 @@ def ai_generate_risks_and_recs(c_info, results):
 """
 
     response = client.chat.completions.create(
-        model="gpt-5",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}]
     )
 
