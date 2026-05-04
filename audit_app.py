@@ -35,40 +35,38 @@ def ai_generate_risks_and_recs(c_info, results):
     if not api_key:
         return []
 
-    try:
-        genai.configure(api_key=api_key)
-        
-        # Попробуем использовать актуальную стабильную версию модели
-        # Если 1.5-flash недоступна, можно попробовать 'gemini-pro'
-        model_name = 'gemini-1.5-flash' 
-        model = genai.GenerativeModel(model_name)
+    genai.configure(api_key=api_key)
 
-        safe_client, safe_results = sanitize_for_ai(c_info, results)
+    # Список моделей в порядке приоритета
+    # В 2026 году актуальными могут быть версии 2.0 или 'latest'
+    models_to_try = [
+        'gemini-1.5-flash-latest', 
+        'gemini-1.5-flash', 
+        'gemini-pro',
+        'gemini-2.0-flash'
+    ]
 
-        prompt = f"""
-        Ты выступаешь как CISO и CTO. Проанализируй ИТ и ИБ состояние компании.
-        Контекст: {safe_client}
-        Данные аудита: {safe_results}
-        Верни строго JSON массив объектов:
-        [
-          {{
-            "level": "КРИТИЧНО/ВЫСОКИЙ/СРЕДНИЙ",
-            "risk": "Название",
-            "description": "Описание",
-            "impact": "Влияние",
-            "recommendation": "Что делать",
-            "vendors": ["Vendor1", "Vendor2"]
-          }}
-        ]
-        """
+    safe_client, safe_results = sanitize_for_ai(c_info, results)
+    prompt = f"Ты CISO. Проанализируй данные и верни строго JSON массив объектов: {safe_client} {safe_results}"
 
-        # Добавляем генерацию с явным указанием ожидания JSON
-        response = model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
-        )
-        
-        return json.loads(response.text)
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            # Пытаемся вызвать генерацию
+            response = model.generate_content(
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            # Если ошибка 404, пробуем следующую модель из списка
+            if "404" in str(e):
+                continue
+            else:
+                st.error(f"Ошибка Gemini ({model_name}): {e}")
+                break
+    
+    return []
         
     except Exception as e:
         # Если модель не найдена (404), выведем более понятное сообщение
