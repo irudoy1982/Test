@@ -36,37 +36,23 @@ def ai_generate_risks_and_recs(c_info, results):
         return []
 
     genai.configure(api_key=api_key)
-
-    # Список моделей в порядке приоритета
-    # В 2026 году актуальными могут быть версии 2.0 или 'latest'
-    models_to_try = [
-        'gemini-1.5-flash-latest', 
-        'gemini-1.5-flash', 
-        'gemini-pro',
-        'gemini-2.0-flash'
-    ]
-
-    safe_client, safe_results = sanitize_for_ai(c_info, results)
-    prompt = f"Ты CISO. Проанализируй данные и верни строго JSON массив объектов: {safe_client} {safe_results}"
-
-    for model_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(model_name)
-            # Пытаемся вызвать генерацию
-            response = model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json"}
-            )
-            return json.loads(response.text)
-        except Exception as e:
-            # Если ошибка 404, пробуем следующую модель из списка
-            if "404" in str(e):
-                continue
-            else:
-                st.error(f"Ошибка Gemini ({model_name}): {e}")
-                break
     
-    return []
+    # Пытаемся использовать модель. В 2026 году это может быть gemini-1.5-flash-latest или gemini-2.0-flash
+    model_name = 'gemini-1.5-flash-latest' 
+    
+    safe_client, safe_results = sanitize_for_ai(c_info, results)
+    prompt = f"CISO Analysis. Return JSON: {safe_client} {safe_results}"
+
+    try:
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"}
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        st.error(f"Ошибка ИИ: {e}")
+        return []
         
     except Exception as e:
         # Если модель не найдена (404), выведем более понятное сообщение
