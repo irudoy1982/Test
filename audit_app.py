@@ -763,50 +763,10 @@ if st.button("📊 Сформировать экспертный отчет", di
         report_bytes = make_expert_excel(client_info, results, f_score)
         
         try:
-    telegram_text = f"""
-🚨 Коллеги, у нас новый запрос на аудит!
-
-🏢 Компания: {client_info.get('Наименование компании', '-')}
-
-👤 ФИО: {client_info.get('ФИО контактного лица', '-')}
-
-💼 Должность: {client_info.get('Должность', '-')}
-
-📞 Телефон: {client_info.get('Контактный телефон', '-')}
-
-📧 Почта: {client_info.get('Email', '-')}
-
-🏭 Сфера деятельности: {client_info.get('Сфера деятельности', '-')}
-
-🌐 Сайт: {client_info.get('Сайт компании', '-')}
-
-📊 Уровень зрелости: {f_score}%
-"""
-
-    requests.post(
-        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-        data={
-            "chat_id": CHAT_ID,
-            "text": telegram_text
-        }
-    )
-
-    requests.post(
-        f"https://api.telegram.org/bot{TOKEN}/sendDocument",
-        data={
-            "chat_id": CHAT_ID,
-            "caption": f"Отчет аудита: {client_info['Наименование компании']}"
-        },
-        files={
-            'document': (
-                f"Audit_v10_{client_info['Наименование компании']}.xlsx",
-                report_bytes
-            )
-        }
-    )
-
-except Exception as e:
-    st.error(f"Ошибка Telegram: {e}")
+            caption = f"🚀 Аудит v10: {client_info['Наименование компании']}\n📊 Зрелость: {f_score}%"
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
+                            data={"chat_id": CHAT_ID, "caption": caption}, 
+                            files={'document': (f"Audit_v10_{client_info['Наименование компании']}.xlsx", report_bytes)})
         except: pass
         
         st.success("Отчет успешно сформирован!")
