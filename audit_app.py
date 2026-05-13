@@ -7,85 +7,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
-#----------ИИ-----------
-# --- AI BLOCK START ---
-
-def sanitize_for_ai(c_info, results):
-    forbidden = [
-        "Наименование компании",
-        "Сайт компании",
-        "Email",
-        "ФИО контактного лица",
-        "Должность",
-        "Контактный телефон"
-    ]
-    safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
-    safe_results = {
-        k: v for k, v in results.items()
-        if not any(f.lower() in str(k).lower() for f in forbidden)
-    }
-    return safe_client, safe_results
-
-def load_vendor_matrix():
-    try:
-        # Проверяем наличие файла, чтобы не вызвать ошибку
-        if os.path.exists("Портфель для отчета.xlsx"):
-            df = pd.read_excel("Портфель для отчета.xlsx")
-            vendors_text = ""
-            for _, row in df.iterrows():
-                row_text = " | ".join([str(x) for x in row.values if pd.notna(x)])
-                vendors_text += row_text + "\n"
-            return vendors_text
-        return "Список вендоров пуст (файл не найден)."
-    except Exception as e:
-        return f"Ошибка загрузки вендоров: {e}"
-
-def get_regulators_by_industry(industry):
-    regulators = {
-        "Финтех / Банки": "- Национальный Банк РК, PCI DSS, ISO 27001, Постановления НБРК по ИБ",
-        "Госсектор": "- ГОСТ РК 34, Требования ГТС, Требования ИБ государственных ИС, ISO 27001",
-        "Ритейл / E-commerce": "- PCI DSS, Закон РК о персональных данных, ISO 27001",
-        "IT / Разработка": "- OWASP ASVS, Secure SDLC, ISO 27001, SOC2",
-        "Производство": "- ISA/IEC 62443, ISO 27001, Требования по защите АСУ ТП"
-    }
-    return regulators.get(industry, "- ISO 27001, Закон РК о персональных данных")
-
-def generate_technical_insights(results):
-    """
-    Функция предварительного анализа для ИИ. 
-    Находит аномалии, которые ИИ должен прокомментировать.
-    """
-    insights = []
-    
-    # 1. Анализ каналов связи
-    main_s = results.get("_main_speed", 0)
-    back_s = results.get("_back_speed", 0)
-    if main_s > 0 and back_s > 0:
-        ratio = back_s / main_s
-        if ratio < 0.2:
-            insights.append(f"Критический дисбаланс каналов: Резервный ({back_s} Мбит/с) в {round(1/ratio)} раз медленнее основного ({main_s} Мбит/с).")
-    elif main_s > 0 and (not back_s or back_s == 0):
-        insights.append("Отсутствует резервный интернет-канал при наличии основного.")
-
-    # 2. Анализ Wi-Fi
-    ap_count = results.get("WiFi Точки", 0)
-    has_controller = "Нет" not in str(results.get("WiFi Контроллер", "Нет"))
-    if ap_count > 4 and not has_controller:
-        insights.append(f"Риск управления Wi-Fi: {ap_count} точек доступа работают без контроллера (бесшовный роуминг невозможен).")
-
-    # 3. Анализ маршрутизации
-    routing = str(results.get("Маршрутизация", ""))
-    if "Static" in routing and main_s > 100:
-        insights.append("Устаревшая логика: Использование статической маршрутизации при высокой пропускной способности.")
-    if "BGP" not in routing and main_s >= 500:
-        insights.append("Рекомендация: Внедрение BGP для оптимального управления внешними стыками.")
-
-    # 4. Анализ ИБ
-    if results.get("NGFW") == "Нет":
-        insights.append("Критическая уязвимость: Отсутствует межсетевой экран следующего поколения (NGFW).")
-    
-    return "\n".join(insights)
-
 def ai_generate_risks_and_recs(c_info, results):
     import google.generativeai as genai
     import json
@@ -97,13 +18,25 @@ def ai_generate_risks_and_recs(c_info, results):
 
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Динамический поиск доступной модели, чтобы избежать 404
+        model_name = 'gemini-1.5-flash' # Значение по умолчанию
+        try:
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    # Если находим flash или pro версию, берем её полное имя
+                    if 'gemini-1.5-flash' in m.name or 'gemini-pro' in m.name:
+                        model_name = m.name
+                        break
+        except Exception:
+            # Если list_models не сработал, используем стандартный полный путь
+            model_name = 'models/gemini-1.5-flash'
+
+        model = genai.GenerativeModel(model_name)
 
         safe_client, safe_results = sanitize_for_ai(c_info, results)
         vendor_context = load_vendor_matrix()
         regulator_context = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
-        
-        # Генерируем технические подсказки для ИИ
         tech_insights = generate_technical_insights(results)
 
         prompt = f"""
@@ -123,12 +56,11 @@ def ai_generate_risks_and_recs(c_info, results):
 2. WI-FI: Если точек много, а контроллера нет — укажи на деградацию связи и хаотичный роуминг.
 3. МАРШРУТИЗАЦИЯ: Оцени, подходят ли текущие протоколы под масштаб сети.
 4. ИБ: В 2026 году отсутствие NGFW, MFA или SIEM для крупного бизнеса считается критическим риском.
-5. КОНТЕКСТ: Давай рекомендации с учетом специфики отрасли {c_info.get("Сфера деятельности", "")}.
 
-СПИСОК ДОСТУПНЫХ ВЕНДОРОВ ДЛЯ РЕКОМЕНДАЦИЙ:
+СПИСОК ДОСТУПНЫХ ВЕНДОРОВ:
 {vendor_context}
 
-РЕГУЛЯТОРНЫЕ ТРЕБОВАНИЯ:
+РЕГУЛЯТОРЫ:
 {regulator_context}
 
 ВЕРНИ ТОЛЬКО JSON СПИСКОМ:
@@ -136,11 +68,11 @@ def ai_generate_risks_and_recs(c_info, results):
   {{
     "level": "КРИТИЧНО / СРЕДНЕ / НИЗКИЙ",
     "risk": "Название риска",
-    "description": "Глубокое описание проблемы и почему это важно именно сейчас",
-    "impact": "Бизнес-последствия (финансовые, репутационные, юридические)",
+    "description": "Глубокое описание проблемы",
+    "impact": "Бизнес-последствия",
     "recommendation": "Конкретный пошаговый план решения",
     "vendors": ["Vendor1", "Vendor2"],
-    "regulators": ["Название стандарта или закона"]
+    "regulators": ["Стандарт"]
   }}
 ]
 """
@@ -152,13 +84,16 @@ def ai_generate_risks_and_recs(c_info, results):
             }
         )
 
-        return json.loads(response.text)
+        # Обработка ответа: иногда модель может вернуть текст вне JSON
+        content = response.text.strip()
+        if content.startswith("```json"):
+            content = content.replace("```json", "").replace("```", "").strip()
+            
+        return json.loads(content)
 
     except Exception as e:
         st.error(f"Ошибка ИИ анализа: {e}")
         return []
-
-# --- AI BLOCK END ---
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
