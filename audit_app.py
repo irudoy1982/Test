@@ -91,77 +91,82 @@ def ai_generate_risks_and_recs(c_info, results):
     import streamlit as st
 
     api_key = st.secrets.get("GEMINI_API_KEY")
+
     if not api_key:
         return []
 
     try:
-        try:
-    genai.configure(api_key=api_key)
+        genai.configure(api_key=api_key)
 
-    # Авто-подбор модели
-    available_models = [
-        m.name for m in genai.list_models()
-        if 'generateContent' in m.supported_generation_methods
-    ]
+        available_models = [
+            m.name for m in genai.list_models()
+            if 'generateContent' in m.supported_generation_methods
+        ]
 
-    model_name = available_models[0] if available_models else 'gemini-1.5-flash'
+        model_name = (
+            available_models[0]
+            if available_models
+            else 'gemini-1.5-flash'
+        )
 
-    model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel(model_name)
 
-    safe_client, safe_results = sanitize_for_ai(c_info, results)
+        safe_client, safe_results = sanitize_for_ai(
+            c_info,
+            results
+        )
 
-    vendor_context = load_vendor_matrix()
+        vendor_context = load_vendor_matrix()
 
-    regulator_context = get_regulators_by_industry(
-        c_info.get("Сфера деятельности", "")
-    )
+        regulator_context = get_regulators_by_industry(
+            c_info.get("Сфера деятельности", "")
+        )
 
-    prompt = f"""
+        prompt = f"""
 Выступай как эксперт CISO/CTO уровня enterprise.
 
 Проанализируй результаты аудита:
 
 {safe_results}
 
-Сфера деятельности компании:
+Сфера деятельности:
 {c_info.get("Сфера деятельности", "")}
 
-При формировании рекомендаций ОБЯЗАТЕЛЬНО:
-1. Используй решения и производителей ТОЛЬКО из списка ниже
-2. Учитывай отраслевые требования и регуляторов
-3. Для каждой рекомендации объясняй ПОЧЕМУ это важно
-4. Формируй рекомендации enterprise-уровня
-5. Не предлагай случайных вендоров
+Используй ТОЛЬКО вендоров из списка.
 
-СПИСОК ДОСТУПНЫХ ВЕНДОРОВ:
+СПИСОК ВЕНДОРОВ:
 {vendor_context}
 
-РЕГУЛЯТОРНЫЕ ТРЕБОВАНИЯ:
+РЕГУЛЯТОРЫ:
 {regulator_context}
 
-Верни ТОЛЬКО JSON массив объектов:
+Верни ТОЛЬКО JSON:
 
 [
   {{
     "level": "КРИТИЧНО",
     "risk": "Название риска",
-    "description": "Подробное описание проблемы",
-    "impact": "Последствия для бизнеса и ИБ",
-    "recommendation": "Подробный технический план устранения с учетом регуляторов",
+    "description": "Описание",
+    "impact": "Последствия",
+    "recommendation": "Рекомендации",
     "vendors": ["Vendor1", "Vendor2"],
-    "regulators": ["ISO 27001", "PCI DSS"]
+    "regulators": ["ISO 27001"]
   }}
 ]
 """
 
-    response = model.generate_content(
-        prompt,
-        generation_config={
-            "response_mime_type": "application/json"
-        }
-    )
+        response = model.generate_content(
+            prompt,
+            generation_config={
+                "response_mime_type": "application/json"
+            }
+        )
 
-    return json.loads(response.text)
+        return json.loads(response.text)
+
+    except Exception as e:
+        st.error(f"Ошибка ИИ: {e}")
+        return []
 
 except Exception as e:
     st.error(f"Ошибка ИИ: {e}")
