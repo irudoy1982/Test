@@ -95,22 +95,28 @@ def ai_generate_risks_and_recs(c_info, results):
         return []
 
     try:
-        genai.configure(api_key=api_key)
-        # Авто-подбор модели
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        model_name = available_models[0] if available_models else 'gemini-1.5-flash'
-        model = genai.GenerativeModel(model_name)
+        try:
+    genai.configure(api_key=api_key)
 
-        safe_client, safe_results = sanitize_for_ai(c_info, results)
+    # Авто-подбор модели
+    available_models = [
+        m.name for m in genai.list_models()
+        if 'generateContent' in m.supported_generation_methods
+    ]
 
-        # Строго задаем формат JSON, чтобы все поля заполнились
-        vendor_context = load_vendor_matrix()
+    model_name = available_models[0] if available_models else 'gemini-1.5-flash'
 
-regulator_context = get_regulators_by_industry(
-    c_info.get("Сфера деятельности", "")
-)
+    model = genai.GenerativeModel(model_name)
 
-prompt = f"""
+    safe_client, safe_results = sanitize_for_ai(c_info, results)
+
+    vendor_context = load_vendor_matrix()
+
+    regulator_context = get_regulators_by_industry(
+        c_info.get("Сфера деятельности", "")
+    )
+
+    prompt = f"""
 Выступай как эксперт CISO/CTO уровня enterprise.
 
 Проанализируй результаты аудита:
@@ -147,6 +153,19 @@ prompt = f"""
   }}
 ]
 """
+
+    response = model.generate_content(
+        prompt,
+        generation_config={
+            "response_mime_type": "application/json"
+        }
+    )
+
+    return json.loads(response.text)
+
+except Exception as e:
+    st.error(f"Ошибка ИИ: {e}")
+    return []
         response = model.generate_content(
             prompt,
             generation_config={"response_mime_type": "application/json"}
