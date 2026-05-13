@@ -168,30 +168,7 @@ def ai_generate_risks_and_recs(c_info, results):
         st.error(f"Ошибка ИИ: {e}")
         return []
 
-except Exception as e:
-    st.error(f"Ошибка ИИ: {e}")
-    return []
-        response = model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
-        )
-        return json.loads(response.text)
-    except Exception as e:
-        st.error(f"Ошибка ИИ: {e}")
-        return []
-        
-    except Exception as e:
-        # Если ошибка все равно произошла, выводим её детали
-        st.error(f"Ошибка ИИ ({selected_model if 'selected_model' in locals() else 'N/A'}): {e}")
-        return []
-        
-    except Exception as e:
-        # Если модель не найдена (404), выведем более понятное сообщение
-        if "404" in str(e):
-            st.error(f"Модель {model_name} не найдена. Проверьте доступность API в Google AI Studio.")
-        else:
-            st.error(f"Ошибка Gemini: {e}")
-        return []
+
 
 # --- AI BLOCK END ---
 
