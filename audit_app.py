@@ -9,7 +9,22 @@ from datetime import datetime
 
 #----------ИИ-----------
 # --- AI BLOCK START ---
+def load_vendor_matrix():
+    try:
+        df = pd.read_excel("Портфель для отчета.xlsx")
 
+        vendors_text = ""
+
+        for _, row in df.iterrows():
+            row_text = " | ".join(
+                [str(x) for x in row.values if pd.notna(x)]
+            )
+            vendors_text += row_text + "\n"
+
+        return vendors_text
+
+    except Exception as e:
+        return f"Ошибка загрузки вендоров: {e}"
 def sanitize_for_ai(c_info, results):
     forbidden = [
         "Наименование компании",
