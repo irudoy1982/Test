@@ -731,11 +731,11 @@ if validation_errors:
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
     with st.spinner("Формирование отчета..."):
-        
+
         # 1. Берем копию всех собранных данных из опросника
         results = data.copy()
 
-        # 2. Добавляем расчетные поля для блока "Резюме" и логики рисков
+        # 2. Добавляем расчетные поля
         results.update({
             "Интернет канал (осн)": f"{main_speed} Mbit/s",
             "Резервный канал": f"{back_speed} Mbit/s",
@@ -751,19 +751,19 @@ if st.button("📊 Сформировать экспертный отчет", di
             "Резервное копирование": v_n_b if v_n_b else "Нет",
         })
 
-        # Специальная проверка для MFA (поиск в данных, если блок ИБ был активен)
+        # MFA
         if "Блок 2. MFA" in results:
             results["MFA"] = results["Блок 2. MFA"]
         else:
             results["MFA"] = "Нет"
 
-        # Расчет итогового балла
-        f_score = min(score + 10, 100) 
-        
+        # Score
+        f_score = min(score + 10, 100)
+
         report_bytes = make_expert_excel(client_info, results, f_score)
-        
+
         try:
-    telegram_text = f"""
+            telegram_text = f"""
 🚨 Коллеги, у нас новый запрос на аудит!
 
 🏢 Компания: {client_info.get('Наименование компании', '-')}
@@ -783,33 +783,37 @@ if st.button("📊 Сформировать экспертный отчет", di
 📊 Уровень зрелости: {f_score}%
 """
 
-    requests.post(
-        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-        data={
-            "chat_id": CHAT_ID,
-            "text": telegram_text
-        }
-    )
-
-    requests.post(
-        f"https://api.telegram.org/bot{TOKEN}/sendDocument",
-        data={
-            "chat_id": CHAT_ID,
-            "caption": f"Отчет аудита: {client_info['Наименование компании']}"
-        },
-        files={
-            'document': (
-                f"Audit_v10_{client_info['Наименование компании']}.xlsx",
-                report_bytes
+            requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                data={
+                    "chat_id": CHAT_ID,
+                    "text": telegram_text
+                }
             )
-        }
-    )
 
-except Exception as e:
-    st.error(f"Ошибка Telegram: {e}")
-        except: pass
-        
+            requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendDocument",
+                data={
+                    "chat_id": CHAT_ID,
+                    "caption": f"Отчет аудита: {client_info['Наименование компании']}"
+                },
+                files={
+                    'document': (
+                        f"Audit_v10_{client_info['Наименование компании']}.xlsx",
+                        report_bytes
+                    )
+                }
+            )
+
+        except Exception as e:
+            st.error(f"Ошибка Telegram: {e}")
+
         st.success("Отчет успешно сформирован!")
-        st.download_button("📥 Скачать экспертный отчет (XLSX)", report_bytes, f"Audit_Khalil_{client_info['Наименование компании']}.xlsx")
+
+        st.download_button(
+            "📥 Скачать экспертный отчет (XLSX)",
+            report_bytes,
+            f"Audit_Khalil_{client_info['Наименование компании']}.xlsx"
+        )
 
 st.info("Khalil Audit System v10.4 | Ivan Rudoy Production | Almaty 2026")
