@@ -8,72 +8,169 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
 #----------ИИ-----------
+# --- AI BLOCK START ---
+
+def sanitize_for_ai(c_info, results):
+    forbidden = [
+        "Наименование компании",
+        "Сайт компании",
+        "Email",
+        "ФИО контактного лица",
+        "Должность",
+        "Контактный телефон"
+    ]
+    safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
+    safe_results = {
+        k: v for k, v in results.items()
+        if not any(f.lower() in str(k).lower() for f in forbidden)
+    }
+    return safe_client, safe_results
+
+def load_vendor_matrix():
+    try:
+        df = pd.read_excel("Портфель для отчета.xlsx")
+
+        vendors_text = ""
+
+        for _, row in df.iterrows():
+            row_text = " | ".join(
+                [str(x) for x in row.values if pd.notna(x)]
+            )
+            vendors_text += row_text + "\n"
+
+        return vendors_text
+
+    except Exception as e:
+        return f"Ошибка загрузки вендоров: {e}"
+def get_regulators_by_industry(industry):
+    regulators = {
+        "Финтех / Банки": """
+- Национальный Банк РК
+- PCI DSS
+- ISO 27001
+- Постановления НБРК по ИБ
+""",
+
+        "Госсектор": """
+- ГОСТ РК 34
+- Требования ГТС
+- Требования ИБ государственных ИС
+- ISO 27001
+""",
+
+        "Ритейл / E-commerce": """
+- PCI DSS
+- Закон РК о персональных данных
+- ISO 27001
+""",
+
+        "IT / Разработка": """
+- OWASP ASVS
+- Secure SDLC
+- ISO 27001
+- SOC2
+""",
+
+        "Производство": """
+- ISA/IEC 62443
+- ISO 27001
+- Требования по защите АСУ ТП
+"""
+    }
+
+    return regulators.get(
+        industry,
+        """
+- ISO 27001
+- Закон РК о персональных данных
+"""
+    )
 def ai_generate_risks_and_recs(c_info, results):
     import google.generativeai as genai
     import json
     import streamlit as st
 
     api_key = st.secrets.get("GEMINI_API_KEY")
+
     if not api_key:
         return []
 
     try:
         genai.configure(api_key=api_key)
-        # Автоматический выбор доступной модели
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        model_name = available_models[0] if available_models else 'gemini-1.5-flash'
+
+        available_models = [
+            m.name for m in genai.list_models()
+            if 'generateContent' in m.supported_generation_methods
+        ]
+
+        model_name = (
+            available_models[0]
+            if available_models
+            else 'gemini-1.5-flash'
+        )
+
         model = genai.GenerativeModel(model_name)
 
-        safe_client, safe_results = sanitize_for_ai(c_info, results)
+        safe_client, safe_results = sanitize_for_ai(
+            c_info,
+            results
+        )
+
         vendor_context = load_vendor_matrix()
-        regulator_context = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
+
+        regulator_context = get_regulators_by_industry(
+            c_info.get("Сфера деятельности", "")
+        )
 
         prompt = f"""
-Выступай как эксперт CISO/CTO уровня Enterprise. Твоя задача — провести глубокий аудит ИТ и ИБ инфраструктуры.
+Выступай как эксперт CISO/CTO уровня enterprise.
 
-ДАННЫЕ АУДИТА:
+Проанализируй результаты аудита:
+
 {safe_results}
 
-СФЕРА ДЕЯТЕЛЬНОСТИ:
+Сфера деятельности:
 {c_info.get("Сфера деятельности", "")}
 
-КОНТЕКСТ ВЕНДОРОВ (Портфель):
+Используй ТОЛЬКО вендоров из списка.
+
+СПИСОК ВЕНДОРОВ:
 {vendor_context}
 
-РЕГУЛЯТОРНЫЕ ТРЕБОВАНИЯ:
+РЕГУЛЯТОРЫ:
 {regulator_context}
 
-ИНСТРУКЦИИ ПО АНАЛИЗУ:
-1. КАНАЛЫ СВЯЗИ: Если резервный канал отсутствует или его скорость < 30% от основного при наличии критических систем (ERP/CRM), укажи на риск прерывания бизнес-процессов.
-2. WI-FI: Если количество точек доступа > 3, но отсутствует контроллер, укажи на сложность управления и риски бесшовного роуминга.
-3. МАРШРУТИЗАЦИЯ: Если используется только статическая маршрутизация при наличии сложной сети (Core/Dist/Access), рекомендуй переход на динамические протоколы (OSPF/BGP).
-4. ИБ: Проверь отсутствие MFA, EDR или NGFW. Если их нет — это критический риск.
-5. ВЕНДОРЫ: 
-   - В первую очередь предлагай вендоров из СПИСКА ВЕНДОРОВ.
-   - Если для специфического риска в списке нет подходящего решения, предложи международные Best Practice решения (Market Leaders), но пометь их как "Дополнительная рекомендация".
+Верни ТОЛЬКО JSON:
 
-ВЕРНИ ТОЛЬКО JSON (массив объектов):
 [
   {{
-    "level": "КРИТИЧНО / СРЕДНИЙ / НИЗКИЙ",
-    "risk": "Четкое название риска",
-    "description": "Глубокое описание проблемы",
-    "impact": "Последствия для бизнеса и техпроцессов",
-    "recommendation": "Пошаговая рекомендация по устранению",
-    "vendors": ["Вендор из списка", "Вендор вне списка (если оправдано)"],
-    "regulators": ["Пункты из списка регуляторов"]
+    "level": "КРИТИЧНО",
+    "risk": "Название риска",
+    "description": "Описание",
+    "impact": "Последствия",
+    "recommendation": "Рекомендации",
+    "vendors": ["Vendor1", "Vendor2"],
+    "regulators": ["ISO 27001"]
   }}
 ]
 """
+
         response = model.generate_content(
             prompt,
-            generation_config={"response_mime_type": "application/json"}
+            generation_config={
+                "response_mime_type": "application/json"
+            }
         )
+
         return json.loads(response.text)
 
     except Exception as e:
         st.error(f"Ошибка ИИ: {e}")
         return []
+
+
+
+# --- AI BLOCK END ---
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
@@ -732,14 +829,12 @@ if st.button("📊 Сформировать экспертный отчет", di
         results.update({
             "Интернет канал (осн)": f"{main_speed} Mbit/s",
             "Резервный канал": f"{back_speed} Mbit/s",
-            "Дисбаланс каналов": "Да" if (back_speed < main_speed * 0.3) else "Нет", # Подсказка для ИИ
             "_main_speed": main_speed,
             "_back_speed": back_speed,
             "_user_count": total_arm,
             "WiFi Точки": ap_cnt,
             "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
             "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
-            "Без контроллера при многоточии": "Да" if (ap_cnt > 3 and data.get('Wi-Fi Контроллер') == "Нет") else "Нет",
             "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
             "Серверы (физ)": phys_count,
             "Серверы (вирт)": virt_count,
