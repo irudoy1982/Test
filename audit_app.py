@@ -8,150 +8,82 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
 #----------ИИ-----------
-# --- AI BLOCK START ---
-
-import google.generativeai as genai
-import json
-import os
-import pandas as pd
-import streamlit as st
-
-def sanitize_for_ai(c_info, results):
-    """Очистка персональных данных"""
-    forbidden = [
-        "Наименование компании", "Сайт компании", "Email", 
-        "ФИО контактного лица", "Должность", "Контактный телефон"
-    ]
-    safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
-    safe_results = {
-        k: v for k, v in results.items()
-        if not any(f.lower() in str(k).lower() for f in forbidden)
-    }
-    return safe_client, safe_results
-
-def load_vendor_matrix():
-    """Загрузка портфеля вендоров"""
-    try:
-        if os.path.exists("Портфель для отчета.xlsx"):
-            df = pd.read_excel("Портфель для отчета.xlsx")
-            return "\n".join([" | ".join([str(x) for x in row.values if pd.notna(x)]) for _, row in df.iterrows()])
-        return "Список вендоров пуст."
-    except:
-        return "Ошибка загрузки файла вендоров."
-
-def get_regulators_by_industry(industry):
-    """Справочник регуляторов"""
-    regulators = {
-        "Финтех / Банки": "Национальный Банк РК, PCI DSS, ISO 27001",
-        "Госсектор": "ГОСТ РК 34, Требования ГТС",
-        "Ритейл / E-commerce": "Закон РК о персональных данных, PCI DSS"
-    }
-    return regulators.get(industry, "Закон РК о персональных данных, ISO 27001")
-
-def generate_technical_insights(results):
-    """Предварительный расчет аномалий для глубокого анализа"""
-    insights = []
-    m_speed = results.get("_main_speed", 0)
-    b_speed = results.get("_back_speed", 0)
-    
-    # Расчет дисбаланса каналов
-    if m_speed > 0 and b_speed > 0:
-        if (b_speed / m_speed) < 0.2:
-            insights.append(f"ФАКТ: Резервный канал ({b_speed} Мбит/с) значительно слабее основного ({m_speed} Мбит/с).")
-    
-    # Расчет по Wi-Fi
-    wifi_points = results.get("WiFi Точки", 0)
-    has_ctrl = "Нет" not in str(results.get("WiFi Контроллер", "Нет"))
-    if wifi_points > 3 and not has_ctrl:
-        insights.append(f"ФАКТ: {wifi_points} точек Wi-Fi работают без контроллера.")
-    
-    # Расчет по маршрутизации
-    rt = str(results.get("Маршрутизация", ""))
-    if "Static" in rt and m_speed > 150:
-        insights.append(f"ФАКТ: Используется статическая маршрутизация на скорости {m_speed} Мбит/с.")
-
-    return "\n".join(insights)
-
 def ai_generate_risks_and_recs(c_info, results):
+    import google.generativeai as genai
+    import json
+    import streamlit as st
+
     api_key = st.secrets.get("GEMINI_API_KEY")
     if not api_key:
         return []
 
     try:
         genai.configure(api_key=api_key)
-        
-        # Исправление ошибки 404: Динамическое определение имени модели
-        model_id = 'gemini-1.5-flash' # базовое имя
-        try:
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    if 'gemini-1.5-flash' in m.name:
-                        model_id = m.name # берем полное имя, например 'models/gemini-1.5-flash'
-                        break
-        except:
-            pass # Если list_models не пустит, попробуем базовое имя
-
-        model = genai.GenerativeModel(model_id)
+        # Используем flash-модель для скорости или pro для более глубокой аналитики
+        model = genai.GenerativeModel('gemini-1.5-flash') 
 
         safe_client, safe_results = sanitize_for_ai(c_info, results)
-        vendor_ctx = load_vendor_matrix()
-        reg_ctx = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
-        tech_insights = generate_technical_insights(results)
+        vendor_context = load_vendor_matrix()
+        
+        # Твоя функция получения регуляторов по индустрии
+        regulator_context = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
 
-        # 1. ВАШ БАЗОВЫЙ ПРОМПТ
-        base_prompt = f"""
-Выступай как экспертный ИТ-аудитор. Проанализируй данные аудита:
+        # Расширенный технический контекст для глубокого анализа
+        tech_summary = f"""
+        - Сеть: Основной канал {results.get('_main_speed', 0)} Mbps, Резервный {results.get('_back_speed', 0)} Mbps.
+        - WiFi: Точек {results.get('WiFi Точки', 0)}, Контроллер: {results.get('WiFi Контроллер', 'Нет')}.
+        - Пользователи: {results.get('_user_count', 0)} АРМ.
+        - Маршрутизация: {results.get('Маршрутизация', 'Не указана')}.
+        - Критичные системы: { {k: v for k, v in results.items() if 'ИС ' in str(k)} }
+        """
+
+        prompt = f"""
+Выступай как экспертный ИТ-аудитор и CISO. Проанализируй данные технического опроса.
+
+РЕЗУЛЬТАТЫ АУДИТА:
 {safe_results}
 
-ВЕНДОРЫ ИЗ ПОРТФЕЛЯ:
-{vendor_ctx}
+ТЕХНИЧЕСКИЕ МЕТРИКИ:
+{tech_summary}
 
-РЕГУЛЯТОРНЫЕ ТРЕБОВАНИЯ:
-{reg_ctx}
-"""
+СФЕРА ДЕЯТЕЛЬНОСТИ: {c_info.get("Сфера деятельности", "")}
 
-        # 2. ДОПИСКА (APPENDIX) ДЛЯ ГЛУБОКОГО АНАЛИЗА
-        expert_appendix = f"""
-ДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ (ОБЯЗАТЕЛЬНО К ИСПОЛНЕНИЮ):
-В данных обнаружены следующие технические особенности:
-{tech_insights}
+ТРЕБОВАНИЯ РЕГУЛЯТОРОВ ДЛЯ ДАННОЙ ОТРАСЛИ:
+{regulator_context}
 
-На основе этого выполни углубленный анализ:
-- Если зафиксирован слабый резервный канал, опиши риск остановки критичных бизнес-процессов {c_info.get("Сфера деятельности", "")} при аварии.
-- Если точек Wi-Fi много без контроллера, укажи на деградацию связи и отсутствие бесшовного роуминга.
-- Оцени адекватность маршрутизации (Static vs Dynamic) для указанных скоростей и масштаба.
-- Давай рекомендации с учетом актуальных технологий 2026 года.
+ДОСТУПНЫЙ ПОРТФЕЛЬ ВЕНДОРОВ:
+{vendor_context}
 
-ВЕРНИ ОТВЕТ СТРОГО В ФОРМАТЕ JSON (СПИСОК ОБЪЕКТОВ):
+ТВОЯ ЗАДАЧА:
+1. Выяви критические несоответствия (например: слабый бэкап, отсутствие отказоустойчивости каналов, отсутствие контроля доступа MFA/PAM, старые ОС).
+2. Обязательно укажи, каким регуляторным нормам (из списка выше) НЕ соответствует текущая ситуация.
+3. ПРЕДЛОЖИ РЕШЕНИЯ: 
+   - Сначала ищи подходящих вендоров в "ДОСТУПНОМ ПОРТФЕЛЕ". 
+   - Если в портфеле нет подходящего под задачу вендора, предложи топовое мировое или локальное решение (например: Cisco, Fortinet, Veeam, Kaspersky и т.д.) на свое усмотрение.
+
+ФОРМАТ ОТВЕТА (СТРОГО JSON):
 [
   {{
-    "level": "КРИТИЧНО / СРЕДНЕ",
-    "risk": "Название риска",
-    "description": "Технический анализ",
-    "impact": "Бизнес-последствия",
-    "recommendation": "Пошаговый план",
-    "vendors": ["Вендор"],
-    "regulators": ["Стандарт"]
+    "level": "КРИТИЧНО / СРЕДНИЙ / НИЗКИЙ",
+    "risk": "Название",
+    "description": "Детальный анализ (почему это проблема)",
+    "impact": "Что будет, если не исправить",
+    "recommendation": "Конкретные шаги по исправлению",
+    "vendors": ["Вендор1", "Вендор2"],
+    "regulators": ["Конкретный пункт из списка регуляторов"]
   }}
 ]
 """
-        # Склейка: База + Дописка
-        final_prompt = base_prompt + expert_appendix
 
         response = model.generate_content(
-            final_prompt,
+            prompt,
             generation_config={"response_mime_type": "application/json"}
         )
-        
-        # Очистка текста от лишних символов
-        res_text = response.text.strip()
-        if res_text.startswith("```json"):
-            res_text = res_text.replace("```json", "").replace("```", "").strip()
-            
-        return json.loads(res_text)
+
+        return json.loads(response.text)
 
     except Exception as e:
-        st.error(f"Ошибка ИИ анализа: {e}")
+        st.error(f"Ошибка ИИ: {e}")
         return []
 
 # --- AI BLOCK END ---
