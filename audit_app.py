@@ -18,9 +18,15 @@ import streamlit as st
 
 def sanitize_for_ai(c_info, results):
     """Очистка данных (не менять)"""
-    forbidden = ["Наименование компании", "Сайт компании", "Email", "ФИО контактного лица", "Должность", "Контактный телефон"]
+    forbidden = [
+        "Наименование компании", "Сайт компании", "Email", 
+        "ФИО контактного лица", "Должность", "Контактный телефон"
+    ]
     safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
-    safe_results = {k: v for k, v in results.items() if not any(f.lower() in str(k).lower() for f in forbidden)}
+    safe_results = {
+        k: v for k, v in results.items()
+        if not any(f.lower() in str(k).lower() for f in forbidden)
+    }
     return safe_client, safe_results
 
 def load_vendor_matrix():
@@ -30,7 +36,8 @@ def load_vendor_matrix():
             df = pd.read_excel("Портфель для отчета.xlsx")
             return "\n".join([" | ".join([str(x) for x in row.values if pd.notna(x)]) for _, row in df.iterrows()])
         return "Список вендоров пуст."
-    except: return "Ошибка загрузки."
+    except:
+        return "Ошибка загрузки файла вендоров."
 
 def get_regulators_by_industry(industry):
     """Справочник регуляторов (не менять)"""
@@ -43,106 +50,110 @@ def get_regulators_by_industry(industry):
 
 def generate_technical_insights(results):
     """
-    ДОПОЛНИТЕЛЬНЫЙ БЛОК: Вычисление аномалий.
-    Это те самые данные, которые мы 'допишем' в промт.
+    Вычисление технических аномалий. 
+    Эти данные будут дописаны в промпт для глубокого анализа.
     """
     insights = []
-    main_s = results.get("_main_speed", 0)
-    back_s = results.get("_back_speed", 0)
+    m_speed = results.get("_main_speed", 0)
+    b_speed = results.get("_back_speed", 0)
     
-    # Расчет по каналам
-    if main_s > 0 and back_s > 0 and (back_s / main_s) < 0.2:
-        insights.append(f"ВНИМАНИЕ: Резервный канал ({back_s} Мбит) критически слабее основного ({main_s} Мбит).")
+    # 1. Каналы
+    if m_speed > 0 and b_speed > 0:
+        ratio = b_speed / m_speed
+        if ratio < 0.2:
+            insights.append(f"АНТИТРЕНД: Резервный канал ({b_speed} Мбит/с) критически слабее основного ({m_speed} Мбит/с).")
     
-    # Расчет по Wi-Fi
-    ap_count = results.get("WiFi Точки", 0)
-    no_ctrl = "Нет" in str(results.get("WiFi Контроллер", "Нет"))
-    if ap_count > 3 and no_ctrl:
-        insights.append(f"ВНИМАНИЕ: {ap_count} точек Wi-Fi работают БЕЗ контроллера.")
+    # 2. Wi-Fi
+    wifi_points = results.get("WiFi Точки", 0)
+    has_ctrl = "Нет" not in str(results.get("WiFi Контроллер", "Нет"))
+    if wifi_points > 3 and not has_ctrl:
+        insights.append(f"АНТИТРЕНД: {wifi_points} точек доступа работают БЕЗ контроллера (риск плохого роуминга).")
     
-    # Расчет по маршрутизации
-    routing = str(results.get("Маршрутизация", ""))
-    if "Static" in routing and main_s > 150:
-        insights.append(f"ВНИМАНИЕ: Статическая маршрутизация при скорости {main_s} Мбит/с.")
-        
+    # 3. Маршрутизация
+    rt_type = str(results.get("Маршрутизация", ""))
+    if "Static" in rt_type and m_speed > 200:
+        insights.append(f"АНТИТРЕНД: Использование Static Routing при скорости {m_speed} Мбит/с.")
+
     return "\n".join(insights)
 
 def ai_generate_risks_and_recs(c_info, results):
     api_key = st.secrets.get("GEMINI_API_KEY")
-    if not api_key: return []
+    if not api_key:
+        return []
 
     try:
         genai.configure(api_key=api_key)
-        # Исправление 404: выбор доступной модели
+        
+        # Исправление ошибки 404: выбор модели через список доступных
         model_name = 'models/gemini-1.5-flash'
         try:
             for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods and '1.5-flash' in m.name:
-                    model_name = m.name
-                    break
+                if 'generateContent' in m.supported_generation_methods:
+                    if 'gemini-1.5-flash' in m.name:
+                        model_name = m.name
+                        break
         except: pass
-        
+
         model = genai.GenerativeModel(model_name)
 
         safe_client, safe_results = sanitize_for_ai(c_info, results)
-        vendor_context = load_vendor_matrix()
-        regulator_context = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
-        
-        # Генерируем технические факты для 'дописки' в промпт
+        vendor_ctx = load_vendor_matrix()
+        reg_ctx = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
         tech_insights = generate_technical_insights(results)
 
-        # ФОРМИРОВАНИЕ ПРОМПТА: Сначала ваша база, потом ДОПИСКА (Expert Instructions)
-        base_prompt = f"""
-Выступай как экспертный ИТ-аудитор. Проанализируй данные:
+        # БАЗОВЫЙ ПРОМПТ (сохраняем вашу логику)
+        prompt = f"""
+Выступай как экспертный ИТ-аудитор. Проанализируй данные аудита:
 {safe_results}
 
-ВЕНДОРЫ:
-{vendor_context}
+ВЕНДОРЫ ИЗ ПОРТФЕЛЯ:
+{vendor_ctx}
 
 РЕГУЛЯТОРЫ:
-{regulator_context}
+{reg_ctx}
 """
 
-        # ТА САМАЯ ДОПИСКА, которая не меняет старое, а расширяет анализ
-        expert_addition = f"""
-ДОПОЛНИТЕЛЬНЫЕ ТЕХНИЧЕСКИЕ ИНСАЙТЫ ДЛЯ ГЛУБОКОГО АНАЛИЗА:
+        # ДОПИСКА (Expert Extension) — добавляем требования без изменения базы
+        expert_appendix = f"""
+ДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ ДЛЯ ГЛУБОКОГО АНАЛИЗА:
+Ниже приведены вычисленные технические аномалии, которые ты ДОЛЖЕН проанализировать:
 {tech_insights}
 
-ОБЯЗАТЕЛЬНО ПРОАНАЛИЗИРУЙ СЛЕДУЮЩЕЕ:
-1. КАНАЛЫ: Если тех. инсайты указывают на слабый резерв, распиши риск 'бутылочного горлышка' и деградации бизнес-сервисов.
-2. WI-FI: Если точек много без контроллера, укажи на проблему бесшовного роуминга (sticky clients) и сложность настройки.
-3. МАРШРУТИЗАЦИЯ: Оцени, не пора ли переходить со Static на динамику (OSPF/BGP) при таких скоростях.
-4. КОНТЕКСТ 2026: Учитывай современные угрозы и сферу деятельности {c_info.get("Сфера деятельности", "")}.
+1. Если резервный канал намного слабее основного, опиши бизнес-риск деградации сервисов при аварии.
+2. Если точек Wi-Fi много, а контроллера нет — объясни проблему "липких клиентов" и отсутствия роуминга.
+3. Если используется статическая маршрутизация на высоких скоростях — предложи переход на динамику (OSPF/BGP).
+4. Оцени ситуацию с точки зрения 2026 года и специфики сферы {c_info.get("Сфера деятельности", "")}.
 
-ОТВЕТЬ СТРОГО В JSON:
+ОТВЕТЬ СТРОГО В JSON ФОРМАТЕ СПИСКОМ:
 [
   {{
-    "level": "КРИТИЧНО / СРЕДНЕ",
-    "risk": "название",
-    "description": "глубокий анализ",
-    "impact": "бизнес-эффект",
-    "recommendation": "конкретный шаг",
-    "vendors": ["вендор"],
-    "regulators": ["стандарт"]
+    "level": "КРИТИЧНО / СРЕДНЕ / НИЗКИЙ",
+    "risk": "Название",
+    "description": "Технический анализ",
+    "impact": "Бизнес-последствия",
+    "recommendation": "Что сделать",
+    "vendors": ["Вендор1"],
+    "regulators": ["Стандарт"]
   }}
 ]
 """
-        # Склеиваем промпт (дописываем)
-        full_prompt = base_prompt + expert_addition
+        # Склеиваем базу и дописку
+        final_prompt = prompt + expert_appendix
 
         response = model.generate_content(
-            full_prompt,
+            final_prompt,
             generation_config={"response_mime_type": "application/json"}
         )
         
-        content = response.text.strip()
-        if content.startswith("```json"):
-            content = content.replace("```json", "").replace("```", "").strip()
+        # Очистка ответа от возможных markdown-тегов
+        res_text = response.text.strip()
+        if res_text.startswith("```json"):
+            res_text = res_text.replace("```json", "").replace("```", "").strip()
             
-        return json.loads(content)
+        return json.loads(res_text)
 
     except Exception as e:
-        st.error(f"Ошибка ИИ: {e}")
+        st.error(f"Ошибка ИИ анализа: {e}")
         return []
 
 # --- AI BLOCK END ---
