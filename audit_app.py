@@ -28,129 +28,119 @@ def sanitize_for_ai(c_info, results):
 
 def load_vendor_matrix():
     try:
-        df = pd.read_excel("Портфель для отчета.xlsx")
-
-        vendors_text = ""
-
-        for _, row in df.iterrows():
-            row_text = " | ".join(
-                [str(x) for x in row.values if pd.notna(x)]
-            )
-            vendors_text += row_text + "\n"
-
-        return vendors_text
-
+        # Проверяем наличие файла, чтобы не вызвать ошибку
+        if os.path.exists("Портфель для отчета.xlsx"):
+            df = pd.read_excel("Портфель для отчета.xlsx")
+            vendors_text = ""
+            for _, row in df.iterrows():
+                row_text = " | ".join([str(x) for x in row.values if pd.notna(x)])
+                vendors_text += row_text + "\n"
+            return vendors_text
+        return "Список вендоров пуст (файл не найден)."
     except Exception as e:
         return f"Ошибка загрузки вендоров: {e}"
+
 def get_regulators_by_industry(industry):
     regulators = {
-        "Финтех / Банки": """
-- Национальный Банк РК
-- PCI DSS
-- ISO 27001
-- Постановления НБРК по ИБ
-""",
-
-        "Госсектор": """
-- ГОСТ РК 34
-- Требования ГТС
-- Требования ИБ государственных ИС
-- ISO 27001
-""",
-
-        "Ритейл / E-commerce": """
-- PCI DSS
-- Закон РК о персональных данных
-- ISO 27001
-""",
-
-        "IT / Разработка": """
-- OWASP ASVS
-- Secure SDLC
-- ISO 27001
-- SOC2
-""",
-
-        "Производство": """
-- ISA/IEC 62443
-- ISO 27001
-- Требования по защите АСУ ТП
-"""
+        "Финтех / Банки": "- Национальный Банк РК, PCI DSS, ISO 27001, Постановления НБРК по ИБ",
+        "Госсектор": "- ГОСТ РК 34, Требования ГТС, Требования ИБ государственных ИС, ISO 27001",
+        "Ритейл / E-commerce": "- PCI DSS, Закон РК о персональных данных, ISO 27001",
+        "IT / Разработка": "- OWASP ASVS, Secure SDLC, ISO 27001, SOC2",
+        "Производство": "- ISA/IEC 62443, ISO 27001, Требования по защите АСУ ТП"
     }
+    return regulators.get(industry, "- ISO 27001, Закон РК о персональных данных")
 
-    return regulators.get(
-        industry,
-        """
-- ISO 27001
-- Закон РК о персональных данных
-"""
-    )
+def generate_technical_insights(results):
+    """
+    Функция предварительного анализа для ИИ. 
+    Находит аномалии, которые ИИ должен прокомментировать.
+    """
+    insights = []
+    
+    # 1. Анализ каналов связи
+    main_s = results.get("_main_speed", 0)
+    back_s = results.get("_back_speed", 0)
+    if main_s > 0 and back_s > 0:
+        ratio = back_s / main_s
+        if ratio < 0.2:
+            insights.append(f"Критический дисбаланс каналов: Резервный ({back_s} Мбит/с) в {round(1/ratio)} раз медленнее основного ({main_s} Мбит/с).")
+    elif main_s > 0 and (not back_s or back_s == 0):
+        insights.append("Отсутствует резервный интернет-канал при наличии основного.")
+
+    # 2. Анализ Wi-Fi
+    ap_count = results.get("WiFi Точки", 0)
+    has_controller = "Нет" not in str(results.get("WiFi Контроллер", "Нет"))
+    if ap_count > 4 and not has_controller:
+        insights.append(f"Риск управления Wi-Fi: {ap_count} точек доступа работают без контроллера (бесшовный роуминг невозможен).")
+
+    # 3. Анализ маршрутизации
+    routing = str(results.get("Маршрутизация", ""))
+    if "Static" in routing and main_s > 100:
+        insights.append("Устаревшая логика: Использование статической маршрутизации при высокой пропускной способности.")
+    if "BGP" not in routing and main_s >= 500:
+        insights.append("Рекомендация: Внедрение BGP для оптимального управления внешними стыками.")
+
+    # 4. Анализ ИБ
+    if results.get("NGFW") == "Нет":
+        insights.append("Критическая уязвимость: Отсутствует межсетевой экран следующего поколения (NGFW).")
+    
+    return "\n".join(insights)
+
 def ai_generate_risks_and_recs(c_info, results):
     import google.generativeai as genai
     import json
     import streamlit as st
 
     api_key = st.secrets.get("GEMINI_API_KEY")
-
     if not api_key:
         return []
 
     try:
         genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
-        available_models = [
-            m.name for m in genai.list_models()
-            if 'generateContent' in m.supported_generation_methods
-        ]
-
-        model_name = (
-            available_models[0]
-            if available_models
-            else 'gemini-1.5-flash'
-        )
-
-        model = genai.GenerativeModel(model_name)
-
-        safe_client, safe_results = sanitize_for_ai(
-            c_info,
-            results
-        )
-
+        safe_client, safe_results = sanitize_for_ai(c_info, results)
         vendor_context = load_vendor_matrix()
-
-        regulator_context = get_regulators_by_industry(
-            c_info.get("Сфера деятельности", "")
-        )
+        regulator_context = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
+        
+        # Генерируем технические подсказки для ИИ
+        tech_insights = generate_technical_insights(results)
 
         prompt = f"""
-Выступай как эксперт CISO/CTO уровня enterprise.
+Выступай как экспертный ИТ-аудитор и CISO уровня Enterprise. 
+Твоя задача — составить глубокий аналитический отчет на основе данных аудита.
 
-Проанализируй результаты аудита:
-
+ТЕХНИЧЕСКИЕ ДАННЫЕ:
 {safe_results}
 
-Сфера деятельности:
-{c_info.get("Сфера деятельности", "")}
+ВЫЯВЛЕННЫЕ АНОМАЛИИ (ОБЯЗАТЕЛЬНО ПРОАНАЛИЗИРУЙ ИХ):
+{tech_insights}
 
-Используй ТОЛЬКО вендоров из списка.
+СФЕРА ДЕЯТЕЛЬНОСТИ КОМПАНИИ: {c_info.get("Сфера деятельности", "")}
 
-СПИСОК ВЕНДОРОВ:
+ИНСТРУКЦИИ ДЛЯ ГЛУБОКОГО АНАЛИЗА:
+1. КАНАЛЫ: Если резерв намного слабее основного, опиши риск остановки бизнеса при аварии. 
+2. WI-FI: Если точек много, а контроллера нет — укажи на деградацию связи и хаотичный роуминг.
+3. МАРШРУТИЗАЦИЯ: Оцени, подходят ли текущие протоколы под масштаб сети.
+4. ИБ: В 2026 году отсутствие NGFW, MFA или SIEM для крупного бизнеса считается критическим риском.
+5. КОНТЕКСТ: Давай рекомендации с учетом специфики отрасли {c_info.get("Сфера деятельности", "")}.
+
+СПИСОК ДОСТУПНЫХ ВЕНДОРОВ ДЛЯ РЕКОМЕНДАЦИЙ:
 {vendor_context}
 
-РЕГУЛЯТОРЫ:
+РЕГУЛЯТОРНЫЕ ТРЕБОВАНИЯ:
 {regulator_context}
 
-Верни ТОЛЬКО JSON:
-
+ВЕРНИ ТОЛЬКО JSON СПИСКОМ:
 [
   {{
-    "level": "КРИТИЧНО",
+    "level": "КРИТИЧНО / СРЕДНЕ / НИЗКИЙ",
     "risk": "Название риска",
-    "description": "Описание",
-    "impact": "Последствия",
-    "recommendation": "Рекомендации",
+    "description": "Глубокое описание проблемы и почему это важно именно сейчас",
+    "impact": "Бизнес-последствия (финансовые, репутационные, юридические)",
+    "recommendation": "Конкретный пошаговый план решения",
     "vendors": ["Vendor1", "Vendor2"],
-    "regulators": ["ISO 27001"]
+    "regulators": ["Название стандарта или закона"]
   }}
 ]
 """
@@ -165,10 +155,8 @@ def ai_generate_risks_and_recs(c_info, results):
         return json.loads(response.text)
 
     except Exception as e:
-        st.error(f"Ошибка ИИ: {e}")
+        st.error(f"Ошибка ИИ анализа: {e}")
         return []
-
-
 
 # --- AI BLOCK END ---
 
