@@ -191,7 +191,7 @@ else:
 st.markdown("### Мы поможем Вам стать лучше!")
 st.divider()
 
-st.title("📋 Опросник Технический аудит ИТ и ИБ by IRudoy(2026) v10.4")
+st.title("📋 Опросник Технический аудит ИТ и ИБ by IRudoy(2026) v10.5")
 
 # --- ИНСТРУКЦИЯ ДЛЯ ПОЛЬЗОВАТЕЛЯ ---
 with st.expander("📖 Инструкция по заполнению (нажмите, чтобы развернуть)"):
@@ -906,4 +906,4 @@ if st.button("📊 Сформировать экспертный отчет", di
             f"Audit_Khalil_{client_info['Наименование компании']}.xlsx"
         )
 
-st.info("Khalil Audit System v10.4 | Ivan Rudoy Production | Almaty 2026")
+st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
