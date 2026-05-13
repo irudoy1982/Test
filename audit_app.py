@@ -8,46 +8,6 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
 #----------ИИ-----------
-# --- AI BLOCK START ---
-
-def sanitize_for_ai(c_info, results):
-    """Очистка данных от персональной информации перед отправкой в ИИ"""
-    forbidden = [
-        "Наименование компании", "Сайт компании", "Email",
-        "ФИО контактного лица", "Должность", "Контактный телефон"
-    ]
-    safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
-    safe_results = {
-        k: v for k, v in results.items()
-        if not any(f.lower() in str(k).lower() for f in forbidden)
-    }
-    return safe_client, safe_results
-
-def load_vendor_matrix():
-    """Загрузка списка вендоров из Excel"""
-    try:
-        if os.path.exists("Портфель для отчета.xlsx"):
-            df = pd.read_excel("Портфель для отчета.xlsx")
-            vendors_text = ""
-            for _, row in df.iterrows():
-                row_text = " | ".join([str(x) for x in row.values if pd.notna(x)])
-                vendors_text += row_text + "\n"
-            return vendors_text
-        return "Список вендоров пуст или файл не найден."
-    except Exception as e:
-        return f"Ошибка загрузки вендоров: {e}"
-
-def get_regulators_by_industry(industry):
-    """Словарь регуляторов по отраслям (Казахстан и международные)"""
-    regulators = {
-        "Финтех / Банки": "- Национальный Банк РК, PCI DSS, ISO 27001, Постановления НБРК по ИБ",
-        "Госсектор": "- ГОСТ РК 34, Требования ГТС, ISO 27001",
-        "Ритейл / E-commerce": "- PCI DSS, Закон РК о персональных данных, ISO 27001",
-        "IT / Разработка": "- OWASP ASVS, Secure SDLC, ISO 27001, SOC2",
-        "Производство": "- ISA/IEC 62443, ISO 27001, Требования по защите АСУ ТП"
-    }
-    return regulators.get(industry, "- ISO 27001, Закон РК о персональных данных")
-
 def ai_generate_risks_and_recs(c_info, results):
     import google.generativeai as genai
     import json
@@ -55,64 +15,56 @@ def ai_generate_risks_and_recs(c_info, results):
 
     api_key = st.secrets.get("GEMINI_API_KEY")
     if not api_key:
-        st.error("API ключ ИИ не найден в Secrets")
         return []
 
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Автоматический выбор доступной модели
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        model_name = available_models[0] if available_models else 'gemini-1.5-flash'
+        model = genai.GenerativeModel(model_name)
 
-        # Теперь функции sanitize_for_ai и другие видны здесь
         safe_client, safe_results = sanitize_for_ai(c_info, results)
         vendor_context = load_vendor_matrix()
         regulator_context = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
 
-        # Подготовка глубокого технического контекста
-        tech_summary = f"""
-        АНАЛИТИЧЕСКИЕ МЕТРИКИ:
-        - Скорость сети: Основной {results.get('_main_speed', 0)} Mbps vs Резервный {results.get('_back_speed', 0)} Mbps.
-        - WiFi Инфраструктура: Точек: {results.get('WiFi Точки', 0)}, Контроллер: {results.get('WiFi Контроллер', 'Нет')}.
-        - Масштаб: АРМ: {results.get('_user_count', 0)}, Серверы (физ/вирт): {results.get('Серверы (физ)', 0)}/{results.get('Серверы (вирт)', 0)}.
-        - Безопасность: NGFW: {results.get('NGFW', 'Нет')}, MFA: {results.get('MFA', 'Нет')}, Бэкап: {results.get('Резервное копирование', 'Нет')}.
-        """
-
         prompt = f"""
-Выступай как элитный CISO и ИТ-аудитор. Проведи глубокий анализ ИТ-ландшафта.
+Выступай как эксперт CISO/CTO уровня Enterprise. Твоя задача — провести глубокий аудит ИТ и ИБ инфраструктуры.
 
 ДАННЫЕ АУДИТА:
 {safe_results}
 
-ТЕХНИЧЕСКАЯ СВОДКА:
-{tech_summary}
+СФЕРА ДЕЯТЕЛЬНОСТИ:
+{c_info.get("Сфера деятельности", "")}
 
-СФЕРА ДЕЯТЕЛЬНОСТИ: {c_info.get("Сфера деятельности", "")}
+КОНТЕКСТ ВЕНДОРОВ (Портфель):
+{vendor_context}
+
 РЕГУЛЯТОРНЫЕ ТРЕБОВАНИЯ:
 {regulator_context}
 
-ДОСТУПНЫЕ ВЕНДОРЫ (ПРИОРИТЕТ):
-{vendor_context}
+ИНСТРУКЦИИ ПО АНАЛИЗУ:
+1. КАНАЛЫ СВЯЗИ: Если резервный канал отсутствует или его скорость < 30% от основного при наличии критических систем (ERP/CRM), укажи на риск прерывания бизнес-процессов.
+2. WI-FI: Если количество точек доступа > 3, но отсутствует контроллер, укажи на сложность управления и риски бесшовного роуминга.
+3. МАРШРУТИЗАЦИЯ: Если используется только статическая маршрутизация при наличии сложной сети (Core/Dist/Access), рекомендуй переход на динамические протоколы (OSPF/BGP).
+4. ИБ: Проверь отсутствие MFA, EDR или NGFW. Если их нет — это критический риск.
+5. ВЕНДОРЫ: 
+   - В первую очередь предлагай вендоров из СПИСКА ВЕНДОРОВ.
+   - Если для специфического риска в списке нет подходящего решения, предложи международные Best Practice решения (Market Leaders), но пометь их как "Дополнительная рекомендация".
 
-ТВОЯ ЗАДАЧА:
-1. Выяви глубокие риски: дисбаланс каналов связи, отсутствие управления WiFi, отсутствие MFA при наличии критических ИС, использование устаревших ОС.
-2. Для каждого риска укажи конкретный пункт из РЕГУЛЯТОРНЫХ ТРЕБОВАНИЙ.
-3. РЕКОМЕНДАЦИИ: 
-   - Если в списке ДОСТУПНЫХ ВЕНДОРОВ есть решение — используй его.
-   - Если подходящего вендора в списке НЕТ — предложи мирового лидера (Cisco, Fortinet, Veeam, Palo Alto и т.д.) на свой выбор.
-
-Верни ТОЛЬКО JSON:
+ВЕРНИ ТОЛЬКО JSON (массив объектов):
 [
   {{
     "level": "КРИТИЧНО / СРЕДНИЙ / НИЗКИЙ",
-    "risk": "Название риска",
-    "description": "Почему это опасно для бизнеса",
-    "impact": "Последствия (простой, утечка, штрафы)",
-    "recommendation": "Технический план решения",
-    "vendors": ["Vendor1", "Vendor2"],
-    "regulators": ["Название стандарта/закона"]
+    "risk": "Четкое название риска",
+    "description": "Глубокое описание проблемы",
+    "impact": "Последствия для бизнеса и техпроцессов",
+    "recommendation": "Пошаговая рекомендация по устранению",
+    "vendors": ["Вендор из списка", "Вендор вне списка (если оправдано)"],
+    "regulators": ["Пункты из списка регуляторов"]
   }}
 ]
 """
-
         response = model.generate_content(
             prompt,
             generation_config={"response_mime_type": "application/json"}
@@ -120,10 +72,8 @@ def ai_generate_risks_and_recs(c_info, results):
         return json.loads(response.text)
 
     except Exception as e:
-        st.error(f"Ошибка ИИ анализа: {e}")
+        st.error(f"Ошибка ИИ: {e}")
         return []
-
-# --- AI BLOCK END ---
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
@@ -782,12 +732,14 @@ if st.button("📊 Сформировать экспертный отчет", di
         results.update({
             "Интернет канал (осн)": f"{main_speed} Mbit/s",
             "Резервный канал": f"{back_speed} Mbit/s",
+            "Дисбаланс каналов": "Да" if (back_speed < main_speed * 0.3) else "Нет", # Подсказка для ИИ
             "_main_speed": main_speed,
             "_back_speed": back_speed,
             "_user_count": total_arm,
             "WiFi Точки": ap_cnt,
             "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
             "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
+            "Без контроллера при многоточии": "Да" if (ap_cnt > 3 and data.get('Wi-Fi Контроллер') == "Нет") else "Нет",
             "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
             "Серверы (физ)": phys_count,
             "Серверы (вирт)": virt_count,
