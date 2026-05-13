@@ -8,6 +8,46 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
 #----------ИИ-----------
+# --- AI BLOCK START ---
+
+def sanitize_for_ai(c_info, results):
+    """Очистка данных от персональной информации перед отправкой в ИИ"""
+    forbidden = [
+        "Наименование компании", "Сайт компании", "Email",
+        "ФИО контактного лица", "Должность", "Контактный телефон"
+    ]
+    safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
+    safe_results = {
+        k: v for k, v in results.items()
+        if not any(f.lower() in str(k).lower() for f in forbidden)
+    }
+    return safe_client, safe_results
+
+def load_vendor_matrix():
+    """Загрузка списка вендоров из Excel"""
+    try:
+        if os.path.exists("Портфель для отчета.xlsx"):
+            df = pd.read_excel("Портфель для отчета.xlsx")
+            vendors_text = ""
+            for _, row in df.iterrows():
+                row_text = " | ".join([str(x) for x in row.values if pd.notna(x)])
+                vendors_text += row_text + "\n"
+            return vendors_text
+        return "Список вендоров пуст или файл не найден."
+    except Exception as e:
+        return f"Ошибка загрузки вендоров: {e}"
+
+def get_regulators_by_industry(industry):
+    """Словарь регуляторов по отраслям (Казахстан и международные)"""
+    regulators = {
+        "Финтех / Банки": "- Национальный Банк РК, PCI DSS, ISO 27001, Постановления НБРК по ИБ",
+        "Госсектор": "- ГОСТ РК 34, Требования ГТС, ISO 27001",
+        "Ритейл / E-commerce": "- PCI DSS, Закон РК о персональных данных, ISO 27001",
+        "IT / Разработка": "- OWASP ASVS, Secure SDLC, ISO 27001, SOC2",
+        "Производство": "- ISA/IEC 62443, ISO 27001, Требования по защите АСУ ТП"
+    }
+    return regulators.get(industry, "- ISO 27001, Закон РК о персональных данных")
+
 def ai_generate_risks_and_recs(c_info, results):
     import google.generativeai as genai
     import json
@@ -15,62 +55,60 @@ def ai_generate_risks_and_recs(c_info, results):
 
     api_key = st.secrets.get("GEMINI_API_KEY")
     if not api_key:
+        st.error("API ключ ИИ не найден в Secrets")
         return []
 
     try:
         genai.configure(api_key=api_key)
-        # Используем flash-модель для скорости или pro для более глубокой аналитики
-        model = genai.GenerativeModel('gemini-1.5-flash') 
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
+        # Теперь функции sanitize_for_ai и другие видны здесь
         safe_client, safe_results = sanitize_for_ai(c_info, results)
         vendor_context = load_vendor_matrix()
-        
-        # Твоя функция получения регуляторов по индустрии
         regulator_context = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
 
-        # Расширенный технический контекст для глубокого анализа
+        # Подготовка глубокого технического контекста
         tech_summary = f"""
-        - Сеть: Основной канал {results.get('_main_speed', 0)} Mbps, Резервный {results.get('_back_speed', 0)} Mbps.
-        - WiFi: Точек {results.get('WiFi Точки', 0)}, Контроллер: {results.get('WiFi Контроллер', 'Нет')}.
-        - Пользователи: {results.get('_user_count', 0)} АРМ.
-        - Маршрутизация: {results.get('Маршрутизация', 'Не указана')}.
-        - Критичные системы: { {k: v for k, v in results.items() if 'ИС ' in str(k)} }
+        АНАЛИТИЧЕСКИЕ МЕТРИКИ:
+        - Скорость сети: Основной {results.get('_main_speed', 0)} Mbps vs Резервный {results.get('_back_speed', 0)} Mbps.
+        - WiFi Инфраструктура: Точек: {results.get('WiFi Точки', 0)}, Контроллер: {results.get('WiFi Контроллер', 'Нет')}.
+        - Масштаб: АРМ: {results.get('_user_count', 0)}, Серверы (физ/вирт): {results.get('Серверы (физ)', 0)}/{results.get('Серверы (вирт)', 0)}.
+        - Безопасность: NGFW: {results.get('NGFW', 'Нет')}, MFA: {results.get('MFA', 'Нет')}, Бэкап: {results.get('Резервное копирование', 'Нет')}.
         """
 
         prompt = f"""
-Выступай как экспертный ИТ-аудитор и CISO. Проанализируй данные технического опроса.
+Выступай как элитный CISO и ИТ-аудитор. Проведи глубокий анализ ИТ-ландшафта.
 
-РЕЗУЛЬТАТЫ АУДИТА:
+ДАННЫЕ АУДИТА:
 {safe_results}
 
-ТЕХНИЧЕСКИЕ МЕТРИКИ:
+ТЕХНИЧЕСКАЯ СВОДКА:
 {tech_summary}
 
 СФЕРА ДЕЯТЕЛЬНОСТИ: {c_info.get("Сфера деятельности", "")}
-
-ТРЕБОВАНИЯ РЕГУЛЯТОРОВ ДЛЯ ДАННОЙ ОТРАСЛИ:
+РЕГУЛЯТОРНЫЕ ТРЕБОВАНИЯ:
 {regulator_context}
 
-ДОСТУПНЫЙ ПОРТФЕЛЬ ВЕНДОРОВ:
+ДОСТУПНЫЕ ВЕНДОРЫ (ПРИОРИТЕТ):
 {vendor_context}
 
 ТВОЯ ЗАДАЧА:
-1. Выяви критические несоответствия (например: слабый бэкап, отсутствие отказоустойчивости каналов, отсутствие контроля доступа MFA/PAM, старые ОС).
-2. Обязательно укажи, каким регуляторным нормам (из списка выше) НЕ соответствует текущая ситуация.
-3. ПРЕДЛОЖИ РЕШЕНИЯ: 
-   - Сначала ищи подходящих вендоров в "ДОСТУПНОМ ПОРТФЕЛЕ". 
-   - Если в портфеле нет подходящего под задачу вендора, предложи топовое мировое или локальное решение (например: Cisco, Fortinet, Veeam, Kaspersky и т.д.) на свое усмотрение.
+1. Выяви глубокие риски: дисбаланс каналов связи, отсутствие управления WiFi, отсутствие MFA при наличии критических ИС, использование устаревших ОС.
+2. Для каждого риска укажи конкретный пункт из РЕГУЛЯТОРНЫХ ТРЕБОВАНИЙ.
+3. РЕКОМЕНДАЦИИ: 
+   - Если в списке ДОСТУПНЫХ ВЕНДОРОВ есть решение — используй его.
+   - Если подходящего вендора в списке НЕТ — предложи мирового лидера (Cisco, Fortinet, Veeam, Palo Alto и т.д.) на свой выбор.
 
-ФОРМАТ ОТВЕТА (СТРОГО JSON):
+Верни ТОЛЬКО JSON:
 [
   {{
     "level": "КРИТИЧНО / СРЕДНИЙ / НИЗКИЙ",
-    "risk": "Название",
-    "description": "Детальный анализ (почему это проблема)",
-    "impact": "Что будет, если не исправить",
-    "recommendation": "Конкретные шаги по исправлению",
-    "vendors": ["Вендор1", "Вендор2"],
-    "regulators": ["Конкретный пункт из списка регуляторов"]
+    "risk": "Название риска",
+    "description": "Почему это опасно для бизнеса",
+    "impact": "Последствия (простой, утечка, штрафы)",
+    "recommendation": "Технический план решения",
+    "vendors": ["Vendor1", "Vendor2"],
+    "regulators": ["Название стандарта/закона"]
   }}
 ]
 """
@@ -79,11 +117,10 @@ def ai_generate_risks_and_recs(c_info, results):
             prompt,
             generation_config={"response_mime_type": "application/json"}
         )
-
         return json.loads(response.text)
 
     except Exception as e:
-        st.error(f"Ошибка ИИ: {e}")
+        st.error(f"Ошибка ИИ анализа: {e}")
         return []
 
 # --- AI BLOCK END ---
