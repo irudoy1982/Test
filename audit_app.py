@@ -17,7 +17,7 @@ import pandas as pd
 import streamlit as st
 
 def sanitize_for_ai(c_info, results):
-    """Очистка данных (не менять)"""
+    """Очистка персональных данных"""
     forbidden = [
         "Наименование компании", "Сайт компании", "Email", 
         "ФИО контактного лица", "Должность", "Контактный телефон"
@@ -30,7 +30,7 @@ def sanitize_for_ai(c_info, results):
     return safe_client, safe_results
 
 def load_vendor_matrix():
-    """Загрузка вендоров (не менять)"""
+    """Загрузка портфеля вендоров"""
     try:
         if os.path.exists("Портфель для отчета.xlsx"):
             df = pd.read_excel("Портфель для отчета.xlsx")
@@ -40,7 +40,7 @@ def load_vendor_matrix():
         return "Ошибка загрузки файла вендоров."
 
 def get_regulators_by_industry(industry):
-    """Справочник регуляторов (не менять)"""
+    """Справочник регуляторов"""
     regulators = {
         "Финтех / Банки": "Национальный Банк РК, PCI DSS, ISO 27001",
         "Госсектор": "ГОСТ РК 34, Требования ГТС",
@@ -49,30 +49,26 @@ def get_regulators_by_industry(industry):
     return regulators.get(industry, "Закон РК о персональных данных, ISO 27001")
 
 def generate_technical_insights(results):
-    """
-    Вычисление технических аномалий. 
-    Эти данные будут дописаны в промпт для глубокого анализа.
-    """
+    """Предварительный расчет аномалий для глубокого анализа"""
     insights = []
     m_speed = results.get("_main_speed", 0)
     b_speed = results.get("_back_speed", 0)
     
-    # 1. Каналы
+    # Расчет дисбаланса каналов
     if m_speed > 0 and b_speed > 0:
-        ratio = b_speed / m_speed
-        if ratio < 0.2:
-            insights.append(f"АНТИТРЕНД: Резервный канал ({b_speed} Мбит/с) критически слабее основного ({m_speed} Мбит/с).")
+        if (b_speed / m_speed) < 0.2:
+            insights.append(f"ФАКТ: Резервный канал ({b_speed} Мбит/с) значительно слабее основного ({m_speed} Мбит/с).")
     
-    # 2. Wi-Fi
+    # Расчет по Wi-Fi
     wifi_points = results.get("WiFi Точки", 0)
     has_ctrl = "Нет" not in str(results.get("WiFi Контроллер", "Нет"))
     if wifi_points > 3 and not has_ctrl:
-        insights.append(f"АНТИТРЕНД: {wifi_points} точек доступа работают БЕЗ контроллера (риск плохого роуминга).")
+        insights.append(f"ФАКТ: {wifi_points} точек Wi-Fi работают без контроллера.")
     
-    # 3. Маршрутизация
-    rt_type = str(results.get("Маршрутизация", ""))
-    if "Static" in rt_type and m_speed > 200:
-        insights.append(f"АНТИТРЕНД: Использование Static Routing при скорости {m_speed} Мбит/с.")
+    # Расчет по маршрутизации
+    rt = str(results.get("Маршрутизация", ""))
+    if "Static" in rt and m_speed > 150:
+        insights.append(f"ФАКТ: Используется статическая маршрутизация на скорости {m_speed} Мбит/с.")
 
     return "\n".join(insights)
 
@@ -84,68 +80,70 @@ def ai_generate_risks_and_recs(c_info, results):
     try:
         genai.configure(api_key=api_key)
         
-        # Исправление ошибки 404: выбор модели через список доступных
-        model_name = 'models/gemini-1.5-flash'
+        # Исправление ошибки 404: Динамическое определение имени модели
+        model_id = 'gemini-1.5-flash' # базовое имя
         try:
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
                     if 'gemini-1.5-flash' in m.name:
-                        model_name = m.name
+                        model_id = m.name # берем полное имя, например 'models/gemini-1.5-flash'
                         break
-        except: pass
+        except:
+            pass # Если list_models не пустит, попробуем базовое имя
 
-        model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel(model_id)
 
         safe_client, safe_results = sanitize_for_ai(c_info, results)
         vendor_ctx = load_vendor_matrix()
         reg_ctx = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
         tech_insights = generate_technical_insights(results)
 
-        # БАЗОВЫЙ ПРОМПТ (сохраняем вашу логику)
-        prompt = f"""
+        # 1. ВАШ БАЗОВЫЙ ПРОМПТ
+        base_prompt = f"""
 Выступай как экспертный ИТ-аудитор. Проанализируй данные аудита:
 {safe_results}
 
 ВЕНДОРЫ ИЗ ПОРТФЕЛЯ:
 {vendor_ctx}
 
-РЕГУЛЯТОРЫ:
+РЕГУЛЯТОРНЫЕ ТРЕБОВАНИЯ:
 {reg_ctx}
 """
 
-        # ДОПИСКА (Expert Extension) — добавляем требования без изменения базы
+        # 2. ДОПИСКА (APPENDIX) ДЛЯ ГЛУБОКОГО АНАЛИЗА
         expert_appendix = f"""
-ДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ ДЛЯ ГЛУБОКОГО АНАЛИЗА:
-Ниже приведены вычисленные технические аномалии, которые ты ДОЛЖЕН проанализировать:
+ДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ (ОБЯЗАТЕЛЬНО К ИСПОЛНЕНИЮ):
+В данных обнаружены следующие технические особенности:
 {tech_insights}
 
-1. Если резервный канал намного слабее основного, опиши бизнес-риск деградации сервисов при аварии.
-2. Если точек Wi-Fi много, а контроллера нет — объясни проблему "липких клиентов" и отсутствия роуминга.
-3. Если используется статическая маршрутизация на высоких скоростях — предложи переход на динамику (OSPF/BGP).
-4. Оцени ситуацию с точки зрения 2026 года и специфики сферы {c_info.get("Сфера деятельности", "")}.
+На основе этого выполни углубленный анализ:
+- Если зафиксирован слабый резервный канал, опиши риск остановки критичных бизнес-процессов {c_info.get("Сфера деятельности", "")} при аварии.
+- Если точек Wi-Fi много без контроллера, укажи на деградацию связи и отсутствие бесшовного роуминга.
+- Оцени адекватность маршрутизации (Static vs Dynamic) для указанных скоростей и масштаба.
+- Давай рекомендации с учетом актуальных технологий 2026 года.
 
-ОТВЕТЬ СТРОГО В JSON ФОРМАТЕ СПИСКОМ:
+ВЕРНИ ОТВЕТ СТРОГО В ФОРМАТЕ JSON (СПИСОК ОБЪЕКТОВ):
 [
   {{
-    "level": "КРИТИЧНО / СРЕДНЕ / НИЗКИЙ",
-    "risk": "Название",
+    "level": "КРИТИЧНО / СРЕДНЕ",
+    "risk": "Название риска",
     "description": "Технический анализ",
     "impact": "Бизнес-последствия",
-    "recommendation": "Что сделать",
-    "vendors": ["Вендор1"],
+    "recommendation": "Пошаговый план",
+    "vendors": ["Вендор"],
     "regulators": ["Стандарт"]
   }}
 ]
 """
-        # Склеиваем базу и дописку
-        final_prompt = prompt + expert_appendix
+        # Склейка: База + Дописка
+        final_prompt = base_prompt + expert_appendix
 
         response = model.generate_content(
             final_prompt,
             generation_config={"response_mime_type": "application/json"}
         )
         
-        # Очистка ответа от возможных markdown-тегов
+        # Очистка текста от лишних символов
         res_text = response.text.strip()
         if res_text.startswith("```json"):
             res_text = res_text.replace("```json", "").replace("```", "").strip()
