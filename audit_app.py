@@ -745,7 +745,7 @@ def make_expert_excel(c_info, results, final_score):
 
     # Заголовок
     ws.merge_cells('A1:B1')
-    ws['A1'] = f"ЭКСПЕРТНЫЙ ОТЧЕТ: {c_info.get('Наименование company', 'Аудит')}"
+    ws['A1'] = f"ЭКСПЕРТНЫЙ ОТЧЕТ: {c_info.get('Наименование компании', 'Аудит')}"
     ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
     
     ws['A3'] = "Параметр"; ws['B3'] = "Значение"
@@ -787,6 +787,7 @@ def make_expert_excel(c_info, results, final_score):
                 ("Описание", item.get('description', '-')),
                 ("Влияние", item.get('impact', '-')),
                 ("Рекомендация", item.get('recommendation', '-')),
+                ("Регуляторы", ", ".join(item.get('regulators', [])) if isinstance(item.get('regulators'), list) else "-"),
                 ("Решения", ", ".join(item.get('vendors', [])) if isinstance(item.get('vendors'), list) else "-")
             ]
             for f_label, f_val in fields:
