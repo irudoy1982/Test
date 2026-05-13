@@ -7,84 +7,134 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
-def ai_generate_risks_and_recs(c_info, results):
-    import google.generativeai as genai
-    import json
-    import streamlit as st
+#----------ИИ-----------
+# --- AI BLOCK START ---
 
+import google.generativeai as genai
+import json
+import os
+import pandas as pd
+import streamlit as st
+
+def sanitize_for_ai(c_info, results):
+    """Очистка данных (не менять)"""
+    forbidden = ["Наименование компании", "Сайт компании", "Email", "ФИО контактного лица", "Должность", "Контактный телефон"]
+    safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
+    safe_results = {k: v for k, v in results.items() if not any(f.lower() in str(k).lower() for f in forbidden)}
+    return safe_client, safe_results
+
+def load_vendor_matrix():
+    """Загрузка вендоров (не менять)"""
+    try:
+        if os.path.exists("Портфель для отчета.xlsx"):
+            df = pd.read_excel("Портфель для отчета.xlsx")
+            return "\n".join([" | ".join([str(x) for x in row.values if pd.notna(x)]) for _, row in df.iterrows()])
+        return "Список вендоров пуст."
+    except: return "Ошибка загрузки."
+
+def get_regulators_by_industry(industry):
+    """Справочник регуляторов (не менять)"""
+    regulators = {
+        "Финтех / Банки": "Национальный Банк РК, PCI DSS, ISO 27001",
+        "Госсектор": "ГОСТ РК 34, Требования ГТС",
+        "Ритейл / E-commerce": "Закон РК о персональных данных, PCI DSS"
+    }
+    return regulators.get(industry, "Закон РК о персональных данных, ISO 27001")
+
+def generate_technical_insights(results):
+    """
+    ДОПОЛНИТЕЛЬНЫЙ БЛОК: Вычисление аномалий.
+    Это те самые данные, которые мы 'допишем' в промт.
+    """
+    insights = []
+    main_s = results.get("_main_speed", 0)
+    back_s = results.get("_back_speed", 0)
+    
+    # Расчет по каналам
+    if main_s > 0 and back_s > 0 and (back_s / main_s) < 0.2:
+        insights.append(f"ВНИМАНИЕ: Резервный канал ({back_s} Мбит) критически слабее основного ({main_s} Мбит).")
+    
+    # Расчет по Wi-Fi
+    ap_count = results.get("WiFi Точки", 0)
+    no_ctrl = "Нет" in str(results.get("WiFi Контроллер", "Нет"))
+    if ap_count > 3 and no_ctrl:
+        insights.append(f"ВНИМАНИЕ: {ap_count} точек Wi-Fi работают БЕЗ контроллера.")
+    
+    # Расчет по маршрутизации
+    routing = str(results.get("Маршрутизация", ""))
+    if "Static" in routing and main_s > 150:
+        insights.append(f"ВНИМАНИЕ: Статическая маршрутизация при скорости {main_s} Мбит/с.")
+        
+    return "\n".join(insights)
+
+def ai_generate_risks_and_recs(c_info, results):
     api_key = st.secrets.get("GEMINI_API_KEY")
-    if not api_key:
-        return []
+    if not api_key: return []
 
     try:
         genai.configure(api_key=api_key)
-        
-        # Динамический поиск доступной модели, чтобы избежать 404
-        model_name = 'gemini-1.5-flash' # Значение по умолчанию
+        # Исправление 404: выбор доступной модели
+        model_name = 'models/gemini-1.5-flash'
         try:
             for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    # Если находим flash или pro версию, берем её полное имя
-                    if 'gemini-1.5-flash' in m.name or 'gemini-pro' in m.name:
-                        model_name = m.name
-                        break
-        except Exception:
-            # Если list_models не сработал, используем стандартный полный путь
-            model_name = 'models/gemini-1.5-flash'
-
+                if 'generateContent' in m.supported_generation_methods and '1.5-flash' in m.name:
+                    model_name = m.name
+                    break
+        except: pass
+        
         model = genai.GenerativeModel(model_name)
 
         safe_client, safe_results = sanitize_for_ai(c_info, results)
         vendor_context = load_vendor_matrix()
         regulator_context = get_regulators_by_industry(c_info.get("Сфера деятельности", ""))
+        
+        # Генерируем технические факты для 'дописки' в промпт
         tech_insights = generate_technical_insights(results)
 
-        prompt = f"""
-Выступай как экспертный ИТ-аудитор и CISO уровня Enterprise. 
-Твоя задача — составить глубокий аналитический отчет на основе данных аудита.
-
-ТЕХНИЧЕСКИЕ ДАННЫЕ:
+        # ФОРМИРОВАНИЕ ПРОМПТА: Сначала ваша база, потом ДОПИСКА (Expert Instructions)
+        base_prompt = f"""
+Выступай как экспертный ИТ-аудитор. Проанализируй данные:
 {safe_results}
 
-ВЫЯВЛЕННЫЕ АНОМАЛИИ (ОБЯЗАТЕЛЬНО ПРОАНАЛИЗИРУЙ ИХ):
-{tech_insights}
-
-СФЕРА ДЕЯТЕЛЬНОСТИ КОМПАНИИ: {c_info.get("Сфера деятельности", "")}
-
-ИНСТРУКЦИИ ДЛЯ ГЛУБОКОГО АНАЛИЗА:
-1. КАНАЛЫ: Если резерв намного слабее основного, опиши риск остановки бизнеса при аварии. 
-2. WI-FI: Если точек много, а контроллера нет — укажи на деградацию связи и хаотичный роуминг.
-3. МАРШРУТИЗАЦИЯ: Оцени, подходят ли текущие протоколы под масштаб сети.
-4. ИБ: В 2026 году отсутствие NGFW, MFA или SIEM для крупного бизнеса считается критическим риском.
-
-СПИСОК ДОСТУПНЫХ ВЕНДОРОВ:
+ВЕНДОРЫ:
 {vendor_context}
 
 РЕГУЛЯТОРЫ:
 {regulator_context}
+"""
 
-ВЕРНИ ТОЛЬКО JSON СПИСКОМ:
+        # ТА САМАЯ ДОПИСКА, которая не меняет старое, а расширяет анализ
+        expert_addition = f"""
+ДОПОЛНИТЕЛЬНЫЕ ТЕХНИЧЕСКИЕ ИНСАЙТЫ ДЛЯ ГЛУБОКОГО АНАЛИЗА:
+{tech_insights}
+
+ОБЯЗАТЕЛЬНО ПРОАНАЛИЗИРУЙ СЛЕДУЮЩЕЕ:
+1. КАНАЛЫ: Если тех. инсайты указывают на слабый резерв, распиши риск 'бутылочного горлышка' и деградации бизнес-сервисов.
+2. WI-FI: Если точек много без контроллера, укажи на проблему бесшовного роуминга (sticky clients) и сложность настройки.
+3. МАРШРУТИЗАЦИЯ: Оцени, не пора ли переходить со Static на динамику (OSPF/BGP) при таких скоростях.
+4. КОНТЕКСТ 2026: Учитывай современные угрозы и сферу деятельности {c_info.get("Сфера деятельности", "")}.
+
+ОТВЕТЬ СТРОГО В JSON:
 [
   {{
-    "level": "КРИТИЧНО / СРЕДНЕ / НИЗКИЙ",
-    "risk": "Название риска",
-    "description": "Глубокое описание проблемы",
-    "impact": "Бизнес-последствия",
-    "recommendation": "Конкретный пошаговый план решения",
-    "vendors": ["Vendor1", "Vendor2"],
-    "regulators": ["Стандарт"]
+    "level": "КРИТИЧНО / СРЕДНЕ",
+    "risk": "название",
+    "description": "глубокий анализ",
+    "impact": "бизнес-эффект",
+    "recommendation": "конкретный шаг",
+    "vendors": ["вендор"],
+    "regulators": ["стандарт"]
   }}
 ]
 """
+        # Склеиваем промпт (дописываем)
+        full_prompt = base_prompt + expert_addition
 
         response = model.generate_content(
-            prompt,
-            generation_config={
-                "response_mime_type": "application/json"
-            }
+            full_prompt,
+            generation_config={"response_mime_type": "application/json"}
         )
-
-        # Обработка ответа: иногда модель может вернуть текст вне JSON
+        
         content = response.text.strip()
         if content.startswith("```json"):
             content = content.replace("```json", "").replace("```", "").strip()
@@ -92,8 +142,10 @@ def ai_generate_risks_and_recs(c_info, results):
         return json.loads(content)
 
     except Exception as e:
-        st.error(f"Ошибка ИИ анализа: {e}")
+        st.error(f"Ошибка ИИ: {e}")
         return []
+
+# --- AI BLOCK END ---
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
