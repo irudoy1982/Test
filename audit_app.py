@@ -762,7 +762,7 @@ if st.button("📊 Сформировать экспертный отчет", di
         
         report_bytes = make_expert_excel(client_info, results, f_score)
         
-       try:
+        try:
     telegram_text = f"""
 🚨 Коллеги, у нас новый запрос на аудит!
 
