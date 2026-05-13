@@ -9,22 +9,7 @@ from datetime import datetime
 
 #----------ИИ-----------
 # --- AI BLOCK START ---
-def load_vendor_matrix():
-    try:
-        df = pd.read_excel("Портфель для отчета.xlsx")
 
-        vendors_text = ""
-
-        for _, row in df.iterrows():
-            row_text = " | ".join(
-                [str(x) for x in row.values if pd.notna(x)]
-            )
-            vendors_text += row_text + "\n"
-
-        return vendors_text
-
-    except Exception as e:
-        return f"Ошибка загрузки вендоров: {e}"
 def sanitize_for_ai(c_info, results):
     forbidden = [
         "Наименование компании",
@@ -41,6 +26,65 @@ def sanitize_for_ai(c_info, results):
     }
     return safe_client, safe_results
 
+def load_vendor_matrix():
+    try:
+        df = pd.read_excel("Портфель для отчета.xlsx")
+
+        vendors_text = ""
+
+        for _, row in df.iterrows():
+            row_text = " | ".join(
+                [str(x) for x in row.values if pd.notna(x)]
+            )
+            vendors_text += row_text + "\n"
+
+        return vendors_text
+
+    except Exception as e:
+        return f"Ошибка загрузки вендоров: {e}"
+def get_regulators_by_industry(industry):
+    regulators = {
+        "Финтех / Банки": """
+- Национальный Банк РК
+- PCI DSS
+- ISO 27001
+- Постановления НБРК по ИБ
+""",
+
+        "Госсектор": """
+- ГОСТ РК 34
+- Требования ГТС
+- Требования ИБ государственных ИС
+- ISO 27001
+""",
+
+        "Ритейл / E-commerce": """
+- PCI DSS
+- Закон РК о персональных данных
+- ISO 27001
+""",
+
+        "IT / Разработка": """
+- OWASP ASVS
+- Secure SDLC
+- ISO 27001
+- SOC2
+""",
+
+        "Производство": """
+- ISA/IEC 62443
+- ISO 27001
+- Требования по защите АСУ ТП
+"""
+    }
+
+    return regulators.get(
+        industry,
+        """
+- ISO 27001
+- Закон РК о персональных данных
+"""
+    )
 def ai_generate_risks_and_recs(c_info, results):
     import google.generativeai as genai
     import json
