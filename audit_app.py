@@ -711,6 +711,17 @@ if dev_active:
             data['4.3. Языки разработки'] = ", ".join(sel_langs)
     data['Блок 4. Примечание'] = st.text_area("Примечание к разделу Разработка", placeholder="Стек, фреймворки...", key="note_dev")
 #----Подготовка---
+def get_maturity_level(score):
+    if score <= 20:
+        return "INITIAL", "🔴"
+    elif score <= 40:
+        return "BASIC", "🟠"
+    elif score <= 60:
+        return "DEVELOPING", "🟡"
+    elif score <= 80:
+        return "MANAGED", "🟢"
+    else:
+        return "OPTIMIZED", "🔵"
 def build_context(results, client_info):
     context = {}
 
