@@ -747,6 +747,26 @@ def make_expert_excel(c_info, results, final_score):
     wb = Workbook()
     ws = wb.active
     ws.title = "Аудит ИТ и ИБ"
+    # =========================
+    # CORPORATE STYLES
+    # =========================
+
+    dark_blue_fill = PatternFill(start_color="1F3A5F", end_color="1F3A5F", fill_type="solid")
+    light_blue_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
+    gray_fill = PatternFill(start_color="F3F6F9", end_color="F3F6F9", fill_type="solid")
+    critical_fill = PatternFill(start_color="FDE9E7", end_color="FDE9E7", fill_type="solid")
+    medium_fill = PatternFill(start_color="FFF4CC", end_color="FFF4CC", fill_type="solid")
+
+    white_font = Font(color="FFFFFF", bold=True)
+    section_font = Font(size=14, bold=True, color="1F1F1F")
+    normal_font = Font(size=11)
+
+    border = Border(
+        left=Side(style='thin', color="D9D9D9"),
+        right=Side(style='thin', color="D9D9D9"),
+        top=Side(style='thin', color="D9D9D9"),
+        bottom=Side(style='thin', color="D9D9D9")
+    )
     maturity, maturity_icon = get_maturity_level(final_score)
 
     # =========================
@@ -809,28 +829,6 @@ def make_expert_excel(c_info, results, final_score):
     ws['A9'].font = Font(size=12)
 
     current_row = 17
-
-    # =========================
-    # CORPORATE STYLES
-    # =========================
-
-    dark_blue_fill = PatternFill(start_color="1F3A5F", end_color="1F3A5F", fill_type="solid")
-    light_blue_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
-    gray_fill = PatternFill(start_color="F3F6F9", end_color="F3F6F9", fill_type="solid")
-    critical_fill = PatternFill(start_color="FDE9E7", end_color="FDE9E7", fill_type="solid")
-    medium_fill = PatternFill(start_color="FFF4CC", end_color="FFF4CC", fill_type="solid")
-
-    white_font = Font(color="FFFFFF", bold=True)
-    section_font = Font(size=14, bold=True, color="1F1F1F")
-    normal_font = Font(size=11)
-
-    border = Border(
-        left=Side(style='thin', color="D9D9D9"),
-        right=Side(style='thin', color="D9D9D9"),
-        top=Side(style='thin', color="D9D9D9"),
-        bottom=Side(style='thin', color="D9D9D9")
-    )
-    
 
     # Основная инфо
     data_info = [
