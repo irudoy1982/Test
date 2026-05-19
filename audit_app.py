@@ -747,6 +747,60 @@ def make_expert_excel(c_info, results, final_score):
     wb = Workbook()
     ws = wb.active
     ws.title = "Аудит ИТ и ИБ"
+        maturity, maturity_icon = get_maturity_level(final_score)
+
+    # =========================
+    # EXECUTIVE SUMMARY
+    # =========================
+
+    ws.merge_cells('A1:D1')
+    ws['A1'] = "EXECUTIVE CYBERSECURITY ASSESSMENT REPORT"
+    ws['A1'].font = Font(bold=True, size=20, color="1F1F1F")
+
+    ws.merge_cells('A3:D3')
+    ws['A3'] = f"Компания: {c_info.get('Наименование компании', '-')}"
+    ws['A3'].font = Font(bold=True, size=12)
+
+    ws.merge_cells('A4:D4')
+    ws['A4'] = f"Дата аудита: {datetime.now().strftime('%d.%m.%Y')}"
+    
+    ws.merge_cells('A5:D5')
+    ws['A5'] = f"{maturity_icon} Уровень зрелости: {maturity}"
+
+    ws.merge_cells('A6:D6')
+    ws['A6'] = f"Общий Security Score: {final_score}%"
+
+    # Executive Summary Block
+    ws.merge_cells('A8:D8')
+    ws['A8'] = "EXECUTIVE SUMMARY"
+    ws['A8'].font = Font(bold=True, size=16, color="FFFFFF")
+    ws['A8'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+
+    summary_text = []
+
+    if results.get("NGFW") != "Нет":
+        summary_text.append("• Используется Next-Generation Firewall")
+
+    if results.get("MFA") == "Нет":
+        summary_text.append("• Отсутствует многофакторная аутентификация (MFA)")
+
+    if results.get("Блок 2. SIEM") == "Нет":
+        summary_text.append("• Отсутствует централизованный мониторинг SIEM")
+
+    if results.get("Резервное копирование") == "Нет":
+        summary_text.append("• Не обнаружено централизованное резервное копирование")
+
+    if results.get("_user_count", 0) > 100:
+        summary_text.append("• Инфраструктура требует формализации процессов ИБ")
+
+    if not summary_text:
+        summary_text.append("• Базовые меры информационной безопасности реализованы")
+
+    ws.merge_cells('A9:D15')
+    ws['A9'] = "\n".join(summary_text)
+    ws['A9'].alignment = Alignment(wrap_text=True, vertical='top')
+
+    current_row = 17
 
     # Стили
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
@@ -770,7 +824,7 @@ def make_expert_excel(c_info, results, final_score):
         ("Сфера", c_info.get('Сфера деятельности')),
         ("Уровень зрелости ИТ/ИБ", f"{final_score}%")
     ]
-    curr_row = 4
+    curr_row = current_row
     for label, val in data_info:
         ws.cell(row=curr_row, column=1, value=label).border = border
         ws.cell(row=curr_row, column=2, value=val).border = border
