@@ -890,8 +890,8 @@ def make_expert_excel(c_info, results, final_score):
             ws.cell(row=curr_row, column=1, value=k).border = border
             ws.cell(row=curr_row, column=2, value=str(v)).border = border
             if curr_row % 2 == 0:
-            ws.cell(row=curr_row, column=1).fill = gray_fill
-            ws.cell(row=curr_row, column=2).fill = gray_fill
+                ws.cell(row=curr_row, column=1).fill = gray_fill
+                ws.cell(row=curr_row, column=2).fill = gray_fill
             curr_row += 1
 
     ws.column_dimensions['A'].width = 38
