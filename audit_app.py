@@ -856,7 +856,7 @@ def make_expert_excel(c_info, results, final_score):
             ws.merge_cells(f'A{curr_row}:B{curr_row}')
             cell = ws.cell(row=curr_row, column=1, value=f"[{lvl}] {item.get('risk', 'Риск')}")
             cell.font = Font(bold=True)
-            if "КРИТ" in str(lvl).upper(): cell.fill = risk_crit_fill
+            if "КРИТ" in str(lvl).upper(): cell.fill = critical_fill
             curr_row += 1
 
             # Описание, Влияние, Рекомендация
