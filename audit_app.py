@@ -813,10 +813,6 @@ def make_expert_excel(c_info, results, final_score):
     ws['A1'] = f"ЭКСПЕРТНЫЙ ОТЧЕТ: {c_info.get('Наименование компании', 'Аудит')}"
     ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
     
-    ws['A3'] = "Параметр"; ws['B3'] = "Значение"
-    for cell in [ws['A3'], ws['B3']]:
-        cell.fill = header_fill
-        cell.font = header_font
 
     # Основная инфо
     data_info = [
