@@ -800,7 +800,8 @@ def make_expert_excel(c_info, results, final_score):
     ws.merge_cells('A9:D15')
     ws['A9'] = "\n".join(summary_text)
     ws['A9'].alignment = Alignment(wrap_text=True, vertical='top')
-        for row in range(9, 16):
+
+    for row in range(9, 16):
         for col in range(1, 5):
             ws.cell(row=row, column=col).fill = gray_fill
             ws.cell(row=row, column=col).border = border
