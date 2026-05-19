@@ -774,7 +774,8 @@ def make_expert_excel(c_info, results, final_score):
     ws.merge_cells('A8:D8')
     ws['A8'] = "EXECUTIVE SUMMARY"
     ws['A8'].font = Font(bold=True, size=16, color="FFFFFF")
-    ws['A8'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    ws['A8'].fill = dark_blue_fill
+    ws['A8'].alignment = Alignment(horizontal='center')
 
     summary_text = []
 
@@ -799,19 +800,35 @@ def make_expert_excel(c_info, results, final_score):
     ws.merge_cells('A9:D15')
     ws['A9'] = "\n".join(summary_text)
     ws['A9'].alignment = Alignment(wrap_text=True, vertical='top')
+        for row in range(9, 16):
+        for col in range(1, 5):
+            ws.cell(row=row, column=col).fill = gray_fill
+            ws.cell(row=row, column=col).border = border
+
+    ws['A9'].font = Font(size=12)
 
     current_row = 17
 
-    # Стили
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True, size=12)
-    risk_crit_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    # =========================
+    # CORPORATE STYLES
+    # =========================
 
-    # Заголовок
-    ws.merge_cells('A1:B1')
-    ws['A1'] = f"ЭКСПЕРТНЫЙ ОТЧЕТ: {c_info.get('Наименование компании', 'Аудит')}"
-    ws['A1'].font = Font(bold=True, size=16, color="1F4E78")
+    dark_blue_fill = PatternFill(start_color="1F3A5F", end_color="1F3A5F", fill_type="solid")
+    light_blue_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
+    gray_fill = PatternFill(start_color="F3F6F9", end_color="F3F6F9", fill_type="solid")
+    critical_fill = PatternFill(start_color="FDE9E7", end_color="FDE9E7", fill_type="solid")
+    medium_fill = PatternFill(start_color="FFF4CC", end_color="FFF4CC", fill_type="solid")
+
+    white_font = Font(color="FFFFFF", bold=True)
+    section_font = Font(size=14, bold=True, color="1F1F1F")
+    normal_font = Font(size=11)
+
+    border = Border(
+        left=Side(style='thin', color="D9D9D9"),
+        right=Side(style='thin', color="D9D9D9"),
+        top=Side(style='thin', color="D9D9D9"),
+        bottom=Side(style='thin', color="D9D9D9")
+    )
     
 
     # Основная инфо
@@ -860,16 +877,26 @@ def make_expert_excel(c_info, results, final_score):
             curr_row += 1 # Отступ
 
     # Технические данные
-    ws.cell(row=curr_row, column=1, value="ТЕХНИЧЕСКИЙ ДЕТАЛИЗАЦИЯ").font = Font(bold=True)
+    ws.merge_cells(f'A{curr_row}:D{curr_row}')
+    
+    sec_cell = ws.cell(row=curr_row, column=1, value="TECHNICAL DETAILS")
+    sec_cell.font = white_font
+    sec_cell.fill = dark_blue_fill
+    sec_cell.alignment = Alignment(horizontal='center')
     curr_row += 1
     for k, v in results.items():
         if not str(k).startswith("_"):
             ws.cell(row=curr_row, column=1, value=k).border = border
             ws.cell(row=curr_row, column=2, value=str(v)).border = border
+            if curr_row % 2 == 0:
+            ws.cell(row=curr_row, column=1).fill = gray_fill
+            ws.cell(row=curr_row, column=2).fill = gray_fill
             curr_row += 1
 
-    ws.column_dimensions['A'].width = 30
-    ws.column_dimensions['B'].width = 90
+    ws.column_dimensions['A'].width = 38
+    ws.column_dimensions['B'].width = 95
+    ws.column_dimensions['C'].width = 20
+    ws.column_dimensions['D'].width = 20
     
     wb.save(output)
     return output.getvalue()
