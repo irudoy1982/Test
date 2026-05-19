@@ -747,7 +747,7 @@ def make_expert_excel(c_info, results, final_score):
     wb = Workbook()
     ws = wb.active
     ws.title = "Аудит ИТ и ИБ"
-        maturity, maturity_icon = get_maturity_level(final_score)
+    maturity, maturity_icon = get_maturity_level(final_score)
 
     # =========================
     # EXECUTIVE SUMMARY
