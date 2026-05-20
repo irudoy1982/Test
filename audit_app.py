@@ -840,6 +840,18 @@ def build_context(results, client_info):
 
     return context
 
+def is_enabled(value):
+
+    if value is None:
+        return False
+
+    value = str(value).strip().lower()
+
+    if value in ["", "нет", "none", "false", "-", "n/a"]:
+        return False
+
+    return True
+
 def calculate_domain_scores(results):
 
     domains = {
@@ -877,19 +889,19 @@ def calculate_domain_scores(results):
     # ENDPOINT SECURITY
     # =========================
 
-    if results.get("Антивирус") != "Нет":
+    if is_enabled(results.get("Антивирус")):
         domains["Endpoint Security"] += 20
 
-    if results.get("EDR") != "Нет":
+    if is_enabled(results.get("EDR")):
         domains["Endpoint Security"] += 40
 
-    if results.get("Patch Management") != "Нет":
+    if is_enabled(results.get("Patch Management")):
         domains["Endpoint Security"] += 20
 
-    if results.get("MDM") != "Нет":
+    if is_enabled(results.get("MDM")):
         domains["Endpoint Security"] += 10
 
-    if results.get("Device Control") != "Нет":
+    if is_enabled(results.get("Device Control"))
         domains["Endpoint Security"] += 10
 
     # =========================
