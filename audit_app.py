@@ -85,6 +85,110 @@ def get_regulators_by_industry(industry):
 - Закон РК о персональных данных
 """
     )
+
+def generate_rule_based_risks(results):
+
+    risks = []
+
+    users = results.get("_user_count", 0)
+
+    # =========================
+    # VPN WITHOUT MFA
+    # =========================
+
+    if results.get("VPN") != "Нет" and results.get("MFA") == "Нет":
+
+        risks.append({
+            "level": "CRITICAL",
+            "risk": "Удаленный доступ без MFA",
+            "description": "VPN-доступ реализован без многофакторной аутентификации.",
+            "impact": "Высокий риск компрометации учетных записей и несанкционированного доступа.",
+            "recommendation": "Внедрить MFA для VPN, административного доступа и критичных систем.",
+            "regulators": ["ISO 27001", "NIST", "PCI DSS"],
+            "vendors": ["Cisco Duo", "Microsoft Entra ID", "FortiAuthenticator"]
+        })
+
+    # =========================
+    # NO SIEM
+    # =========================
+
+    if results.get("Блок 2. SIEM") == "Нет":
+
+        risks.append({
+            "level": "HIGH",
+            "risk": "Отсутствует централизованный мониторинг ИБ",
+            "description": "События безопасности не агрегируются централизованно.",
+            "impact": "Увеличение времени обнаружения атак и невозможность полноценного расследования инцидентов.",
+            "recommendation": "Внедрить SIEM/SOC платформу с корреляцией событий.",
+            "regulators": ["ISO 27001", "NIST CSF"],
+            "vendors": ["Microsoft Sentinel", "Splunk", "QRadar"]
+        })
+
+    # =========================
+    # EPP WITHOUT EDR
+    # =========================
+
+    if results.get("Антивирус") != "Нет" and results.get("EDR") == "Нет":
+
+        risks.append({
+            "level": "HIGH",
+            "risk": "Endpoint-защита ограничена только антивирусом",
+            "description": "Используется только базовая антивирусная защита без EDR/XDR-функциональности.",
+            "impact": "Низкая эффективность обнаружения сложных атак, ransomware и lateral movement.",
+            "recommendation": "Рассмотреть внедрение EDR/XDR платформы.",
+            "regulators": ["NIST", "MITRE ATT&CK"],
+            "vendors": ["Defender for Endpoint", "CrowdStrike", "SentinelOne"]
+        })
+
+    # =========================
+    # LARGE INFRA WITHOUT SEGMENTATION
+    # =========================
+
+    if users > 100 and results.get("Сегментация сети") == "Нет":
+
+        risks.append({
+            "level": "HIGH",
+            "risk": "Отсутствует сегментация сети",
+            "description": "Крупная инфраструктура эксплуатируется без сетевой сегментации.",
+            "impact": "Высокий риск lateral movement и распространения malware между сегментами.",
+            "recommendation": "Реализовать VLAN/ACL/Zero Trust сегментацию.",
+            "regulators": ["ISO 27001", "NIST"],
+            "vendors": ["Cisco", "Aruba", "Fortinet"]
+        })
+
+    # =========================
+    # BACKUP RISKS
+    # =========================
+
+    if results.get("Резервное копирование") != "Нет" and results.get("Immutable Backup") == "Нет":
+
+        risks.append({
+            "level": "HIGH",
+            "risk": "Backup не защищен от ransomware",
+            "description": "Отсутствует immutable/offline backup.",
+            "impact": "Риск уничтожения резервных копий при ransomware-инциденте.",
+            "recommendation": "Внедрить immutable backup и air-gap копии.",
+            "regulators": ["NIST", "ISO 27001"],
+            "vendors": ["Veeam", "Commvault", "Rubrik"]
+        })
+
+    # =========================
+    # NO PATCH MANAGEMENT
+    # =========================
+
+    if results.get("Patch Management") == "Нет":
+
+        risks.append({
+            "level": "HIGH",
+            "risk": "Отсутствует централизованный patch management",
+            "description": "Обновления безопасности устанавливаются несистемно.",
+            "impact": "Высокая вероятность эксплуатации известных уязвимостей.",
+            "recommendation": "Внедрить централизованное управление обновлениями.",
+            "regulators": ["CIS", "NIST"],
+            "vendors": ["ManageEngine", "WSUS", "SCCM"]
+        })
+
+    return risks
 def ai_generate_risks_and_recs(c_info, results):
     import google.generativeai as genai
     import json
@@ -1021,7 +1125,14 @@ def make_expert_excel(c_info, results, final_score):
     curr_row += 1
 
     # AI Анализ
-    ai_data = ai_generate_risks_and_recs(c_info, results)
+    rule_risks = generate_rule_based_risks(results)
+
+ai_data = ai_generate_risks_and_recs(c_info, results)
+
+if ai_data:
+    ai_data.extend(rule_risks)
+else:
+    ai_data = rule_risks
     if ai_data:
         for item in ai_data:
             # Уровень и Название
