@@ -901,7 +901,7 @@ def calculate_domain_scores(results):
     if is_enabled(results.get("MDM")):
         domains["Endpoint Security"] += 10
 
-    if is_enabled(results.get("Device Control"))
+    if is_enabled(results.get("Device Control")):
         domains["Endpoint Security"] += 10
 
     # =========================
