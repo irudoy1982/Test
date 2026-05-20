@@ -747,53 +747,117 @@ def calculate_domain_scores(results):
         "Infrastructure": 0
     }
 
-    # NETWORK
+    # =========================
+    # NETWORK SECURITY
+    # =========================
+
     if results.get("NGFW") != "Нет":
-        domains["Network Security"] += 40
+        domains["Network Security"] += 25
 
     if results.get("WAF") != "Нет":
-        domains["Network Security"] += 20
+        domains["Network Security"] += 15
 
     if results.get("Anti-DDoS") != "Нет":
-        domains["Network Security"] += 20
+        domains["Network Security"] += 15
 
     if results.get("VPN") != "Нет":
+        domains["Network Security"] += 10
+
+    if results.get("NAC") != "Нет":
         domains["Network Security"] += 20
 
-    # ENDPOINT
-    if results.get("EDR") != "Нет":
-        domains["Endpoint Security"] += 50
+    if results.get("Сегментация сети") != "Нет":
+        domains["Network Security"] += 15
+
+    # =========================
+    # ENDPOINT SECURITY
+    # =========================
 
     if results.get("Антивирус") != "Нет":
-        domains["Endpoint Security"] += 50
+        domains["Endpoint Security"] += 20
 
+    if results.get("EDR") != "Нет":
+        domains["Endpoint Security"] += 40
+
+    if results.get("Patch Management") != "Нет":
+        domains["Endpoint Security"] += 20
+
+    if results.get("MDM") != "Нет":
+        domains["Endpoint Security"] += 10
+
+    if results.get("Device Control") != "Нет":
+        domains["Endpoint Security"] += 10
+
+    # =========================
     # IAM
+    # =========================
+
     if results.get("MFA") != "Нет":
-        domains["Identity & Access"] += 50
+        domains["Identity & Access"] += 35
 
     if results.get("IDM") != "Нет":
-        domains["Identity & Access"] += 50
+        domains["Identity & Access"] += 25
 
+    if results.get("PAM") != "Нет":
+        domains["Identity & Access"] += 25
+
+    if results.get("SSO") != "Нет":
+        domains["Identity & Access"] += 15
+
+    # =========================
     # MONITORING
-    if results.get("Блок 2. SIEM") != "Нет":
-        domains["Monitoring & SOC"] += 70
+    # =========================
 
-    if results.get("NAD") != "Нет":
+    if results.get("Блок 2. SIEM") != "Нет":
+        domains["Monitoring & SOC"] += 40
+
+    if results.get("SOC") != "Нет":
         domains["Monitoring & SOC"] += 30
 
-    # BACKUP
-    if results.get("Резервное копирование") != "Нет":
-        domains["Backup & Recovery"] += 70
+    if results.get("NAD") != "Нет":
+        domains["Monitoring & SOC"] += 15
 
-    if results.get("DR") != "Нет":
+    if results.get("Threat Intelligence") != "Нет":
+        domains["Monitoring & SOC"] += 15
+
+    # =========================
+    # BACKUP
+    # =========================
+
+    if results.get("Резервное копирование") != "Нет":
         domains["Backup & Recovery"] += 30
 
+    if results.get("Immutable Backup") != "Нет":
+        domains["Backup & Recovery"] += 30
+
+    if results.get("DR") != "Нет":
+        domains["Backup & Recovery"] += 20
+
+    if results.get("Air-Gap Backup") != "Нет":
+        domains["Backup & Recovery"] += 20
+
+    # =========================
     # INFRA
+    # =========================
+
     if results.get("Виртуализация") != "Нет":
-        domains["Infrastructure"] += 50
+        domains["Infrastructure"] += 25
 
     if results.get("СХД") != "Нет":
-        domains["Infrastructure"] += 50
+        domains["Infrastructure"] += 25
+
+    if results.get("Мониторинг") != "Нет":
+        domains["Infrastructure"] += 20
+
+    if results.get("Резервный канал") != "Нет":
+        domains["Infrastructure"] += 15
+
+    if results.get("Кластеризация") != "Нет":
+        domains["Infrastructure"] += 15
+
+    # Ограничение 100%
+    for k in domains:
+        domains[k] = min(domains[k], 100)
 
     return domains
 
