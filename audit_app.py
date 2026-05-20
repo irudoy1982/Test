@@ -890,7 +890,7 @@ def make_expert_excel(c_info, results, final_score):
 
     ws['A9'].font = Font(size=12)
 
-        current_row = 17
+    current_row = 17
 
     # =========================
     # DOMAIN SECURITY ASSESSMENT
