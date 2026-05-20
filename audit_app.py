@@ -1124,23 +1124,37 @@ def make_expert_excel(c_info, results, final_score):
     ws.cell(row=curr_row, column=1, value="ВЫЯВЛЕННЫЕ РИСКИ И РЕКОМЕНДАЦИИ").font = Font(bold=True, size=14)
     curr_row += 1
 
-    # AI Анализ
+        # AI Анализ
     rule_risks = generate_rule_based_risks(results)
 
     ai_data = ai_generate_risks_and_recs(c_info, results)
 
     if ai_data:
-    ai_data.extend(rule_risks)
-else:
-    ai_data = rule_risks
+        ai_data.extend(rule_risks)
+    else:
+        ai_data = rule_risks
+
     if ai_data:
         for item in ai_data:
+
             # Уровень и Название
             lvl = item.get('level', 'СРЕДНИЙ')
+
             ws.merge_cells(f'A{curr_row}:B{curr_row}')
-            cell = ws.cell(row=curr_row, column=1, value=f"[{lvl}] {item.get('risk', 'Риск')}")
+
+            cell = ws.cell(
+                row=curr_row,
+                column=1,
+                value=f"[{lvl}] {item.get('risk', 'Риск')}"
+            )
+
             cell.font = Font(bold=True)
-            if "КРИТ" in str(lvl).upper(): cell.fill = critical_fill
+
+            if "КРИТ" in str(lvl).upper() or "CRITICAL" in str(lvl).upper():
+                cell.fill = critical_fill
+            else:
+                cell.fill = medium_fill
+
             curr_row += 1
 
             # Описание, Влияние, Рекомендация
@@ -1148,16 +1162,36 @@ else:
                 ("Описание", item.get('description', '-')),
                 ("Влияние", item.get('impact', '-')),
                 ("Рекомендация", item.get('recommendation', '-')),
-                ("Регуляторы", ", ".join(item.get('regulators', [])) if isinstance(item.get('regulators'), list) else "-"),
-                ("Решения", ", ".join(item.get('vendors', [])) if isinstance(item.get('vendors'), list) else "-")
+                (
+                    "Регуляторы",
+                    ", ".join(item.get('regulators', []))
+                    if isinstance(item.get('regulators'), list)
+                    else "-"
+                ),
+                (
+                    "Решения",
+                    ", ".join(item.get('vendors', []))
+                    if isinstance(item.get('vendors'), list)
+                    else "-"
+                )
             ]
+
             for f_label, f_val in fields:
+
                 ws.cell(row=curr_row, column=1, value=f_label).font = Font(italic=True)
-                ws.cell(row=curr_row, column=2, value=f_val).alignment = Alignment(wrap_text=True)
+
+                ws.cell(
+                    row=curr_row,
+                    column=2,
+                    value=f_val
+                ).alignment = Alignment(wrap_text=True)
+
                 ws.cell(row=curr_row, column=1).border = border
                 ws.cell(row=curr_row, column=2).border = border
+
                 curr_row += 1
-            curr_row += 1 # Отступ
+
+            curr_row += 1
 
     # Технические данные
     ws.merge_cells(f'A{curr_row}:D{curr_row}')
