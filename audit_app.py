@@ -736,6 +736,67 @@ def build_context(results, client_info):
 
     return context
 
+def calculate_domain_scores(results):
+
+    domains = {
+        "Network Security": 0,
+        "Endpoint Security": 0,
+        "Identity & Access": 0,
+        "Monitoring & SOC": 0,
+        "Backup & Recovery": 0,
+        "Infrastructure": 0
+    }
+
+    # NETWORK
+    if results.get("NGFW") != "Нет":
+        domains["Network Security"] += 40
+
+    if results.get("WAF") != "Нет":
+        domains["Network Security"] += 20
+
+    if results.get("Anti-DDoS") != "Нет":
+        domains["Network Security"] += 20
+
+    if results.get("VPN") != "Нет":
+        domains["Network Security"] += 20
+
+    # ENDPOINT
+    if results.get("EDR") != "Нет":
+        domains["Endpoint Security"] += 50
+
+    if results.get("Антивирус") != "Нет":
+        domains["Endpoint Security"] += 50
+
+    # IAM
+    if results.get("MFA") != "Нет":
+        domains["Identity & Access"] += 50
+
+    if results.get("IDM") != "Нет":
+        domains["Identity & Access"] += 50
+
+    # MONITORING
+    if results.get("Блок 2. SIEM") != "Нет":
+        domains["Monitoring & SOC"] += 70
+
+    if results.get("NAD") != "Нет":
+        domains["Monitoring & SOC"] += 30
+
+    # BACKUP
+    if results.get("Резервное копирование") != "Нет":
+        domains["Backup & Recovery"] += 70
+
+    if results.get("DR") != "Нет":
+        domains["Backup & Recovery"] += 30
+
+    # INFRA
+    if results.get("Виртуализация") != "Нет":
+        domains["Infrastructure"] += 50
+
+    if results.get("СХД") != "Нет":
+        domains["Infrastructure"] += 50
+
+    return domains
+
 
 # --- Отчет ---
 def make_expert_excel(c_info, results, final_score):
@@ -768,6 +829,7 @@ def make_expert_excel(c_info, results, final_score):
         bottom=Side(style='thin', color="D9D9D9")
     )
     maturity, maturity_icon = get_maturity_level(final_score)
+    domain_scores = calculate_domain_scores(results)
 
     # =========================
     # EXECUTIVE SUMMARY
@@ -828,7 +890,54 @@ def make_expert_excel(c_info, results, final_score):
 
     ws['A9'].font = Font(size=12)
 
-    current_row = 17
+        current_row = 17
+
+    # =========================
+    # DOMAIN SECURITY ASSESSMENT
+    # =========================
+
+    ws.merge_cells(f'A{current_row}:D{current_row}')
+    dom_cell = ws.cell(row=current_row, column=1, value="SECURITY DOMAIN ASSESSMENT")
+    dom_cell.font = white_font
+    dom_cell.fill = dark_blue_fill
+    dom_cell.alignment = Alignment(horizontal='center')
+
+    current_row += 1
+
+    headers = ["Security Domain", "Score", "Status"]
+
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=current_row, column=col_num, value=header)
+        cell.font = white_font
+        cell.fill = dark_blue_fill
+        cell.border = border
+
+    current_row += 1
+
+    for domain, score in domain_scores.items():
+
+        if score >= 80:
+            status = "🟢 STRONG"
+            fill = light_blue_fill
+
+        elif score >= 50:
+            status = "🟠 MODERATE"
+            fill = medium_fill
+
+        else:
+            status = "🔴 WEAK"
+            fill = critical_fill
+
+        ws.cell(row=current_row, column=1, value=domain).border = border
+        ws.cell(row=current_row, column=2, value=f"{score}%").border = border
+        ws.cell(row=current_row, column=3, value=status).border = border
+
+        for c in range(1, 4):
+            ws.cell(row=current_row, column=c).fill = fill
+
+        current_row += 1
+
+    current_row += 2
 
     # Основная инфо
     data_info = [
