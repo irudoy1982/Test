@@ -867,22 +867,22 @@ def calculate_domain_scores(results):
     # NETWORK SECURITY
     # =========================
 
-    if results.get("NGFW") != "Нет":
+    if is_enabled(results.get("NGFW")):
         domains["Network Security"] += 25
 
-    if results.get("WAF") != "Нет":
+    if is_enabled(results.get("WAF")):
         domains["Network Security"] += 15
 
-    if results.get("Anti-DDoS") != "Нет":
+    if is_enabled(results.get("Anti-DDoS")):
         domains["Network Security"] += 15
 
-    if results.get("VPN") != "Нет":
+    if is_enabled(results.get("VPN")):
         domains["Network Security"] += 10
 
-    if results.get("NAC") != "Нет":
+    if is_enabled(results.get("NAC")):
         domains["Network Security"] += 20
 
-    if results.get("Сегментация сети") != "Нет":
+    if is_enabled(results.get("Сегментация сети")):
         domains["Network Security"] += 15
 
     # =========================
@@ -908,67 +908,67 @@ def calculate_domain_scores(results):
     # IAM
     # =========================
 
-    if results.get("MFA") != "Нет":
+    if is_enabled(results.get("MFA")):
         domains["Identity & Access"] += 35
 
-    if results.get("IDM") != "Нет":
+    if is_enabled(results.get("IDM")):
         domains["Identity & Access"] += 25
 
-    if results.get("PAM") != "Нет":
+    if is_enabled(results.get("PAM")):
         domains["Identity & Access"] += 25
 
-    if results.get("SSO") != "Нет":
+    if is_enabled(results.get("SSO")):
         domains["Identity & Access"] += 15
 
     # =========================
     # MONITORING
     # =========================
 
-    if results.get("Блок 2. SIEM") != "Нет":
+    if is_enabled(results.get("SIEM")):
         domains["Monitoring & SOC"] += 40
 
-    if results.get("SOC") != "Нет":
+    if is_enabled(results.get("SOC")):
         domains["Monitoring & SOC"] += 30
 
-    if results.get("NAD") != "Нет":
+    if is_enabled(results.get("NAD")):
         domains["Monitoring & SOC"] += 15
 
-    if results.get("Threat Intelligence") != "Нет":
+    if is_enabled(results.get("Threat Intelligence")):
         domains["Monitoring & SOC"] += 15
 
     # =========================
     # BACKUP
     # =========================
 
-    if results.get("Резервное копирование") != "Нет":
+    if is_enabled(results.get("Резервное копирование")):
         domains["Backup & Recovery"] += 30
 
-    if results.get("Immutable Backup") != "Нет":
+    if is_enabled(results.get("Immutable Backup")):
         domains["Backup & Recovery"] += 30
 
-    if results.get("DR") != "Нет":
+    if is_enabled(results.get("DR")):
         domains["Backup & Recovery"] += 20
 
-    if results.get("Air-Gap Backup") != "Нет":
+    if is_enabled(results.get("Air-Gap Backup")):
         domains["Backup & Recovery"] += 20
 
     # =========================
     # INFRA
     # =========================
 
-    if results.get("Виртуализация") != "Нет":
+    if is_enabled(results.get("Виртуализация")):
         domains["Infrastructure"] += 25
 
-    if results.get("СХД") != "Нет":
+    if is_enabled(results.get("СХД")):
         domains["Infrastructure"] += 25
 
-    if results.get("Мониторинг") != "Нет":
+    if is_enabled(results.get("Мониторинг")):
         domains["Infrastructure"] += 20
 
-    if results.get("Резервный канал") != "Нет":
+    if is_enabled(results.get("Резервный канал")):
         domains["Infrastructure"] += 15
 
-    if results.get("Кластеризация") != "Нет":
+    if is_enabled(results.get("Кластеризация")):
         domains["Infrastructure"] += 15
 
     # Ограничение 100%
@@ -1263,6 +1263,36 @@ if st.button("📊 Сформировать экспертный отчет", di
             results["MFA"] = results["Блок 2. MFA"]
         else:
             results["MFA"] = "Нет"
+
+        # SIEM
+if "Блок 2. SIEM" in results:
+    results["SIEM"] = results["Блок 2. SIEM"]
+else:
+    results["SIEM"] = "Нет"
+
+# WAF
+if "Блок 2. WAF" in results:
+    results["WAF"] = results["Блок 2. WAF"]
+else:
+    results["WAF"] = "Нет"
+
+# Anti-DDoS
+if "Блок 2. Anti-DDoS" in results:
+    results["Anti-DDoS"] = results["Блок 2. Anti-DDoS"]
+else:
+    results["Anti-DDoS"] = "Нет"
+
+# EDR
+if "Блок 2. EDR" in results:
+    results["EDR"] = results["Блок 2. EDR"]
+else:
+    results["EDR"] = "Нет"
+
+# Patch Management
+if "Блок 2. Patch Management" in results:
+    results["Patch Management"] = results["Блок 2. Patch Management"]
+else:
+    results["Patch Management"] = "Нет"
 
         # Score
         f_score = min(score + 10, 100)
