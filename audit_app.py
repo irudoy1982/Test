@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import time
 import requests
 from io import BytesIO
 from openpyxl import Workbook
@@ -1295,7 +1296,23 @@ if validation_errors:
     for err in set(validation_errors): st.write(f"- {err}")
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
-    with st.spinner("Формирование отчета..."):
+        progress_bar = st.progress(0)
+
+    status_text = st.empty()
+
+    steps = [
+        ("🔍 Анализ сетевой инфраструктуры...", 15),
+        ("🛡️ Анализ систем защиты endpoint...", 30),
+        ("📊 Проверка SIEM/SOC maturity...", 45),
+        ("💾 Анализ backup и disaster recovery...", 60),
+        ("🤖 AI анализ рисков и рекомендаций...", 80),
+        ("📄 Формирование executive report...", 100)
+    ]
+
+    for text, percent in steps:
+        status_text.info(text)
+        progress_bar.progress(percent)
+        time.sleep(0.6)
 
         # 1. Берем копию всех собранных данных из опросника
         results = data.copy()
