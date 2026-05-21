@@ -1265,34 +1265,34 @@ if st.button("📊 Сформировать экспертный отчет", di
             results["MFA"] = "Нет"
 
         # SIEM
-if "Блок 2. SIEM" in results:
-    results["SIEM"] = results["Блок 2. SIEM"]
-else:
-    results["SIEM"] = "Нет"
-
-# WAF
-if "Блок 2. WAF" in results:
-    results["WAF"] = results["Блок 2. WAF"]
-else:
-    results["WAF"] = "Нет"
-
-# Anti-DDoS
-if "Блок 2. Anti-DDoS" in results:
-    results["Anti-DDoS"] = results["Блок 2. Anti-DDoS"]
-else:
-    results["Anti-DDoS"] = "Нет"
-
-# EDR
-if "Блок 2. EDR" in results:
-    results["EDR"] = results["Блок 2. EDR"]
-else:
-    results["EDR"] = "Нет"
-
-# Patch Management
-if "Блок 2. Patch Management" in results:
-    results["Patch Management"] = results["Блок 2. Patch Management"]
-else:
-    results["Patch Management"] = "Нет"
+        if "Блок 2. SIEM" in results:
+            results["SIEM"] = results["Блок 2. SIEM"]
+         else:
+            results["SIEM"] = "Нет"
+        
+        # WAF
+        if "Блок 2. WAF" in results:
+            results["WAF"] = results["Блок 2. WAF"]
+        else:
+            results["WAF"] = "Нет"
+                   
+        # Anti-DDoS
+        if "Блок 2. Anti-DDoS" in results:
+            results["Anti-DDoS"] = results["Блок 2. Anti-DDoS"]
+        else:
+            results["Anti-DDoS"] = "Нет"
+        
+        # EDR
+        if "Блок 2. EDR" in results:
+            results["EDR"] = results["Блок 2. EDR"]
+        else:
+            results["EDR"] = "Нет"
+        
+        # Patch Management
+        if "Блок 2. Patch Management" in results:
+            results["Patch Management"] = results["Блок 2. Patch Management"]
+        else:
+            results["Patch Management"] = "Нет"
 
         # Score
     f_score = min(score + 10, 100)
