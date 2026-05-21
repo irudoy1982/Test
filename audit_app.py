@@ -1072,6 +1072,64 @@ def make_expert_excel(c_info, results, final_score):
 
     current_row = 17
 
+        # =========================
+    # TOP RISKS OVERVIEW
+    # =========================
+
+    top_risks = generate_rule_based_risks(results)
+
+    ws.merge_cells(f'A{current_row}:D{current_row}')
+
+    risk_header = ws.cell(
+        row=current_row,
+        column=1,
+        value="TOP CYBERSECURITY RISKS"
+    )
+
+    risk_header.font = white_font
+    risk_header.fill = dark_blue_fill
+    risk_header.alignment = Alignment(horizontal='center')
+
+    current_row += 1
+
+    headers = ["#", "Risk", "Severity", "Business Impact"]
+
+    for col_num, header in enumerate(headers, 1):
+
+        cell = ws.cell(
+            row=current_row,
+            column=col_num,
+            value=header
+        )
+
+        cell.font = white_font
+        cell.fill = dark_blue_fill
+        cell.border = border
+
+    current_row += 1
+
+    for idx, risk in enumerate(top_risks[:5], start=1):
+
+        level = risk.get("level", "MEDIUM")
+        impact = risk.get("impact", "-")
+
+        ws.cell(row=current_row, column=1, value=idx).border = border
+        ws.cell(row=current_row, column=2, value=risk.get("risk", "-")).border = border
+        ws.cell(row=current_row, column=3, value=level).border = border
+        ws.cell(row=current_row, column=4, value=impact).border = border
+
+        if "CRITICAL" in str(level).upper():
+            fill = critical_fill
+        else:
+            fill = medium_fill
+
+        for c in range(1, 5):
+            ws.cell(row=current_row, column=c).fill = fill
+
+        current_row += 1
+
+    current_row += 2
+
     # =========================
     # DOMAIN SECURITY ASSESSMENT
     # =========================
