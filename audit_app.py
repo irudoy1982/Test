@@ -1300,103 +1300,79 @@ if st.button("📊 Сформировать экспертный отчет", di
 
     st.info("⏳ Формирование экспертного отчета может занять до 3 минут. Пожалуйста, ожидайте...")
 
+    # Создаем контейнеры для статус-бара
     progress_bar = st.progress(0)
-
     status_text = st.empty()
 
     steps = [
-        ("🔍 Анализ сетевой инфраструктуры...", 10),
-        ("🛡️ Анализ систем защиты endpoint...", 25),
-        ("📊 Проверка SIEM/SOC maturity...", 40),
-        ("💾 Анализ backup и disaster recovery...", 55),
-        ("🤖 AI анализ рисков и рекомендаций...", 70),
-        ("📄 Формирование executive report...", 85)
+        ("🔍 Анализ сетевой инфраструктуры...", 15),
+        ("🛡️ Анализ систем защиты endpoint...", 30),
+        ("📊 Проверка SIEM/SOC maturity...", 45),
+        ("💾 Анализ backup и disaster recovery...", 60),
+        ("🤖 AI анализ рисков и рекомендаций...", 80),
+        ("📄 Формирование executive report...", 95)
     ]
 
+    # Красивая анимация «псевдозагрузки»
     for text, percent in steps:
-
         status_text.info(text)
-
         progress_bar.progress(percent)
+        time.sleep(random.uniform(1.2, 2.5)) # Немного ускорил, чтобы пользователь не скучал
 
-        time.sleep(random.uniform(1.8, 3.2))
+    # Докручиваем до победных 100% перед финальными расчетами
+    status_text.info("🚀 Завершение генерации и отправка...")
+    progress_bar.progress(100)
+    time.sleep(0.5)
 
-          # 1. Берем копию всех собранных данных из опросника
-        results = data.copy()
+    # ==========================================
+    # ЛОГИКА РАСЧЕТА (вынесена ИЗ цикла)
+    # ==========================================
+    results = data.copy()
 
-        # 2. Добавляем расчетные поля
-        results.update({
-            "Интернет канал (осн)": f"{main_speed} Mbit/s",
-            "Резервный канал": f"{back_speed} Mbit/s",
-            "_main_speed": main_speed,
-            "_back_speed": back_speed,
-            "_user_count": total_arm,
-            "WiFi Точки": ap_cnt,
-            "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
-            "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
-            "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
-            "Серверы (физ)": phys_count,
-            "Серверы (вирт)": virt_count,
-            "Резервное копирование": v_n_b if v_n_b else "Нет",
-        })
+    results.update({
+        "Интернет канал (осн)": f"{main_speed} Mbit/s",
+        "Резервный канал": f"{back_speed} Mbit/s",
+        "_main_speed": main_speed,
+        "_back_speed": back_speed,
+        "_user_count": total_arm,
+        "WiFi Точки": ap_cnt,
+        "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
+        "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
+        "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
+        "Серверы (физ)": phys_count,
+        "Серверы (вирт)": virt_count,
+        "Резервное копирование": v_n_b if v_n_b else "Нет",
+    })
 
-        # MFA
-        if "Блок 2. MFA" in results:
-            results["MFA"] = results["Блок 2. MFA"]
-        else:
-            results["MFA"] = "Нет"
+    # Приведение в соответствие флагов ИБ
+    results["MFA"] = results.get("Блок 2. MFA", "Нет")
+    results["SIEM"] = results.get("Блок 2. SIEM", "Нет")
+    results["WAF"] = results.get("Блок 2. WAF", "Нет")
+    results["Anti-DDoS"] = results.get("Блок 2. Anti-DDoS", "Нет")
+    results["EDR"] = results.get("Блок 2. EDR", "Нет")
+    results["Patch Management"] = results.get("Блок 2. Patch Management", "Нет")
 
-        # SIEM
-        if "Блок 2. SIEM" in results:
-            results["SIEM"] = results["Блок 2. SIEM"]
-        else:
-            results["SIEM"] = "Нет"
-        
-        # WAF
-        if "Блок 2. WAF" in results:
-            results["WAF"] = results["Блок 2. WAF"]
-        else:
-            results["WAF"] = "Нет"
-                   
-        # Anti-DDoS
-        if "Блок 2. Anti-DDoS" in results:
-            results["Anti-DDoS"] = results["Блок 2. Anti-DDoS"]
-        else:
-            results["Anti-DDoS"] = "Нет"
-        
-        # EDR
-        if "Блок 2. EDR" in results:
-            results["EDR"] = results["Блок 2. EDR"]
-        else:
-            results["EDR"] = "Нет"
-        
-        # Patch Management
-        if "Блок 2. Patch Management" in results:
-            results["Patch Management"] = results["Блок 2. Patch Management"]
-        else:
-            results["Patch Management"] = "Нет"
-
-        # Score
+    # Итоговый скоринг и генерация тяжелого файла
     f_score = min(score + 10, 100)
-
     report_bytes = make_expert_excel(client_info, results, f_score)
 
+    # Убираем псевдопрогресс-бар, так как задача выполнена
+    status_text.empty()
+    progress_bar.empty()
+
+    # ==========================================
+    # ОТПРАВКА В TELEGRAM И ВЫВОД КНОПКИ СКАЧИВАНИЯ
+    # ==========================================
     try:
         telegram_text = f"""
 🚨 Коллеги, у нас новый запрос на аудит!
 
 🏢 Компания: {client_info.get('Наименование компании', '-')}
-
 👤 ФИО: {client_info.get('ФИО контактного лица', '-')}
-
 💼 Должность: {client_info.get('Должность', '-')}
-
 📞 Телефон: {client_info.get('Контактный телефон', '-')}
-
 📧 Почта: {client_info.get('Email', '-')}
-
 🏭 Сфера деятельности: {client_info.get('Сфера деятельности', '-')}
-
 🌐 Сайт: {client_info.get('Сайт компании', '-')}
 
 📊 Уровень зрелости: {f_score}%
@@ -1404,10 +1380,7 @@ if st.button("📊 Сформировать экспертный отчет", di
 
         requests.post(
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            data={
-                "chat_id": CHAT_ID,
-                "text": telegram_text
-            }
+            data={"chat_id": CHAT_ID, "text": telegram_text}
         )
 
         requests.post(
@@ -1423,12 +1396,11 @@ if st.button("📊 Сформировать экспертный отчет", di
                 )
             }
         )
-
     except Exception as e:
-            st.error(f"Ошибка Telegram: {e}")
+        st.error(f"Ошибка Telegram: {e}")
 
+    # Финальный аккорд: выводим успех и кнопку
     st.success("Отчет успешно сформирован!")
-
     st.download_button(
         "📥 Скачать экспертный отчет (XLSX)",
         report_bytes,
