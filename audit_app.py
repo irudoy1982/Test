@@ -1295,9 +1295,9 @@ else:
     results["Patch Management"] = "Нет"
 
         # Score
-        f_score = min(score + 10, 100)
+    f_score = min(score + 10, 100)
 
-        report_bytes = make_expert_excel(client_info, results, f_score)
+    report_bytes = make_expert_excel(client_info, results, f_score)
 
         try:
             telegram_text = f"""
