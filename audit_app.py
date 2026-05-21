@@ -1296,7 +1296,7 @@ if validation_errors:
     for err in set(validation_errors): st.write(f"- {err}")
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
-        progress_bar = st.progress(0)
+    progress_bar = st.progress(0)
 
     status_text = st.empty()
 
