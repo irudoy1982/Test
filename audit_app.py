@@ -1299,8 +1299,8 @@ else:
 
     report_bytes = make_expert_excel(client_info, results, f_score)
 
-        try:
-            telegram_text = f"""
+    try:
+        telegram_text = f"""
 🚨 Коллеги, у нас новый запрос на аудит!
 
 🏢 Компания: {client_info.get('Наименование компании', '-')}
