@@ -1342,7 +1342,7 @@ else:
             }
         )
 
-        except Exception as e:
+    except Exception as e:
             st.error(f"Ошибка Telegram: {e}")
 
         st.success("Отчет успешно сформирован!")
