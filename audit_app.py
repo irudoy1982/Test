@@ -1320,27 +1320,27 @@ else:
 📊 Уровень зрелости: {f_score}%
 """
 
-            requests.post(
-                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                data={
-                    "chat_id": CHAT_ID,
-                    "text": telegram_text
-                }
-            )
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            data={
+                "chat_id": CHAT_ID,
+                "text": telegram_text
+            }
+        )
 
-            requests.post(
-                f"https://api.telegram.org/bot{TOKEN}/sendDocument",
-                data={
-                    "chat_id": CHAT_ID,
-                    "caption": f"Отчет аудита: {client_info['Наименование компании']}"
-                },
-                files={
-                    'document': (
-                        f"Audit_v10_{client_info['Наименование компании']}.xlsx",
-                        report_bytes
-                    )
-                }
-            )
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendDocument",
+            data={
+                "chat_id": CHAT_ID,
+                "caption": f"Отчет аудита: {client_info['Наименование компании']}"
+            },
+            files={
+                'document': (
+                    f"Audit_v10_{client_info['Наименование компании']}.xlsx",
+                    report_bytes
+                )
+            }
+        )
 
         except Exception as e:
             st.error(f"Ошибка Telegram: {e}")
