@@ -1267,7 +1267,7 @@ if st.button("📊 Сформировать экспертный отчет", di
         # SIEM
         if "Блок 2. SIEM" in results:
             results["SIEM"] = results["Блок 2. SIEM"]
-         else:
+        else:
             results["SIEM"] = "Нет"
         
         # WAF
