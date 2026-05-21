@@ -1345,12 +1345,12 @@ else:
     except Exception as e:
             st.error(f"Ошибка Telegram: {e}")
 
-        st.success("Отчет успешно сформирован!")
+    st.success("Отчет успешно сформирован!")
 
-        st.download_button(
-            "📥 Скачать экспертный отчет (XLSX)",
-            report_bytes,
-            f"Audit_Khalil_{client_info['Наименование компании']}.xlsx"
-        )
+    st.download_button(
+        "📥 Скачать экспертный отчет (XLSX)",
+        report_bytes,
+        f"Audit_Khalil_{client_info['Наименование компании']}.xlsx"
+    )
 
 st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
