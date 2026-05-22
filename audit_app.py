@@ -1423,5 +1423,23 @@ if st.button("📊 Сформировать экспертный отчет", di
     log_area.empty()
     
     # --- ЭФФЕКТНАЯ ИТ / ИБ ЗАСТАВКА В СТИЛЕ КИБЕРБЕЗОПАСНОСТИ ---
-    st.markdown("""
-    <div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 25px; text-
+    # Выносим HTML в переменную без лишних переносов строк вокруг кавычек
+    html_banner = """<div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 25px; text-align: center; margin-top: 15px; margin-bottom: 20px; box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.3);">
+        <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 28px; letter-spacing: 2px;">🛡️ SECURITY AUDIT COMPLETE</h1>
+        <p style="color: #888; font-family: 'Courier New', monospace; font-size: 13px; margin-top: 5px; margin-bottom: 15px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
+        <div style="background-color: rgba(0, 255, 102, 0.05); border: 1px dashed #00ff66; padding: 12px; display: inline-block; border-radius: 4px;">
+            <span style="color: #fff; font-family: sans-serif; font-weight: bold; font-size: 15px;">🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ</span>
+        </div>
+    </div>"""
+
+    # Выводим подготовленный HTML баннер
+    st.markdown(html_banner, unsafe_allow_html=True)
+
+    # Вывод строгой кнопки скачивания
+    st.download_button(
+        label="📥 Скачать готовый экспертный отчет (XLSX)",
+        data=report_bytes,
+        file_name=f"Audit_Khalil_{client_info.get('Наименование компании', 'report')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary"
+    )
