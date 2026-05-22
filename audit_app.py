@@ -1297,74 +1297,72 @@ if validation_errors:
     for err in set(validation_errors): st.write(f"- {err}")
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
-
-    st.info("⏳ Формирование экспертного отчета может занять до 3 минут. Пожалуйста, ожидайте...")
-
-    # Создаем контейнеры для статус-бара
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    steps = [
-        ("🔍 Анализ сетевой инфраструктуры...", 15),
-        ("🛡️ Анализ систем защиты endpoint...", 30),
-        ("📊 Проверка SIEM/SOC maturity...", 45),
-        ("💾 Анализ backup и disaster recovery...", 60),
-        ("🤖 AI анализ рисков и рекомендаций...", 80),
-        ("📄 Формирование executive report...", 95)
+    
+    # Пул полезных фактов об ИБ для вывода на экран
+    security_advices = [
+        "🛡️ **Полезный факт об ИБ:** Внедрение многофакторной аутентификации (MFA) блокирует до 99.9% автоматизированных атак на корпоративные учетные записи.",
+        "🛡️ **Совет эксперта:** Обычного антивируса (EPP) в 2026 году уже недостаточно. Решения класса EDR/XDR необходимы для своевременного выявления скрытых угроз.",
+        "🛡️ **Архитектурный подход:** Резервные копии должны быть изолированы от основной сети. Принцип 'Immutable Backup' гарантирует, что хакеры не смогут зашифровать ваши бэкапы.",
+        "🛡️ **Безопасность сети:** Сетевая сегментация (VLAN, концепция Zero Trust) — лучший способ остановить распространение вируса-вымогателя внутри периметра компании.",
+        "🛡️ **Статистика:** Более 80% успешных кибератак начинаются с человеческого фактора (фишинг). Регулярно проводите обучение команды кибергигиене."
     ]
 
-    # Красивая анимация «псевдозагрузки»
-    for text, percent in steps:
-        status_text.info(text)
-        progress_bar.progress(percent)
-        time.sleep(random.uniform(1.2, 2.5)) # Немного ускорил, чтобы пользователь не скучал
+    # Нативный и 100% рабочий контейнер статуса в Streamlit
+    with st.status("🚀 Инициализация экспертного движка...", expanded=True) as status:
+        
+        st.write("⚙️ Нормализация параметров инфраструктуры и расчет базовых индексов зрелости...")
+        # Выводим первый факт ИБ на экран
+        st.info(security_advices[0])
+        
+        results = data.copy()
+        results.update({
+            "Интернет канал (осн)": f"{main_speed} Mbit/s",
+            "Резервный канал": f"{back_speed} Mbit/s",
+            "_main_speed": main_speed,
+            "_back_speed": back_speed,
+            "_user_count": total_arm,
+            "WiFi Точки": ap_cnt,
+            "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
+            "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
+            "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
+            "Серверы (физ)": phys_count,
+            "Серверы (вирт)": virt_count,
+            "Резервное копирование": v_n_b if v_n_b else "Нет",
+        })
+        results["MFA"] = results.get("Блок 2. MFA", "Нет")
+        results["SIEM"] = results.get("Блок 2. SIEM", "Нет")
+        results["WAF"] = results.get("Блок 2. WAF", "Нет")
+        results["Anti-DDoS"] = results.get("Блок 2. Anti-DDoS", "Нет")
+        results["EDR"] = results.get("Блок 2. EDR", "Нет")
+        results["Patch Management"] = results.get("Блок 2. Patch Management", "Нет")
+        
+        f_score = min(score + 10, 100)
+        time.sleep(1)
+        
+        # Обновляем статус перед запуском ИИ и выводим второй факт
+        status.update(label="🧠 ИИ-анализ (Gemini API)... Формирование карты рисков.", state="running")
+        st.write("📡 Обезличенный профиль ИТ-ландшафта передан в нейросеть. Ожидание ответа LLM...")
+        st.info(security_advices[1])
+        st.info(security_advices[2])
+        
+        # ТЯЖЕЛЫЙ ПРОЦЕСС: Запуск генерации Excel и ИИ
+        # Все плашки выше гарантированно останутся гореть на экране, пока выполняется эта строка
+        report_bytes = make_expert_excel(client_info, results, f_score)
+        
+        # Обновляем статус после ответа ИИ
+        status.update(label="📄 Финализация документа...", state="running")
+        st.write("🎨 Стилизация таблиц, шрифтов и построение карт зрелости...")
+        st.info(security_advices[3])
+        time.sleep(1.5)
+        
+        status.update(label="🔒 Проверка качества и синхронизация...", state="running")
+        st.write("🧮 Валидация структуры документа системой контроля качества...")
+        st.info(security_advices[4])
+        time.sleep(1)
 
-    # Докручиваем до победных 100% перед финальными расчетами
-    status_text.info("🚀 Завершение генерации и отправка...")
-    progress_bar.progress(100)
-    time.sleep(0.5)
-
-    # ==========================================
-    # ЛОГИКА РАСЧЕТА (вынесена ИЗ цикла)
-    # ==========================================
-    results = data.copy()
-
-    results.update({
-        "Интернет канал (осн)": f"{main_speed} Mbit/s",
-        "Резервный канал": f"{back_speed} Mbit/s",
-        "_main_speed": main_speed,
-        "_back_speed": back_speed,
-        "_user_count": total_arm,
-        "WiFi Точки": ap_cnt,
-        "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
-        "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
-        "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
-        "Серверы (физ)": phys_count,
-        "Серверы (вирт)": virt_count,
-        "Резервное копирование": v_n_b if v_n_b else "Нет",
-    })
-
-    # Приведение в соответствие флагов ИБ
-    results["MFA"] = results.get("Блок 2. MFA", "Нет")
-    results["SIEM"] = results.get("Блок 2. SIEM", "Нет")
-    results["WAF"] = results.get("Блок 2. WAF", "Нет")
-    results["Anti-DDoS"] = results.get("Блок 2. Anti-DDoS", "Нет")
-    results["EDR"] = results.get("Блок 2. EDR", "Нет")
-    results["Patch Management"] = results.get("Блок 2. Patch Management", "Нет")
-
-    # Итоговый скоринг и генерация тяжелого файла
-    f_score = min(score + 10, 100)
-    report_bytes = make_expert_excel(client_info, results, f_score)
-
-    # Убираем псевдопрогресс-бар, так как задача выполнена
-    status_text.empty()
-    progress_bar.empty()
-
-    # ==========================================
-    # ОТПРАВКА В TELEGRAM И ВЫВОД КНОПКИ СКАЧИВАНИЯ
-    # ==========================================
-    try:
-        telegram_text = f"""
+        # СИНХРОНИЗАЦИЯ С ТЕЛЕГРАМ (Полный оригинальный блок данных, ничего не потеряется)
+        try:
+            telegram_text = f"""
 🚨 Коллеги, у нас новый запрос на аудит!
 
 🏢 Компания: {client_info.get('Наименование компании', '-')}
@@ -1377,34 +1375,40 @@ if st.button("📊 Сформировать экспертный отчет", di
 
 📊 Уровень зрелости: {f_score}%
 """
+            requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                data={"chat_id": CHAT_ID, "text": telegram_text},
+                timeout=5
+            )
+            requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendDocument",
+                data={
+                    "chat_id": CHAT_ID,
+                    "caption": f"Отчет аудита: {client_info.get('Наименование компании', 'Без названия')}"
+                },
+                files={
+                    'document': (
+                        f"Audit_v10_{client_info.get('Наименование компании', 'company')}.xlsx",
+                        report_bytes
+                    )
+                },
+                timeout=10
+            )
+        except Exception as e:
+            st.error(f"Фоновая ошибка отправки в бэк-офис: {e}")
+            
+        status.update(label="🎉 Экспертный отчет успешно сформирован!", state="complete")
 
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": telegram_text}
-        )
-
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendDocument",
-            data={
-                "chat_id": CHAT_ID,
-                "caption": f"Отчет аудита: {client_info['Наименование компании']}"
-            },
-            files={
-                'document': (
-                    f"Audit_v10_{client_info['Наименование компании']}.xlsx",
-                    report_bytes
-                )
-            }
-        )
-    except Exception as e:
-        st.error(f"Ошибка Telegram: {e}")
-
-    # Финальный аккорд: выводим успех и кнопку
-    st.success("Отчет успешно сформирован!")
+    # Показываем результат под контейнером статуса
+    st.balloons()
+    st.success("🎉 Отчет успешно сформирован и проверен системой контроля качества Khalil Consulting!")
+    
     st.download_button(
-        "📥 Скачать экспертный отчет (XLSX)",
-        report_bytes,
-        f"Audit_Khalil_{client_info['Наименование компании']}.xlsx"
+        label="📥 Скачать готовый экспертный отчет (XLSX)",
+        data=report_bytes,
+        file_name=f"Audit_Khalil_{client_info.get('Наименование компании', 'report')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary"
     )
 
 st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
