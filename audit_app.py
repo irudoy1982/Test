@@ -1298,58 +1298,64 @@ from streamlit.components.v1 import html # Импорт для авто-скро
 st.divider()
 
 if st.button("Сформировать экспертный отчет"):
-    # Принудительный скролл вниз (первичный)
-    st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
-    
-    # Контейнеры для отрисовки
+    # 1. Фиксация места для уведомления и логов (чтобы ничего не дергалось)
     alert_placeholder = st.empty()
     console_placeholder = st.empty()
     progress_bar = st.progress(0)
     
-    # CSS - Кибер-стиль
+    # 2. Стиль "Спокойного" алерта и черный ИБ-дизайн
     st.markdown("""
         <style>
-        .cyber-alert { 
-            background-color: #1a1a1a; border-left: 4px solid #ffcc00; color: #ffcc00; 
-            padding: 15px; border-radius: 4px; text-align: center; font-size: 14px; 
-            margin-bottom: 15px; font-weight: bold; font-family: 'Courier New', monospace;
+        .cyber-alert-box { 
+            background-color: #fff8e1; border: 1px solid #ffcc80; color: #ef6c00; 
+            padding: 15px; border-radius: 6px; text-align: center; font-size: 14px; 
+            margin-bottom: 20px; font-weight: bold;
         }
-        .cyber-log { 
-            background: #000; color: #00ff00; font-family: 'Courier New', monospace; 
+        .cyber-log-box { 
+            background: #000; color: #00ff00; font-family: monospace; 
             padding: 15px; border: 1px solid #333; height: 95px; overflow: hidden; 
-            border-radius: 4px; margin-bottom: 15px; font-size: 13px;
+            border-radius: 4px; margin-bottom: 20px; font-size: 13px;
         }
         .cyber-download-box {
-            background: #0e0e0e; border: 1px solid #00ff66; padding: 25px; 
-            border-radius: 8px; text-align: center; box-shadow: 0 0 15px rgba(0, 255, 102, 0.1);
+            background: #000; border: 2px solid #00ff66; padding: 30px; 
+            border-radius: 10px; text-align: center; box-shadow: 0 0 20px rgba(0, 255, 102, 0.2);
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # Уведомление
-    alert_placeholder.markdown('<div class="cyber-alert">⚠️ АНАЛИЗ ЗАПУЩЕН. НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ ОКНО (до 180 сек).</div>', unsafe_allow_html=True)
+    # 3. Вывод алерта
+    alert_placeholder.markdown("""
+        <div class="cyber-alert-box">
+            ⏳ Идет глубокий анализ. Процесс может занять до 180 секунд.<br>
+            <span style="color: red;">НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ СТРАНИЦУ.</span>
+        </div>
+    """, unsafe_allow_html=True)
     
-    steps = ["Инициализация ядра...", "Агрегация данных...", "Валидация ISO...", "Анализ векторов атак...", "Расчет скоринга...", "Компиляция Excel...", "Калибровка стилей...", "Финализация..."]
+    # Скролл вниз к логам
+    st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
+
+    # 4. Процесс
+    steps = ["Инициализация ядра...", "Агрегация данных...", "Валидация ISO 27001...", "Анализ векторов атак...", "Расчет скоринга...", "Компиляция Excel...", "Финализация..."]
     active_logs = []
     progress = 0
     
-    # Цикл обработки
     for step in steps:
         active_logs.append(f"[{time.strftime('%H:%M:%S')}] {step}")
         if len(active_logs) > 3: active_logs.pop(0)
-        console_placeholder.markdown(f'<div class="cyber-log">' + "".join([f'<div>▶ {line}</div>' for line in active_logs]) + '</div>', unsafe_allow_html=True)
         
-        progress += random.randint(8, 15)
+        console_placeholder.markdown(f'<div class="cyber-log-box">' + "".join([f'<div>▶ {line}</div>' for line in active_logs]) + '</div>', unsafe_allow_html=True)
+        
+        progress += random.randint(10, 20)
         progress_bar.progress(min(progress, 95))
-        time.sleep(random.uniform(0.5, 1.2))
+        time.sleep(1.0)
 
-    # Генерация файла
+    # 5. Генерация файла
     f_score = min(score, 100)
     report_bytes = make_expert_excel(client_info, data, f_score)
     
-    # Отправка в ТЕЛЕГРАМ (все поля динамически)
+    # 6. Отправка в ТЕЛЕГРАМ (Все поля)
     try:
-        # Собираем все данные из client_info
+        # Формируем текст из всех полей словаря
         details_str = "\n".join([f"• *{k}:* {v}" for k, v in client_info.items()])
         tg_message = f"🔔 *Новый экспертный отчет!*\n\n{details_str}\n\n🛡️ *Итоговый скоринг:* {f_score}%"
         
@@ -1361,26 +1367,26 @@ if st.button("Сформировать экспертный отчет"):
     except Exception as e:
         st.error(f"Telegram error: {e}")
 
-    # Очистка и финал
+    # 7. Очистка и вывод результата
     alert_placeholder.empty()
     console_placeholder.empty()
     progress_bar.empty()
     
-    # Принудительный скролл вниз (второй, чтобы кнопка точно попала в фокус)
-    st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
-    
     st.success(f"✔️ Анализ успешно завершен! (Score: {f_score}%)")
     
-    # ИБ-стиль кнопки
+    # Скролл к результату
+    st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
+    
+    # 8. Финальный ИБ-блок
     import base64
     b64 = base64.b64encode(report_bytes).decode('utf-8')
     st.markdown(f"""
         <div class="cyber-download-box">
-            <h3 style="color: #00ff66; margin-top:0;">SECURITY AUDIT COMPLETE</h3>
-            <p style="color: #fff; font-size: 12px; margin-bottom: 20px;">Генерация выполнена. Файл готов к загрузке.</p>
+            <h2 style="color: #00ff66; margin-top:0;">SECURITY AUDIT COMPLETE</h2>
+            <p style="color: #fff; font-size: 14px; margin-bottom: 25px;">Данные обработаны. Отчет готов к загрузке.</p>
             <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
                download="Expert_Audit_Report.xlsx" 
-               style="background: #00ff66; color: #000; padding: 12px 30px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block; font-family: monospace;">
+               style="background: #00ff66; color: #000; padding: 15px 40px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block; font-family: monospace; font-size: 16px;">
                📥 СКАЧАТЬ ОТЧЕТ (XLSX)
             </a>
         </div>
