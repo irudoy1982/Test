@@ -1298,54 +1298,72 @@ if validation_errors:
 
 if st.button("Сформировать экспертный отчет"):
     
-    # 1. Создаем пустые контейнеры для динамического обновления
+    # 1. Подготовка контейнеров
     status_header = st.empty()
     warning_placeholder = st.empty()
     
-    # Устанавливаем стартовые тексты
-    warning_placeholder.warning("⚠️ ВНИМАНИЕ: Выполняется сложный анализ матрицы угроз. Процесс может занять до 3 минут...")
+    # Сюда будут динамически транслироваться наши 3 строки, не раздувая страницу вверх
+    log_matrix_placeholder = st.empty() 
+    
+    warning_placeholder.warning("⚠️ ВНИМАНИЕ: Выполняется сложный анализ матрицы угроз. Пожалуйста, не закрывайте вкладку...")
     status_header.markdown("### 📊 Статус: *Кросс-табличный анализ рисков...*")
 
-    # Умная функция логирования с автоматической прокруткой страницы вниз
-    def log_step(emoji, message):
-        import time
+    # Наш список шагов
+    steps = [
+        "Расчет базовых технологических индексов и весов уязвимостей...",
+        "Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...",
+        "Сопоставление ИТ-ландшафта с отраслевой матрицей угроз и расчет рекомендаций...",
+        "Выполнение математических вычислений и автоматический подбор тех. стека...",
+        "Формирование структуры книги Excel и генерация динамических таблиц...",
+        "Применение корпоративного стиля Khalil Consulting: калибровка ячеек..."
+    ]
+
+    # Ротация шагов: держим на экране строго 3 строчки (Прошлый, Текущий, Будущий)
+    import time
+    for i in range(len(steps)):
         current_time = time.strftime('%H:%M:%S')
-        st.markdown(f"{emoji} `[{current_time}]` {message}")
         
-        # Этот JavaScript на каждом шаге аккуратно тянет скролл браузера вниз за логами
-        st.components.v1.html(
-            """
-            <script>
-                window.parent.document.querySelector('.main .block-container').scrollIntoView({behavior: 'smooth', block: 'end'});
-            </script>
-            """,
-            height=0, width=0
-        )
-        time.sleep(0.6)
+        # Конструируем контент для 3-строчного окна
+        log_content = "<div style='font-family: monospace; line-height: 1.6;'>"
+        
+        # 1-я строка: Что было шагом ранее
+        if i > 0:
+            log_content += f"<div style='color: #2e7d32; opacity: 0.6;'>✅ `[{current_time}]` {steps[i-1]}</div>"
+        else:
+            log_content += "<div style='color: #666; opacity: 0.3;'>... ожидание запуска системы ...</div>"
+            
+        # 2-я строка: Что фигачит ПРЯМО СЕЙЧАС (выделяем ярко)
+        log_content += f"<div style='color: #f57c00; font-weight: bold; margin: 4px 0;'>🔄 `[{current_time}]` {steps[i]}</div>"
+        
+        # 3-я строка: Что будет следующим
+        if i < len(steps) - 1:
+            log_content += f"<div style='color: #757575; opacity: 0.5;'>⏳ `[очередь]` {steps[i+1]}</div>"
+        else:
+            log_content += "<div style='color: #00ff66; font-weight: bold;'>🚀 Финализация структуры файла...</div>"
+            
+        log_content += "</div>"
+        
+        # Перерисовываем контейнер (он не растет вниз, а просто обновляет эти 3 строки)
+        log_matrix_placeholder.markdown(log_content, unsafe_allow_html=True)
+        time.sleep(1.0) # Даем пользователю считанные секунды посмотреть на прогресс
 
-    # 2. Поочередно выводим шаги (страница будет сама плавно листаться вниз!)
-    log_step("✅", "Расчет базовых технологических индексов и весов уязвимостей...")
-    log_step("⚙️", "Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...")
-    log_step("⚡", "Запущено сопоставление ИТ-ландшафта с отраслевой матрицей угроз. Расчет рекомендаций...")
-    log_step("🔄", "Выполняются математические вычисления и подбор технологического стека...")
-    log_step("📝", "Формирование структуры книги Excel и генерация умных таблиц...")
-    log_step("🎨", "Применение корпоративного стиля Khalil Consulting: шрифты и калибровка ячеек...")
-
-    # 3. Безопасный сбор всех контактов для Telegram
+    # --- 2. ГАРАНТИРОВАННАЯ ОТПРАВКА В TELEGRAM (Исправленный сбор контактов) ---
     try:
         import requests
-        import time
         
+        # Достаем имя компании
         comp_name = client_info.get('Наименование компании') or client_info.get('Компания') or 'Не указана'
-        phone = client_info.get('Телефон') or client_info.get('Контактный телефон') or ''
-        email = client_info.get('Email') or client_info.get('Почта') or ''
-        manager = client_info.get('ФИО') or client_info.get('Контактное лицо') or ''
         
-        contact_str = f"{manager} {phone} {email}".strip()
-        if not contact_str:
-            contact_str = "Не указаны"
+        # Вытаскиваем абсолютно все возможные поля контактов, которые заполнил пользователь
+        contact_parts = []
+        for key in ['ФИО', 'Контактное лицо', 'Телефон', 'Контактный телефон', 'Email', 'Почта']:
+            val = client_info.get(key)
+            if val:
+                contact_parts.append(str(val))
+        
+        contact_str = " | ".join(contact_parts) if contact_parts else "Не указаны"
 
-        # Наше итоговое сообщение
+        # Собираем текстовый пакет
         tg_message = (
             f"🔔 *Сгенерирован экспертный отчет!*\n\n"
             f"🏢 *Компания:* {comp_name}\n"
@@ -1354,26 +1372,28 @@ if st.button("Сформировать экспертный отчет"):
             f"📅 *Дата:* {time.strftime('%d.%m.%Y %H:%M:%S')}"
         )
         
-        # --- Отправка в ваш чат ---
-        # (Убедитесь, что переменные TOKEN и CHAT_ID объявлены у вас выше в коде)
+        # Отправляем текстовые данные
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": tg_message, "parse_mode": "Markdown"}, timeout=5)
         
-        # Отправка самого файла отчета
+        # Отправляем сам сгенерированный Excel-файл
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"📁 Отчет: {comp_name}"}, files={'document': (f"Audit_v10_{comp_name.replace(' ', '_')}.xlsx", report_bytes)}, timeout=10)
         
     except Exception as tg_err:
-        print(f"Ошибка отправки в Telegram: {tg_err}")
+        print(f"Ошибка Telegram: {tg_err}")
 
-    # 4. Финализация интерфейса (Прячем желтый баннер, перекрашиваем статус)
+    # --- 3. ОЧИСТКА И ФИНАЛЬНЫЙ ВЫВОД ---
+    # Полностью убираем временную 3-строчную ленту логов и желтый варнинг, чтобы не занимать место!
+    log_matrix_placeholder.empty()
     warning_placeholder.empty()
+    
+    # Переключаем главный статус в успех
     status_header.markdown("### ✅ Статус: *Экспертный анализ успешно завершен!*")
     
-    # Кодируем файл в base64 для монолитной HTML-кнопки
     import base64
     company_filename = comp_name.replace(" ", "_")
     b64_report = base64.b64encode(report_bytes).decode('utf-8')
 
-    # 5. Отрисовка неделимого баннера (где кнопка никогда не съедет в сторону)
+    # Отрисовываем наш красивый монолитный баннер, подогнанный тютелька в тютельку
     st.markdown(f"""
     <style>
         .cyber-monolith-banner {{
@@ -1412,5 +1432,5 @@ if st.button("Сформировать экспертный отчет"):
 
     st.success(f"✔️ Экспертный анализ успешно завершен. Итоговый уровень защищенности: {f_score}%")
 
-# Системный подвал (В самом конце файла у левого края, БЕЗ отступов)
+# Подвал приложения (БЕЗ отступов у левого края файла)
 st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
