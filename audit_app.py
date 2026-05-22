@@ -1291,66 +1291,64 @@ def make_expert_excel(c_info, results, final_score):
     return output.getvalue()
 
 # --- ФИНАЛ ---
+# --- КНОПКА С ФИНАЛЬНЫМ КИБЕР-ДИЗАЙНОМ ---
 st.divider()
 
 if st.button("Сформировать экспертный отчет"):
-    # 1. Контейнеры
-    status_header = st.empty()
-    warning_placeholder = st.empty()
-    log_matrix_placeholder = st.empty()
+    # 1. Создаем контейнеры
+    warning_container = st.empty()
+    log_container = st.empty()
     
-    warning_placeholder.markdown("""
-        <div style="background-color: #000; color: #ff4b4b; padding: 20px; border-radius: 10px; border: 1px solid #ff4b4b; text-align: center; font-weight: bold; margin-bottom: 20px;">
-        ⚠️ ВНИМАНИЕ: Выполняется сложный анализ. ПОЖАЛУЙСТА, НЕ ЗАКРЫВАЙТЕ ЭТУ ВКЛАДКУ!
+    # 2. Выводим черный баннер
+    warning_container.markdown("""
+        <div style="background-color: #000; color: #ff4b4b; padding: 25px; border-radius: 8px; 
+        border: 2px solid #ff4b4b; text-align: center; font-family: 'Courier New', monospace; 
+        font-weight: bold; font-size: 18px; margin-bottom: 20px;">
+        ⚠️ ВНИМАНИЕ: АНАЛИЗ ЗАПУЩЕН. НЕ ЗАКРЫВАЙТЕ ВКЛАДКУ!
         </div>
     """, unsafe_allow_html=True)
     
-    # 2. Расширенный список логов (10 этапов)
+    # 3. Логи с "прокруткой"
     steps = [
-        "Инициализация ядра анализа...",
-        "Агрегация данных из формы...",
-        "Расчет базовых технологических индексов...",
-        "Валидация комплаенс-метрик ISO 27001...",
-        "Сопоставление с матрицей угроз...",
-        "Анализ векторов атак (SOC)...",
-        "Математический расчет скоринга...",
-        "Формирование структуры книги Excel...",
-        "Калибровка стилей Khalil Consulting...",
-        "Финальная сборка и проверка целостности..."
+        "Инициализация ядра...",
+        "Агрегация данных...",
+        "Расчет индексов...",
+        "Валидация ISO 27001...",
+        "Анализ угроз...",
+        "Генерация XLSX...",
+        "Калибровка стилей..."
     ]
-
-    # Цикл скроллинга
+    
     for i in range(len(steps)):
-        log_html = "<div style='background: #111; padding: 12px; border-radius: 5px; font-family: monospace; border: 1px solid #333; font-size: 14px;'>"
-        for j in range(max(0, i-4), i + 1): # Показываем больше строк
-            color = "#00ff66" if j == i else "#777"
-            symbol = "▶" if j == i else "✓"
-            log_html += f"<div style='color: {color}; margin: 4px 0;'>{symbol} {steps[j]}</div>"
-        log_html += "</div>"
-        log_matrix_placeholder.markdown(log_html, unsafe_allow_html=True)
-        time.sleep(0.6)
-
-    # 3. ГЕНЕРАЦИЯ (здесь вызываем твою функцию)
+        log_text = "<div style='background: #111; color: #00ff66; padding: 15px; border-radius: 5px; font-family: monospace;'>"
+        # Выводим последние 3 шага
+        for j in range(max(0, i-2), i + 1):
+            log_text += f"<div>[{time.strftime('%H:%M:%S')}] {steps[j]}</div>"
+        log_text += "</div>"
+        log_container.markdown(log_text, unsafe_allow_html=True)
+        time.sleep(0.7)
+    
+    # 4. Генерация
     f_score = min(score, 100)
     report_bytes = make_expert_excel(client_info, data, f_score)
     
-    # 4. Очистка и результат
-    log_matrix_placeholder.empty()
-    warning_placeholder.empty()
-    status_header.empty()
+    # 5. Очистка и финал
+    warning_container.empty()
+    log_container.empty()
     
-    st.success(f"✔️ Анализ успешно завершен! Итоговый скоринг: {f_score}%")
+    st.success("✅ Анализ успешно завершен!")
     
+    # Баннер скачивания
     import base64
-    b64_report = base64.b64encode(report_bytes).decode('utf-8')
+    b64 = base64.b64encode(report_bytes).decode('utf-8')
     st.markdown(f"""
-        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_report}" 
-           download="Expert_Audit_{client_info.get('Наименование компании', 'Report')}.xlsx" 
-           style="display: block; background: #00ff66; color: #000; text-align: center; padding: 15px; text-decoration: none; font-weight: bold; border-radius: 5px;">
-           📥 СКАЧАТЬ ЭКСПЕРТНЫЙ ОТЧЕТ (XLSX)
-        </a>
+        <div style="background: #0e1117; border: 2px solid #00ff66; padding: 20px; border-radius: 8px; text-align: center;">
+            <h3 style="color: #00ff66;">SECURITY AUDIT COMPLETE</h3>
+            <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
+               download="Report.xlsx" style="color: #fff; font-weight: bold;">📥 СКАЧАТЬ ОТЧЕТ</a>
+        </div>
     """, unsafe_allow_html=True)
 
-# --- ТВОЙ ПОДВАЛ ---
+# --- ПОДВАЛ ---
 st.divider()
 st.markdown("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
