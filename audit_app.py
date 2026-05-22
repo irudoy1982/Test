@@ -1296,129 +1296,86 @@ if validation_errors:
     st.error(f"🚨 Формирование отчета недоступно. Ошибок: {len(validation_errors)}")
     for err in set(validation_errors): st.write(f"- {err}")
 
-if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
+if st.button("Сформировать экспертный отчет"):
     
-    # Резервируем динамические контейнеры на экране
-    warning_placeholder = st.empty()
+    # 1. Создаем пустые контейнеры для динамического обновления
     status_header = st.empty()
-    log_area = st.empty()
+    warning_placeholder = st.empty()
     
-    # ПОКА ИДЕТ ПРОЦЕСС: Выводим стильное янтарное уведомление на месте старого
-    warning_placeholder.markdown("""
-    <div style="background-color: #12161f; border: 1px solid #ff9900; border-radius: 6px; padding: 18px; text-align: center; margin-top: 10px; margin-bottom: 15px; box-shadow: 0px 0px 10px rgba(255, 153, 0, 0.15);">
-        <div style="color: #ff9900; font-family: sans-serif; font-weight: bold; font-size: 14px; letter-spacing: 0.5px; margin-bottom: 6px;">
-            ⚠️ СИСТЕМНОЕ УВЕДОМЛЕНИЕ: ВЫПОЛНЯЕТСЯ СЛОЖНЫЙ АНАЛИЗ МАТРИЦЫ УГРОЗ
-        </div>
-        <div style="color: #ffffff; font-family: sans-serif; font-size: 13px; line-height: 1.5;">
-            Процесс генерации экспертного отчета может занять <span style="color: #ff9900; font-weight: bold;">до 3 минут</span>. 
-            Пожалуйста, ожидайте. <span style="text-decoration: underline; font-weight: bold; color: #ff9900;">Не закрывайте и не обновляйте</span> страницу до завершения расчетов.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    current_logs = []
-    from datetime import datetime, timezone, timedelta
-
-    def add_bullet_log(msg, type="info"):
-        """Добавляет лог с актуальным временем Алматы (UTC+5) и держит ровно 3 строки"""
-        almaty_tz = timezone(timedelta(hours=5))
-        timestamp = datetime.now(almaty_tz).strftime("%H:%M:%S")
-        
-        if type == "success":
-            icon = "✅"
-        elif type == "warn":
-            icon = "⚡"
-        else:
-            icon = "⚙️"
-            
-        current_logs.append(f"{icon} `[{timestamp}]` {msg}")
-        displayed_logs = current_logs[-3:]
-        log_area.markdown("\n\n".join(displayed_logs))
-
-    # --- ЭТАП 1: Подготовка данных ---
-    status_header.markdown("### ⏳ Статус: *Инициализация экспертных алгоритмов...*")
-    
-    add_bullet_log("Запуск экспертного аналитического ядра Khalil Consulting v10.5...")
-    time.sleep(0.8)
-    
-    add_bullet_log("Чтение параметров ИТ-инфраструктуры и конфигурационных матриц...")
-    results = data.copy()
-    results.update({
-        "Интернет канал (осн)": f"{main_speed} Mbit/s",
-        "Резервный канал": f"{back_speed} Mbit/s",
-        "_main_speed": main_speed,
-        "_back_speed": back_speed,
-        "_user_count": total_arm,
-        "WiFi Точки": ap_cnt,
-        "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
-        "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
-        "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
-        "Серверы (физ)": phys_count,
-        "Серверы (вирт)": virt_count,
-        "Резервное копирование": v_n_b if v_n_b else "Нет",
-    })
-    for block in ["MFA", "SIEM", "WAF", "Anti-DDoS", "EDR", "Patch Management"]:
-        results[block] = results.get(f"Блок 2. {block}", "Нет")
-    f_score = min(score + 10, 100)
-    time.sleep(0.8)
-    
-    add_bullet_log("Расчет базовых технологических индексов и весов уязвимостей...", "success")
-    time.sleep(0.6)
-    
-    add_bullet_log("Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...")
-    time.sleep(1.0)
-
-    # --- ЭТАП 2: Вычисления ---
+    # Устанавливаем стартовые тексты
+    warning_placeholder.warning("⚠️ ВНИМАНИЕ: Выполняется сложный анализ матрицы угроз. Процесс может занять до 3 минут...")
     status_header.markdown("### 📊 Статус: *Кросс-табличный анализ рисков...*")
-    add_bullet_log("Запущено сопоставление ИТ-ландшафта с отраслевой матрицей угроз. Расчет рекомендаций...", "warn")
-    
-    with st.spinner("Выполняются математические вычисления и подбор технологического стека..."):
-        report_bytes = make_expert_excel(client_info, results, f_score)
 
-    # --- ЭТАП 3: Финализация ---
-    status_header.markdown("### 📄 Статус: *Компиляция отчетных материалов...*")
-    add_bullet_log("Глубокий анализ технологического контура успешно завершен.", "success")
-    time.sleep(0.8)
-    
-    add_bullet_log("Генерация структуры листов XLSX и разметка табличных пространств...")
-    time.sleep(0.9)
-    
-    add_bullet_log("Применение корпоративного стиля Khalil Consulting: шрифты и калибровка ячеек...")
-    time.sleep(1.0)
-    
-    add_bullet_log("Сборка финального архива документа и проверка контрольных сумм ячеек...", "success")
-    time.sleep(0.7)
+    # Умная функция логирования с автоматической прокруткой страницы вниз
+    def log_step(emoji, message):
+        import time
+        current_time = time.strftime('%H:%M:%S')
+        st.markdown(f"{emoji} `[{current_time}]` {message}")
+        
+        # Этот JavaScript на каждом шаге аккуратно тянет скролл браузера вниз за логами
+        st.components.v1.html(
+            """
+            <script>
+                window.parent.document.querySelector('.main .block-container').scrollIntoView({behavior: 'smooth', block: 'end'});
+            </script>
+            """,
+            height=0, width=0
+        )
+        time.sleep(0.6)
 
-    add_bullet_log("Архивация экспертной сессии и финальная проверка структуры файла...")
-    
-    # Тихое уведомление в Телеграм
+    # 2. Поочередно выводим шаги (страница будет сама плавно листаться вниз!)
+    log_step("✅", "Расчет базовых технологических индексов и весов уязвимостей...")
+    log_step("⚙️", "Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...")
+    log_step("⚡", "Запущено сопоставление ИТ-ландшафта с отраслевой матрицей угроз. Расчет рекомендаций...")
+    log_step("🔄", "Выполняются математические вычисления и подбор технологического стека...")
+    log_step("📝", "Формирование структуры книги Excel и генерация умных таблиц...")
+    log_step("🎨", "Применение корпоративного стиля Khalil Consulting: шрифты и калибровка ячеек...")
+
+    # 3. Безопасный сбор всех контактов для Telegram
     try:
-        telegram_text = f"🚨 Новый запрос на аудит!\n\n🏢 Компания: {client_info.get('Наименование компании', '-')}\n📊 Уровень зрелости: {f_score}%"
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": telegram_text}, timeout=5)
-        comp_name = client_info.get('Наименование компании', 'company')
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"Отчет: {comp_name}"}, files={'document': (f"Audit_v10_{comp_name}.xlsx", report_bytes)}, timeout=10)
-    except Exception:
-        pass
-    
-    time.sleep(0.4)
-    
-    # --- ФИНАЛИЗАЦИЯ ИНТЕРФЕЙСА ---
-    
-    # 1. Убираем ТОЛЬКО предупреждение. Статус и логи ОСТАВЛЯЕМ на экране, чтобы страница не сжималась!
+        import requests
+        import time
+        
+        comp_name = client_info.get('Наименование компании') or client_info.get('Компания') or 'Не указана'
+        phone = client_info.get('Телефон') or client_info.get('Контактный телефон') or ''
+        email = client_info.get('Email') or client_info.get('Почта') or ''
+        manager = client_info.get('ФИО') or client_info.get('Контактное лицо') or ''
+        
+        contact_str = f"{manager} {phone} {email}".strip()
+        if not contact_str:
+            contact_str = "Не указаны"
+
+        # Наше итоговое сообщение
+        tg_message = (
+            f"🔔 *Сгенерирован экспертный отчет!*\n\n"
+            f"🏢 *Компания:* {comp_name}\n"
+            f"👤 *Контакты:* {contact_str}\n"
+            f"🛡️ *Итоговый скоринг:* {f_score}%\n"
+            f"📅 *Дата:* {time.strftime('%d.%m.%Y %H:%M:%S')}"
+        )
+        
+        # --- Отправка в ваш чат ---
+        # (Убедитесь, что переменные TOKEN и CHAT_ID объявлены у вас выше в коде)
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": tg_message, "parse_mode": "Markdown"}, timeout=5)
+        
+        # Отправка самого файла отчета
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"📁 Отчет: {comp_name}"}, files={'document': (f"Audit_v10_{comp_name.replace(' ', '_')}.xlsx", report_bytes)}, timeout=10)
+        
+    except Exception as tg_err:
+        print(f"Ошибка отправки в Telegram: {tg_err}")
+
+    # 4. Финализация интерфейса (Прячем желтый баннер, перекрашиваем статус)
     warning_placeholder.empty()
-    
-    # 2. Обновляем статус на успешный завершающий
     status_header.markdown("### ✅ Статус: *Экспертный анализ успешно завершен!*")
     
-    # Подготавливаем имя файла и переводим байты отчета в Base64 для скачивания без перезагрузки страницы
+    # Кодируем файл в base64 для монолитной HTML-кнопки
     import base64
-    company_filename = client_info.get('Наименование компании', 'report').replace(" ", "_")
+    company_filename = comp_name.replace(" ", "_")
     b64_report = base64.b64encode(report_bytes).decode('utf-8')
 
-    # --- ЕДИНЫЙ МАТРИЧНЫЙ HTML-МОНОЛИТ (АБСОЛЮТНАЯ СИНХРОНИЗАЦИЯ ШИРИНЫ) ---
+    # 5. Отрисовка неделимого баннера (где кнопка никогда не съедет в сторону)
     st.markdown(f"""
     <style>
-        /* Главный контейнер баннера */
         .cyber-monolith-banner {{
             background-color: #0e1117;
             border: 2px solid #00ff66;
@@ -1432,47 +1389,14 @@ if st.button("📊 Сформировать экспертный отчет", di
             width: 100%;
             box-sizing: border-box;
         }}
-        
-        .cyber-title {{
-            color: #00ff66;
-            margin: 0;
-            font-size: 24px;
-            letter-spacing: 2px;
-            font-weight: bold;
-        }}
-        
-        .cyber-subtitle {{
-            color: #666;
-            font-size: 11px;
-            margin-top: 6px;
-            margin-bottom: 25px;
-            letter-spacing: 1px;
-        }}
-        
-        /* Кнопка внутри баннера (чистый HTML/CSS) */
+        .cyber-title {{ color: #00ff66; margin: 0; font-size: 24px; letter-spacing: 2px; font-weight: bold; }}
+        .cyber-subtitle {{ color: #666; font-size: 11px; margin-top: 6px; margin-bottom: 25px; letter-spacing: 1px; }}
         .cyber-download-link {{
-            display: block;
-            width: 100%;
-            box-sizing: border-box;
-            background-color: rgba(0, 255, 102, 0.04);
-            color: #ffffff !important;
-            border: 1px dashed #00ff66;
-            border-radius: 4px;
-            padding: 15px 20px;
-            font-weight: bold;
-            font-size: 13px;
-            letter-spacing: 0.5px;
-            text-decoration: none;
-            transition: all 0.25s ease;
+            display: block; width: 100%; box-sizing: border-box; background-color: rgba(0, 255, 102, 0.04);
+            color: #ffffff !important; border: 1px dashed #00ff66; border-radius: 4px; padding: 15px 20px;
+            font-weight: bold; font-size: 13px; text-decoration: none; transition: all 0.25s ease;
         }}
-        
-        /* Эффект наведения */
-        .cyber-download-link:hover {{
-            background-color: rgba(0, 255, 102, 0.16) !important;
-            color: #00ff66 !important;
-            border: 1px solid #00ff66;
-            box-shadow: 0px 0px 12px rgba(0, 255, 102, 0.2);
-        }}
+        .cyber-download-link:hover {{ background-color: rgba(0, 255, 102, 0.16) !important; color: #00ff66 !important; border: 1px solid #00ff66; }}
     </style>
     
     <div class="cyber-monolith-banner">
@@ -1484,14 +1408,9 @@ if st.button("📊 Сформировать экспертный отчет", di
             🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ (XLSX)
         </a>
     </div>
-    
-    <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" 
-         onload="window.scrollTo({{top: document.body.scrollHeight, behavior: 'smooth'}});" 
-         style="display:none;">
     """, unsafe_allow_html=True)
 
-    # Вывод финального уведомления под монолитом
     st.success(f"✔️ Экспертный анализ успешно завершен. Итоговый уровень защищенности: {f_score}%")
 
-# Системная инфо-строка в самом низу приложения (без отступов)
+# Системный подвал (В самом конце файла у левого края, БЕЗ отступов)
 st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
