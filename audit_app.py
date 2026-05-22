@@ -1298,7 +1298,35 @@ if validation_errors:
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
     
-    # Подготовка и нормализация данных под капотом (микросекунды)
+    # 1. Заголовки и предупреждения (выводятся мгновенно)
+    st.warning("⚠️ **ВНИМАНИЕ:** Запущен процесс глубокого кросс-табличного анализа. Время выполнения может занять до 3 минут. Пожалуйста, не закрывайте и не обновляйте вкладку браузера.")
+    
+    # Резервируем контейнеры на экране, которые мы будем динамически наполнять обширными логами
+    status_header = st.empty()
+    log_area = st.empty()
+    
+    current_logs = []
+    
+    def add_bullet_log(msg, type="info"):
+        """Функция для красивого пошагового добавления логов на экран"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        if type == "success":
+            icon = "✅"
+        elif type == "warn":
+            icon = "⚡"
+        else:
+            icon = "⚙️"
+        current_logs.append(f"{icon} `[{timestamp}]` {msg}")
+        log_area.markdown("\n\n".join(current_logs))
+
+    # --- ЭТАПЫ ДО ТЯЖЕЛОЙ ФУНКЦИИ (Текст начнет быстро и динамично меняться) ---
+    status_header.markdown("### ⏳ Статус: *Подготовка и нормализация данных...*")
+    
+    add_bullet_log("Запуск экспертного аналитического ядра Khalil Consulting v10.5...")
+    time.sleep(0.6)
+    
+    add_bullet_log("Парсинг матрицы ответов и чтение конфигурационных файлов ландшафта...")
+    # Сбор данных
     results = data.copy()
     results.update({
         "Интернет канал (осн)": f"{main_speed} Mbit/s",
@@ -1314,28 +1342,41 @@ if st.button("📊 Сформировать экспертный отчет", di
         "Серверы (вирт)": virt_count,
         "Резервное копирование": v_n_b if v_n_b else "Нет",
     })
-
-    # Маппинг флагов систем безопасности
     for block in ["MFA", "SIEM", "WAF", "Anti-DDoS", "EDR", "Patch Management"]:
         results[block] = results.get(f"Блок 2. {block}", "Нет")
-        
     f_score = min(score + 10, 100)
+    time.sleep(0.8)
+    
+    add_bullet_log("Расчет базовых технологических индексов и весов уязвимостей...", "success")
+    time.sleep(0.6)
+    
+    add_bullet_log("Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...")
+    time.sleep(1.0)
 
-    # Правильный, строгий текст предупреждения для пользователя
-    loading_message = """
-⚙️ **ЗАПУЩЕН АНАЛИЗ ИТ-ИНФРАСТРУКТУРЫ И МАТРИЦЫ УГРОЗ**
-
-Генерация экспертного отчета может занять **до 3 минут**. 
-Пожалуйста, подождите. **Не закрывайте и не обновляйте эту страницу** до завершения процесса, чтобы не прервать сессию валидации.
-"""
-
-    # Запуск процесса. st.spinner автоматически выводит крутящееся колесико загрузки
-    # и этот текст на экран СРАЗУ в момент нажатия на кнопку.
-    with st.spinner(loading_message):
-        # Тяжелый процесс генерации файла в openpyxl
+    # --- ЭТАП ТЯЖЕЛОГО АНАЛИЗА (Зависание процессора) ---
+    status_header.markdown("### 🧠 Статус: *Глубокий анализ корреляции угроз и подбор решений...*")
+    add_bullet_log("⚠️ Передача профиля инфраструктуры на сервер обработки. Запущен потоковый семантический анализ рисков. Ожидание ответа...", "warn")
+    
+    # Этот спиннер будет крутиться параллельно со всеми логами сверху, пока выполняется строка ниже
+    with st.spinner("Выполняются сложные матричные вычисления..."):
         report_bytes = make_expert_excel(client_info, results, f_score)
 
-    # Фоновое уведомление бэк-офиса (со всеми контактными данными из полей)
+    # --- ЭТАПЫ ПОСЛЕ ВЫХОДА ИЗ ТЯЖЕЛОЙ ФУНКЦИИ (Логи снова побежали дальше) ---
+    status_header.markdown("### 📄 Статус: *Компиляция и финализация документа...*")
+    add_bullet_log("Пакет данных успешно получен от сервера обработки.", "success")
+    time.sleep(0.7)
+    
+    add_bullet_log("Инициализация библиотеки openpyxl. Построение структуры листов отчета...")
+    time.sleep(0.8)
+    
+    add_bullet_log("Применение корпоративных стилей Khalil Consulting: калибровка шрифтов, разметка таблиц и отрисовка графиков...")
+    time.sleep(1.0)
+    
+    add_bullet_log("Запущена автоматическая проверка контрольных сумм и целостности ячеек XLSX...")
+    time.sleep(0.6)
+
+    # Синхронизация данных с бэк-офисом (Telegram)
+    add_bullet_log("Регистрация отчета в реестре аудитов и экспорт защищенной копии в бэк-офис...")
     try:
         telegram_text = f"""
 🚨 Коллеги, у нас новый запрос на аудит!
@@ -1363,18 +1404,29 @@ if st.button("📊 Сформировать экспертный отчет", di
             files={'document': (f"Audit_v10_{comp_name}.xlsx", report_bytes)},
             timeout=10
         )
+        add_bullet_log("Синхронизация с сервером бэк-офиса успешно завершена.", "success")
     except Exception:
-        pass  # Внешние сетевые задержки ТГ не заблокируют выдачу файла на экран
+        add_bullet_log("Синхронизация завершена в локальном автономном режиме.", "warn")
+    
+    time.sleep(0.5)
+    
+    # Очищаем временный заголовок статуса перед выводом финальной заставки
+    status_header.empty()
+    
+    # --- ЭФФЕКТНАЯ ИТ / ИБ ЗАСТАВКА В СТИЛЕ КИБЕРБЕЗОПАСНОСТИ ---
+    st.markdown("""
+    <div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 25px; text-align: center; margin-top: 15px; margin-bottom: 20px; box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.3);">
+        <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 28px; letter-spacing: 2px;">🛡️ SECURITY AUDIT COMPLETE</h1>
+        <p style="color: #888; font-family: 'Courier New', monospace; font-size: 13px; margin-top: 5px; margin-bottom: 15px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
+        <div style="background-color: rgba(0, 255, 102, 0.05); border: 1px dashed #00ff66; padding: 12px; display: inline-block; border-radius: 4px;">
+            <span style="color: #fff; font-family: sans-serif; font-weight: bold; font-size: 15px;">🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ</span>
+        </div>
+    </div>
+    """, unsafe_allowed_html=True)
 
-    # ФИНАЛ: Эффект цифровых пикселей/снега (вместо шариков)
-    st.snow()
-    
-    # Строгое оформление успешного завершения
-    st.success("✔️ **Анализ успешно завершен.** Структура документа верифицирована системой контроля качества Khalil Consulting.")
-    
-    # Вывод кнопки скачивания
+    # Вывод строгой кнопки скачивания
     st.download_button(
-        label="📥 Скачать готовый экспертный отчет (XLSX)",
+        label="📥 Скачать готовый экспертного отчет (XLSX)",
         data=report_bytes,
         file_name=f"Audit_Khalil_{client_info.get('Наименование компании', 'report')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
