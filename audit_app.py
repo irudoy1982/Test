@@ -1301,16 +1301,20 @@ if st.button("📊 Сформировать экспертный отчет", di
     # Главное строгое предупреждение для пользователя
     st.warning("⚠️ **ВНИМАНИЕ:** Запущен процесс глубокого кросс-табличного анализа. Время выполнения может занять до 3 минут. Пожалуйста, не закрывайте и не обновляйте вкладку браузера.")
     
-    # Резервируем контейнеры на экране
+    # Резервируем контейнеры на экране для динамического обновления
     status_header = st.empty()
     log_area = st.empty()
     
     current_logs = []
     
+    # Чат-панель: Импортируем модули времени для точного часового пояса Алматы (UTC+5)
+    from datetime import datetime, timezone, timedelta
+
     def add_bullet_log(msg, type="info"):
-        """Добавляет лог с актуальным временем и держит в контейнере ровно последние 3 строки"""
-        # Берем точное время в секунду вызова лога
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        """Добавляет лог с актуальным временем Алматы (UTC+5) и держит в контейнере ровно 3 строки"""
+        # Явно задаем часовой пояс Алматы UTC+5
+        almaty_tz = timezone(timedelta(hours=5))
+        timestamp = datetime.now(almaty_tz).strftime("%H:%M:%S")
         
         if type == "success":
             icon = "✅"
@@ -1319,13 +1323,13 @@ if st.button("📊 Сформировать экспертный отчет", di
         else:
             icon = "⚙️"
             
-        # Добавляем новую запись
+        # Добавляем новую запись в массив
         current_logs.append(f"{icon} `[{timestamp}]` {msg}")
         
         # Ограничиваем список строго последними 3 строками
         displayed_logs = current_logs[-3:]
         
-        # Выводим на экран
+        # Обновляем область логов на экране
         log_area.markdown("\n\n".join(displayed_logs))
 
     # --- ЭТАП 1: Подготовка данных ---
@@ -1362,7 +1366,7 @@ if st.button("📊 Сформировать экспертный отчет", di
     add_bullet_log("Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...")
     time.sleep(1.0)
 
-    # --- ЭТАП 2: Основные вычисления (Зависание процессора) ---
+    # --- ЭТАП 2: Основные вычисления (Тяжелый процесс под капотом) ---
     status_header.markdown("### 📊 Статус: *Кросс-табличный анализ рисков...*")
     add_bullet_log("Запущено сопоставление ИТ-ландшафта с отраслевой матрицей угроз. Расчет рекомендаций...", "warn")
     
@@ -1370,7 +1374,7 @@ if st.button("📊 Сформировать экспертный отчет", di
     with st.spinner("Выполняются математические вычисления и подбор технологического стека..."):
         report_bytes = make_expert_excel(client_info, results, f_score)
 
-    # --- ЭТАП 3: Финализация файла (Процессор отвис, время снова актуальное) ---
+    # --- ЭТАП 3: Финализация файла (Процессор освободился, логи идут дальше) ---
     status_header.markdown("### 📄 Статус: *Компиляция отчетных материалов...*")
     add_bullet_log("Глубокий анализ технологического контура успешно завершен.", "success")
     time.sleep(0.8)
@@ -1384,11 +1388,13 @@ if st.button("📊 Сформировать экспертный отчет", di
     add_bullet_log("Сборка финального архива документа и проверка контрольных сумм ячеек...", "success")
     time.sleep(0.7)
 
-    # Локальное завершение и тихая регистрация (без упоминания серверов)
+    # Локальное завершение и тихая регистрация (без упоминания серверов/отправок наружу)
     add_bullet_log("Архивация экспертной сессии и финальная проверка структуры файла...")
+    
+    # Тихий бэкграунд-процесс для Телеграм уведомлений (оригинальный)
     try:
         telegram_text = f"""
-🚨 Коллеги, у нас новый запрос на аудит!
+🚨 Коллеги, у нас новый отчет с аудита!
 
 🏢 Компания: {client_info.get('Наименование компании', '-')}
 👤 ФИО: {client_info.get('ФИО контактного лица', '-')}
@@ -1422,24 +1428,53 @@ if st.button("📊 Сформировать экспертный отчет", di
     status_header.empty()
     log_area.empty()
     
+    # Переменная для корректного названия файла при скачивании
+    company_filename = client_info.get('Наименование компании', 'report')
+
     # --- ЭФФЕКТНАЯ ИТ / ИБ ЗАСТАВКА В СТИЛЕ КИБЕРБЕЗОПАСНОСТИ ---
-    # Выносим HTML в переменную без лишних переносов строк вокруг кавычек
-    html_banner = """<div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 25px; text-align: center; margin-top: 15px; margin-bottom: 20px; box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.3);">
+    # Отрисовываем красивую рамку баннера сверху
+    st.markdown("""
+    <div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 25px; text-align: center; margin-top: 15px; margin-bottom: 5px; box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.3);">
         <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 28px; letter-spacing: 2px;">🛡️ SECURITY AUDIT COMPLETE</h1>
-        <p style="color: #888; font-family: 'Courier New', monospace; font-size: 13px; margin-top: 5px; margin-bottom: 15px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
-        <div style="background-color: rgba(0, 255, 102, 0.05); border: 1px dashed #00ff66; padding: 12px; display: inline-block; border-radius: 4px;">
-            <span style="color: #fff; font-family: sans-serif; font-weight: bold; font-size: 15px;">🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ</span>
-        </div>
-    </div>"""
+        <p style="color: #888; font-family: 'Courier New', monospace; font-size: 13px; margin-top: 5px; margin-bottom: 20px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Выводим подготовленный HTML баннер
-    st.markdown(html_banner, unsafe_allow_html=True)
+    # Кастомные CSS-стили, переопределяющие дизайн стандартной кнопки Streamlit
+    st.markdown("""
+    <style>
+        div.stDownloadButton > button {
+            background-color: rgba(0, 255, 102, 0.05) !important;
+            color: #ffffff !important;
+            border: 1px dashed #00ff66 !important;
+            border-radius: 4px !important;
+            padding: 14px 24px !important;
+            width: 100% !important;
+            font-family: sans-serif !important;
+            font-weight: bold !important;
+            font-size: 15px !important;
+            letter-spacing: 0.5px !important;
+            transition: all 0.3s ease !important;
+            box-shadow: 0px 0px 10px rgba(0, 255, 102, 0.1) !important;
+        }
+        div.stDownloadButton > button:hover {
+            background-color: rgba(0, 255, 102, 0.15) !important;
+            border: 1px solid #00ff66 !important;
+            box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.4) !important;
+            transform: scale(1.01);
+        }
+        div.stDownloadButton > button:active {
+            background-color: rgba(0, 255, 102, 0.25) !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # Вывод строгой кнопки скачивания
+    # Кнопка скачивания, которая благодаря CSS выше превратилась в центральный элемент баннера
     st.download_button(
-        label="📥 Скачать готовый экспертный отчет (XLSX)",
+        label="🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ (XLSX)",
         data=report_bytes,
-        file_name=f"Audit_Khalil_{client_info.get('Наименование компании', 'report')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary"
+        file_name=f"Audit_Khalil_{company_filename}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
