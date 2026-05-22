@@ -1403,85 +1403,92 @@ if st.button("📊 Сформировать экспертный отчет", di
     time.sleep(0.4)
     
     # ⚡ UX-МАГИЯ: Полностью уничтожаем ВСЕ элементы ожидания и логи. 
-    # Страница мгновенно схлопывается вверх, предотвращая зависание прокрутки!
     warning_placeholder.empty()
     status_header.empty()
     log_area.empty()
     
-    company_filename = client_info.get('Наименование компании', 'report')
+    company_filename = client_info.get('Наименование компании', 'report').replace(" ", "_")
 
-    # --- ИБ-БАННЕР: ВЕРХНЯЯ ПОЛОВИНА ШИЛДА (HTML) ---
-    # Отрезаем нижний border и скругляем только верх (8px 8px 0px 0px)
-    st.markdown("""
-    <div style="background-color: #0e1117; border-top: 2px solid #00ff66; border-left: 2px solid #00ff66; border-right: 2px solid #00ff66; border-radius: 8px 8px 0px 0px; padding: 30px 25px 5px 25px; text-align: center; margin-bottom: 0px;">
-        <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 26px; letter-spacing: 2px;">🛡️ SECURITY AUDIT COMPLETE</h1>
-        <p style="color: #666; font-family: 'Courier New', monospace; font-size: 11px; margin-top: 6px; margin-bottom: 15px; letter-spacing: 1px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-    # --- ИБ-БАННЕР: НИЖНЯЯ ПОЛОВИНА ШИЛДА (ЖЕСТКАЯ СТИЛИЗАЦИЯ КНОПКИ) ---
-    # Превращаем сам блок контейнера кнопки в нижнюю часть баннера (border-top: none, скругление снизу)
+    # --- ЕДИНЫЙ ИБ-БАННЕР (КОМПЛЕКСНАЯ СТИЛИЗАЦИЯ БЕЗ РАЗРЫВОВ) ---
     st.markdown("""
     <style>
-        /* Стилизуем родительский контейнер виджета на всю ширину экрана без прослоек */
+        /* 1. Верхняя половина блока (HTML заголовок) */
+        .unified-banner-top {
+            background-color: #0e1117 !important;
+            border-top: 2px solid #00ff66 !important;
+            border-left: 2px solid #00ff66 !important;
+            border-right: 2px solid #00ff66 !important;
+            border-bottom: none !important;
+            border-radius: 8px 8px 0px 0px !important;
+            padding: 25px 25px 10px 25px !important;
+            text-align: center !important;
+            box-shadow: 0px -5px 15px rgba(0, 255, 102, 0.03) !important;
+        }
+        
+        /* 2. Нижняя половина блока (Контейнер встроенной кнопки Streamlit) */
         div.stDownloadButton {
-            width: 100% !important;
-            box-sizing: border-box !important;
             background-color: #0e1117 !important;
             border-bottom: 2px solid #00ff66 !important;
             border-left: 2px solid #00ff66 !important;
             border-right: 2px solid #00ff66 !important;
             border-top: none !important;
             border-radius: 0px 0px 8px 8px !important;
-            padding: 5px 25px 25px 25px !important;
-            margin-top: -1px !important; /* Намертво склеивает верхний и нижний блоки */
-            box-shadow: 0px 10px 15px rgba(0, 255, 102, 0.07) !important;
+            padding: 0px 25px 25px 25px !important;
+            margin-top: -1rem !important; /* Схлопываем стандартный отступ Streamlit */
+            box-shadow: 0px 10px 15px rgba(0, 255, 102, 0.05) !important;
             text-align: center !important;
         }
         
-        /* Гарантируем, что внутренний флекс-бокс Streamlit не сожмет кнопку влево */
         div.stDownloadButton > div {
             width: 100% !important;
         }
         
-        /* Стилизация интерактивной кнопки скачивания */
+        /* 3. Кастомизация самой кнопки внутри монолита */
         div.stDownloadButton > button {
             width: 100% !important;
             box-sizing: border-box !important;
-            background-color: rgba(0, 255, 102, 0.04) !important;
+            background-color: rgba(0, 255, 102, 0.03) !important;
             color: #ffffff !important;
-            border: 1px dashed #00ff66 !important;
+            border: 1px dashed rgba(0, 255, 102, 0.5) !important;
             border-radius: 4px !important;
             padding: 14px 20px !important;
             font-family: 'Courier New', monospace !important;
             font-weight: bold !important;
             font-size: 13px !important;
             letter-spacing: 0.5px !important;
-            transition: all 0.25s ease !important;
+            transition: all 0.2s ease !important;
         }
         
-        /* Эффект наведения */
         div.stDownloadButton > button:hover {
-            background-color: rgba(0, 255, 102, 0.16) !important;
+            background-color: rgba(0, 255, 102, 0.12) !important;
             border: 1px solid #00ff66 !important;
             color: #00ff66 !important;
-            box-shadow: 0px 0px 12px rgba(0, 255, 102, 0.2) !important;
-        }
-        
-        /* Клик */
-        div.stDownloadButton > button:active {
-            background-color: rgba(0, 255, 102, 0.26) !important;
+            box-shadow: 0px 0px 10px rgba(0, 255, 102, 0.15) !important;
         }
     </style>
     """, unsafe_allow_html=True)
 
-    # Отрендеренная кнопка бесшовно ляжет внутрь нижней части рамки баннера
+    # Рендерим верхнюю часть монолитного баннера
+    st.markdown("""
+    <div class="unified-banner-top">
+        <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 24px; letter-spacing: 2px;">
+            🛡️ SECURITY AUDIT COMPLETE
+        </h1>
+        <p style="color: #666; font-family: 'Courier New', monospace; font-size: 11px; margin-top: 6px; margin-bottom: 10px; letter-spacing: 1px;">
+            STATUS CODE: 200 SUCCESS | CORE V10.5
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Рендерим саму кнопку (она приклеится к HTML блоку выше)
     st.download_button(
         label="🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ (XLSX)",
         data=report_bytes,
-        file_name=f"Audit_Khalil_{company_filename}.xlsx",
+        file_name=f"Audit_v10_{company_filename}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
+    st.success(f"✔️ Экспертный анализ успешно завершен. Итоговый уровень защищенности: {f_score}%")
+
+# Эта строка идет БЕЗ отступов (в самом конце файла, на уровне основного кода)
 st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
