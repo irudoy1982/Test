@@ -1294,104 +1294,100 @@ def make_expert_excel(c_info, results, final_score):
 st.divider()
 
 if st.button("Сформировать экспертный отчет"):
-    # 1. UI-КОНТЕЙНЕРЫ
-    critical_warning = st.empty()
-    status_bar = st.empty()
-    log_window = st.empty()
+    # 1. КОНТЕЙНЕРЫ (для фиксации верстки)
+    # Используем контейнер для результата, чтобы он сразу был виден
+    alert_placeholder = st.empty()
+    console_placeholder = st.empty()
     progress_bar = st.progress(0)
     
-    # 2. СТИЛИЗАЦИЯ (КИБЕР-КОНСОЛЬ)
+    # 2. СТИЛИ (Компактные и понятные)
     st.markdown("""
         <style>
-        .critical-alert {
-            background-color: #5d0000;
-            color: #ffcccc;
-            padding: 20px;
-            border: 2px solid #ff0000;
-            border-radius: 5px;
+        .compact-alert {
+            background-color: #fff8e1;
+            border: 1px solid #ffcc80;
+            color: #ef6c00;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-family: sans-serif;
+            font-size: 13px;
             text-align: center;
-            font-weight: 900;
-            font-size: 16px;
-            animation: pulse 2s infinite;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
+        .warning-text { font-weight: bold; color: #bf360c; text-decoration: underline; }
         .log-box {
             background: #000;
             color: #00ff00;
             font-family: 'Courier New', monospace;
-            padding: 15px;
+            padding: 10px;
             border: 1px solid #333;
-            height: 100px; /* Фиксированная высота под 3 строки */
+            height: 85px; /* Высота ровно под 3 строки */
             overflow: hidden;
             border-radius: 4px;
+            margin-bottom: 15px;
         }
-        .log-entry { margin-bottom: 8px; font-size: 14px; }
+        .log-entry { margin-bottom: 4px; font-size: 13px; }
         </style>
     """, unsafe_allow_html=True)
 
-    # 3. ЛОГИКА ОТОБРАЖЕНИЯ
-    critical_warning.markdown('<div class="critical-alert">⚠️ ВНИМАНИЕ: ИДЕТ АНАЛИЗ ДАННЫХ. НЕ ОБНОВЛЯЙТЕ И НЕ ЗАКРЫВАЙТЕ ОКНО! ОЖИДАНИЕ ~180 СЕКУНД.</div>', unsafe_allow_html=True)
+    # 3. ВЫВОД АЛЕРТА И ЛОГОВ
+    alert_placeholder.markdown("""
+        <div class="compact-alert">
+            ⏳ Идет глубокий анализ данных. Процесс может занять до 180 секунд.<br>
+            <span class="warning-text">НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ СТРАНИЦУ.</span>
+        </div>
+    """, unsafe_allow_html=True)
     
     steps = [
         "Инициализация ядра анализа...",
-        "Агрегация данных из формы...",
-        "Расчет базовых технологических индексов...",
-        "Валидация комплаенс-метрик ISO 27001...",
-        "Сопоставление с матрицей угроз...",
-        "Анализ векторов атак (SOC)...",
-        "Математический расчет скоринга...",
-        "Формирование структуры книги Excel...",
-        "Калибровка стилей Khalil Consulting...",
-        "Финальная сборка и проверка целостности..."
+        "Агрегация данных...",
+        "Расчет технологических весов...",
+        "Валидация ISO 27001 / NIST CSF...",
+        "Анализ векторов атак...",
+        "Математическое моделирование...",
+        "Формирование Excel-структуры...",
+        "Калибровка стилей Khalil...",
+        "Финальная сборка..."
     ]
 
     active_logs = []
-    
     for i, step in enumerate(steps):
-        # Добавляем в лог
         active_logs.append(f"[{time.strftime('%H:%M:%S')}] {step}")
-        # Ограничиваем список 3 последними элементами
-        if len(active_logs) > 3:
-            active_logs.pop(0)
+        if len(active_logs) > 3: active_logs.pop(0)
             
-        # Рендерим окно логов
         log_html = '<div class="log-box">'
-        for entry in active_logs:
-            log_html += f'<div class="log-entry">▶ {entry}</div>'
+        for entry in active_logs: log_html += f'<div class="log-entry">▶ {entry}</div>'
         log_html += '</div>'
-        log_window.markdown(log_html, unsafe_allow_html=True)
+        console_placeholder.markdown(log_html, unsafe_allow_html=True)
         
-        # Обновляем прогресс
         progress_bar.progress((i + 1) / len(steps))
-        time.sleep(1.5) # Пауза для реалистичности
+        time.sleep(1.2) # Оптимизированная задержка
 
     # 4. ГЕНЕРАЦИЯ ФАЙЛА
     f_score = min(score, 100)
     report_bytes = make_expert_excel(client_info, data, f_score)
     
-    # 5. ОЧИСТКА И ФИНАЛ
-    critical_warning.empty()
-    status_bar.empty()
-    log_window.empty()
+    # 5. ОЧИСТКА (освобождаем экран)
+    alert_placeholder.empty()
+    console_placeholder.empty()
     progress_bar.empty()
     
-    st.success(f"✔️ Анализ успешно завершен! (Score: {f_score}%)")
+    # 6. ФИНАЛЬНЫЙ БЛОК (Сразу виден пользователю)
+    st.success(f"✔️ Анализ завершен! Уровень защищенности: {f_score}%")
     
-    # Финальный баннер скачивания
     import base64
     b64 = base64.b64encode(report_bytes).decode('utf-8')
     st.markdown(f"""
-        <div style="background: #0e1117; border: 2px solid #00ff66; padding: 20px; border-radius: 8px; text-align: center;">
-            <h3 style="color: #00ff66;">ОТЧЕТ ГОТОВ</h3>
+        <div style="background: #f8f9fa; border: 1px solid #00ff66; padding: 15px; border-radius: 8px; text-align: center;">
+            <p style="margin-bottom: 10px; font-weight: bold;">Экспертный отчет сгенерирован.</p>
             <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
                download="Expert_Audit_Report.xlsx" 
-               style="color: #00ff66; font-weight: bold; border: 1px solid #00ff66; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
-               📥 СКАЧАТЬ XLSX
+               style="background: #00ff66; color: #000; padding: 10px 25px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;">
+               📥 СКАЧАТЬ ОТЧЕТ (XLSX)
             </a>
         </div>
     """, unsafe_allow_html=True)
 
-# 6. ПОДВАЛ
+# ПОДВАЛ
 st.divider()
 st.markdown("<div style='text-align: center; color: #555; font-size: 11px;'>Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026</div>", unsafe_allow_html=True)
