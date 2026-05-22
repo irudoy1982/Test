@@ -1294,88 +1294,88 @@ def make_expert_excel(c_info, results, final_score):
 st.divider()
 
 if st.button("Сформировать экспертный отчет"):
-    # 1. Подготовка UI
-    status_container = st.empty()
-    log_container = st.empty()
-    progress_bar = st.progress(0)
-    
-    # CSS для кибер-стилистики
+    # 1. Создаем "Оболочку"
     st.markdown("""
         <style>
-        .cyber-warning {
-            background-color: #1a0f00;
-            color: #ff9900;
-            padding: 15px;
-            border-left: 5px solid #ff9900;
+        .cyber-console-wrapper {
+            background: #050505;
+            border: 1px solid #1a1a1a;
+            border-radius: 8px;
+            padding: 20px;
             font-family: 'Courier New', monospace;
-            font-size: 14px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             margin-bottom: 20px;
         }
-        .terminal-log {
-            background-color: #0e1117;
-            color: #00ff66;
-            font-family: 'Courier New', monospace;
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid #333;
-            height: 200px;
-            overflow-y: auto;
+        .cyber-header { color: #00FF41; font-size: 12px; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 1px; }
+        .log-line { color: #888; font-size: 13px; margin: 4px 0; }
+        .log-active { color: #00FF41; font-weight: bold; }
+        .warning-box {
+            background: #2a1a00; border: 1px solid #ffb000; color: #ffb000;
+            padding: 10px; font-size: 12px; border-radius: 4px; margin-bottom: 15px;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # 2. Список задач (процесс на 3 минуты)
+    # 2. Инициализация UI
+    status_placeholder = st.empty()
+    console_placeholder = st.empty()
+    
+    # 3. Список этапов
     steps = [
-        ("Инициализация криптографического ядра...", 2),
-        ("Валидация целостности данных формы...", 3),
-        ("Загрузка отраслевых матриц угроз (ISO 27001)...", 4),
-        ("Сопоставление ИТ-активов с векторами атак...", 4),
-        ("Математическое моделирование скоринга...", 5),
-        ("Компиляция структуры Excel-отчета...", 3),
-        ("Рендеринг стилей Khalil Consulting...", 2),
-        ("Финальная верификация данных...", 2)
+        "Установление соединения с базой знаний...",
+        "Агрегация данных из формы заявки...",
+        "Расчет технологических весов...",
+        "Валидация комплаенс-метрик (ISO/NIST)...",
+        "Кросс-табличный анализ угроз...",
+        "Математическая модель скоринга...",
+        "Формирование структуры Excel...",
+        "Применение корпоративного стиля...",
+        "Финальная проверка целостности..."
     ]
+
+    console_content = '<div class="cyber-console-wrapper">'
+    console_content += '<div class="cyber-header">// system_process_stream //</div>'
+    console_content += '<div class="warning-box">⚠️ ВНИМАНИЕ: Идет обработка данных. Не закрывайте вкладку до завершения операции (est. 180s).</div>'
     
-    # 3. Запуск процесса
-    total_steps = len(steps)
-    logs = []
+    # Визуализируем прогресс
+    progress_bar = st.progress(0)
     
-    status_container.markdown('<div class="cyber-warning">⚠️ СИСТЕМА ЗАНЯТА: Идет глубокий анализ. Пожалуйста, не обновляйте страницу и не закрывайте вкладку. Это займет около 180 секунд.</div>', unsafe_allow_html=True)
-    
-    for idx, (step, duration) in enumerate(steps):
-        # Апдейт лога
-        logs.append(f"> [{time.strftime('%H:%M:%S')}] {step}")
-        log_container.markdown(f'<div class="terminal-log">{"<br>".join(logs)}</div>', unsafe_allow_html=True)
+    for i, step in enumerate(steps):
+        # Обновляем прогресс
+        progress_bar.progress((i + 1) / len(steps))
         
-        # Симуляция работы (в реальности тут работает генерация)
-        time.sleep(duration)
-        progress_bar.progress((idx + 1) / total_steps)
+        # Строим логи (старые сохраняем, чтобы была история)
+        console_content += f'<div class="log-line">[{time.strftime("%H:%M:%S")}] <span class="log-active">RUNNING:</span> {step}</div>'
+        console_placeholder.markdown(console_content + '</div>', unsafe_allow_html=True)
+        
+        # Имитация "умного" ожидания (на 3 минуты)
+        time.sleep(2) 
 
     # 4. Генерация (твоя функция)
     f_score = min(score, 100)
     report_bytes = make_expert_excel(client_info, data, f_score)
     
-    # 5. Очистка и финал
-    status_container.empty()
-    log_container.empty()
+    # 5. Очистка и результат
     progress_bar.empty()
+    status_placeholder.empty()
+    console_placeholder.empty()
     
-    st.success(f"✔️ Экспертный анализ завершен (Score: {f_score}%)")
+    st.success("✅ Анализ успешно завершен.")
     
-    # Баннер скачивания
+    # 6. Финальный баннер
     import base64
     b64_report = base64.b64encode(report_bytes).decode('utf-8')
     st.markdown(f"""
-        <div style="background: #0e1117; border: 2px solid #00ff66; padding: 20px; border-radius: 8px; text-align: center;">
-            <h3 style="color: #00ff66;">ОТЧЕТ ГОТОВ К ВЫГРУЗКЕ</h3>
+        <div style="background: #0e1117; border: 1px solid #00FF41; padding: 20px; border-radius: 4px; text-align: center;">
+            <p style="color: #00FF41; font-family: monospace; font-size: 14px;">STATUS: 200 OK | DATA READY</p>
             <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_report}" 
                download="Expert_Audit_Report.xlsx" 
-               style="color: #00ff66; text-decoration: none; font-weight: bold; border: 1px solid #00ff66; padding: 10px 20px; border-radius: 4px;">
-               📥 СКАЧАТЬ XLSX
+               style="color: #00FF41; text-decoration: none; font-weight: bold; border: 1px solid #00FF41; padding: 10px 20px; display: inline-block; border-radius: 2px;">
+               СКАЧАТЬ ОТЧЕТ
             </a>
         </div>
     """, unsafe_allow_html=True)
 
-# 6. Твой фирменный подвал
+# 7. Твой подвал (строго как просил)
 st.divider()
-st.markdown("<div style='text-align: center; color: #666;'>Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #555; font-size: 11px;'>Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026</div>", unsafe_allow_html=True)
