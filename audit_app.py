@@ -1299,6 +1299,49 @@ if "cached_report_bytes" not in st.session_state:
 
 # --- ФИНАЛ ---
 st.divider()
+# =========================
+# CYBER UI STYLES
+# =========================
+
+st.markdown("""
+<style>
+
+.cyber-alert-box {
+    background-color: #fff8e1;
+    border: 1px solid #ffcc80;
+    color: #ef6c00;
+    padding: 15px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 14px;
+    margin-bottom: 20px;
+    font-weight: bold;
+}
+
+.cyber-log-box {
+    background: #000;
+    color: #00ff66;
+    font-family: monospace;
+    padding: 15px;
+    border: 1px solid #333;
+    height: 120px;
+    overflow: hidden;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    font-size: 13px;
+}
+
+.cyber-download-box {
+    background: #000;
+    border: 2px solid #00ff66;
+    padding: 30px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0,255,102,0.15);
+}
+
+</style>
+""", unsafe_allow_html=True)
 if validation_errors:
     st.error(f"🚨 Формирование отчета недоступно. Ошибок: {len(validation_errors)}")
     for err in set(validation_errors): st.write(f"- {err}")
