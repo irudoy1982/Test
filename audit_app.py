@@ -1298,97 +1298,90 @@ from streamlit.components.v1 import html # Импорт для авто-скро
 st.divider()
 
 if st.button("Сформировать экспертный отчет"):
-    # 1. Принудительный скролл вниз
+    # Принудительный скролл вниз (первичный)
     st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
     
-    # 2. Инициализация UI
+    # Контейнеры для отрисовки
     alert_placeholder = st.empty()
     console_placeholder = st.empty()
     progress_bar = st.progress(0)
     
-    # Стили
+    # CSS - Кибер-стиль
     st.markdown("""
         <style>
-        .compact-alert { 
-            background-color: #fff8e1; border: 1px solid #ffcc80; color: #ef6c00; 
-            padding: 12px; border-radius: 6px; text-align: center; font-size: 14px; 
-            margin-bottom: 15px; font-weight: 500;
+        .cyber-alert { 
+            background-color: #1a1a1a; border-left: 4px solid #ffcc00; color: #ffcc00; 
+            padding: 15px; border-radius: 4px; text-align: center; font-size: 14px; 
+            margin-bottom: 15px; font-weight: bold; font-family: 'Courier New', monospace;
         }
-        .log-box { 
-            background: #000; color: #00ff00; font-family: monospace; 
-            padding: 12px; border: 1px solid #333; height: 95px; 
-            overflow: hidden; border-radius: 4px; margin-bottom: 15px; 
+        .cyber-log { 
+            background: #000; color: #00ff00; font-family: 'Courier New', monospace; 
+            padding: 15px; border: 1px solid #333; height: 95px; overflow: hidden; 
+            border-radius: 4px; margin-bottom: 15px; font-size: 13px;
+        }
+        .cyber-download-box {
+            background: #0e0e0e; border: 1px solid #00ff66; padding: 25px; 
+            border-radius: 8px; text-align: center; box-shadow: 0 0 15px rgba(0, 255, 102, 0.1);
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # Вернули твой "спокойный" алерт
-    alert_placeholder.markdown("""
-        <div class="compact-alert">
-            ⏳ Идет глубокий анализ. Процесс может занять до 180 секунд.<br>
-            <b>НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ СТРАНИЦУ.</b>
-        </div>
-    """, unsafe_allow_html=True)
+    # Уведомление
+    alert_placeholder.markdown('<div class="cyber-alert">⚠️ АНАЛИЗ ЗАПУЩЕН. НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ ОКНО (до 180 сек).</div>', unsafe_allow_html=True)
     
-    steps = ["Инициализация", "Сбор данных", "Валидация ISO", "Матрица угроз", "Расчет скоринга", "Компиляция Excel", "Оформление стилей", "Финализация"]
+    steps = ["Инициализация ядра...", "Агрегация данных...", "Валидация ISO...", "Анализ векторов атак...", "Расчет скоринга...", "Компиляция Excel...", "Калибровка стилей...", "Финализация..."]
     active_logs = []
     progress = 0
     
-    # 3. Цикл логов
+    # Цикл обработки
     for step in steps:
-        active_logs.append(f"[{time.strftime('%H:%M:%S')}] {step}...")
+        active_logs.append(f"[{time.strftime('%H:%M:%S')}] {step}")
         if len(active_logs) > 3: active_logs.pop(0)
+        console_placeholder.markdown(f'<div class="cyber-log">' + "".join([f'<div>▶ {line}</div>' for line in active_logs]) + '</div>', unsafe_allow_html=True)
         
-        log_html = '<div class="log-box">' + "".join([f'<div style="font-size:13px; margin-bottom:4px;">▶ {line}</div>' for line in active_logs]) + '</div>'
-        console_placeholder.markdown(log_html, unsafe_allow_html=True)
-        
-        progress += random.randint(8, 18)
+        progress += random.randint(8, 15)
         progress_bar.progress(min(progress, 95))
-        time.sleep(random.uniform(0.7, 1.5))
+        time.sleep(random.uniform(0.5, 1.2))
 
-    # 4. Генерация
+    # Генерация файла
     f_score = min(score, 100)
     report_bytes = make_expert_excel(client_info, data, f_score)
     
-    # 5. ОТПРАВКА В ТЕЛЕГРАМ (С ПОЛНЫМИ ДАННЫМИ)
+    # Отправка в ТЕЛЕГРАМ (все поля динамически)
     try:
-        comp_name = client_info.get('Наименование компании', 'Не указана')
-        contact_person = client_info.get('ФИО контактного лица', 'Не указан')
-        phone = client_info.get('Контактный телефон', 'Нет')
-        email = client_info.get('Email', 'Нет')
-        
-        tg_message = (
-            f"🔔 *Новый экспертный отчет!*\n\n"
-            f"🏢 *Компания:* {comp_name}\n"
-            f"👤 *Контакт:* {contact_person}\n"
-            f"📞 *Тел:* {phone}\n"
-            f"✉️ *Email:* {email}\n"
-            f"🛡️ *Итоговый скоринг:* {f_score}%"
-        )
+        # Собираем все данные из client_info
+        details_str = "\n".join([f"• *{k}:* {v}" for k, v in client_info.items()])
+        tg_message = f"🔔 *Новый экспертный отчет!*\n\n{details_str}\n\n🛡️ *Итоговый скоринг:* {f_score}%"
         
         if 'TOKEN' in globals() and 'CHAT_ID' in globals():
-            files = {'document': (f"Audit_{comp_name.replace(' ', '_')}.xlsx", report_bytes)}
+            files = {'document': (f"Audit_{client_info.get('Наименование компании', 'Report')}.xlsx", report_bytes)}
             requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
                           data={"chat_id": CHAT_ID, "caption": tg_message, "parse_mode": "Markdown"}, 
                           files=files, timeout=10)
     except Exception as e:
         st.error(f"Telegram error: {e}")
 
-    # 6. ФИНАЛ
-    progress_bar.progress(100)
+    # Очистка и финал
     alert_placeholder.empty()
     console_placeholder.empty()
     progress_bar.empty()
     
-    st.success(f"✔️ Анализ завершен! (Score: {f_score}%)")
+    # Принудительный скролл вниз (второй, чтобы кнопка точно попала в фокус)
+    st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
     
+    st.success(f"✔️ Анализ успешно завершен! (Score: {f_score}%)")
+    
+    # ИБ-стиль кнопки
     import base64
     b64 = base64.b64encode(report_bytes).decode('utf-8')
     st.markdown(f"""
-        <div style="background: #f8f9fa; border: 1px solid #00ff66; padding: 15px; border-radius: 8px; text-align: center;">
+        <div class="cyber-download-box">
+            <h3 style="color: #00ff66; margin-top:0;">SECURITY AUDIT COMPLETE</h3>
+            <p style="color: #fff; font-size: 12px; margin-bottom: 20px;">Генерация выполнена. Файл готов к загрузке.</p>
             <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
-               download="Expert_Audit_Report.xlsx" style="background: #00ff66; color: #000; padding: 10px 25px; text-decoration: none; font-weight: bold; border-radius: 4px;">
-               📥 СКАЧАТЬ ОТЧЕТ
+               download="Expert_Audit_Report.xlsx" 
+               style="background: #00ff66; color: #000; padding: 12px 30px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block; font-family: monospace;">
+               📥 СКАЧАТЬ ОТЧЕТ (XLSX)
             </a>
         </div>
     """, unsafe_allow_html=True)
