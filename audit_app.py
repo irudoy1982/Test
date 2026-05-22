@@ -1298,44 +1298,35 @@ if validation_errors:
 
 if st.button("Сформировать экспертный отчет"):
     
-    # 1. Подготовка контейнеров
+    # === 1. ИНИЦИАЛИЗАЦИЯ И СИМУЛЯЦИЯ ЛОГОВ ===
     status_header = st.empty()
     warning_placeholder = st.empty()
-    
-    # Сюда будут динамически транслироваться наши 3 строки, не раздувая страницу вверх
     log_matrix_placeholder = st.empty() 
     
     warning_placeholder.warning("⚠️ ВНИМАНИЕ: Выполняется сложный анализ матрицы угроз. Пожалуйста, не закрывайте вкладку...")
     status_header.markdown("### 📊 Статус: *Кросс-табличный анализ рисков...*")
 
-    # Наш список шагов
     steps = [
         "Расчет базовых технологических индексов и весов уязвимостей...",
         "Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...",
-        "Сопоставление ИТ-ландшафта с отраслевой матрицей угроз и расчет рекомендаций...",
+        "Сопоставление ИТ-ландшафта с отраслевой матрицах угроз и расчет рекомендаций...",
         "Выполнение математических вычислений и автоматический подбор тех. стека...",
         "Формирование структуры книги Excel и генерация динамических таблиц...",
         "Применение корпоративного стиля Khalil Consulting: калибровка ячеек..."
     ]
 
-    # Ротация шагов: держим на экране строго 3 строчки (Прошлый, Текущий, Будущий)
     import time
     for i in range(len(steps)):
         current_time = time.strftime('%H:%M:%S')
-        
-        # Конструируем контент для 3-строчного окна
         log_content = "<div style='font-family: monospace; line-height: 1.6;'>"
         
-        # 1-я строка: Что было шагом ранее
         if i > 0:
             log_content += f"<div style='color: #2e7d32; opacity: 0.6;'>✅ `[{current_time}]` {steps[i-1]}</div>"
         else:
             log_content += "<div style='color: #666; opacity: 0.3;'>... ожидание запуска системы ...</div>"
             
-        # 2-я строка: Что фигачит ПРЯМО СЕЙЧАС (выделяем ярко)
         log_content += f"<div style='color: #f57c00; font-weight: bold; margin: 4px 0;'>🔄 `[{current_time}]` {steps[i]}</div>"
         
-        # 3-я строка: Что будет следующим
         if i < len(steps) - 1:
             log_content += f"<div style='color: #757575; opacity: 0.5;'>⏳ `[очередь]` {steps[i+1]}</div>"
         else:
@@ -1343,27 +1334,29 @@ if st.button("Сформировать экспертный отчет"):
             
         log_content += "</div>"
         
-        # Перерисовываем контейнер (он не растет вниз, а просто обновляет эти 3 строки)
         log_matrix_placeholder.markdown(log_content, unsafe_allow_html=True)
-        time.sleep(1.0) # Даем пользователю считанные секунды посмотреть на прогресс
+        time.sleep(0.8)
 
-    # --- 2. ГАРАНТИРОВАННАЯ ОТПРАВКА В TELEGRAM (Исправленный сбор контактов) ---
+    # === 2. РАСЧЕТ СКОРИНГА И ГЕНЕРАЦИЯ EXCEL (Исправлено) ===
+    # Считаем итоговый балл на основе чекбоксов ИБ
+    f_score = min(score, 100) 
+    
+    # Вызываем твою функцию и получаем байты файла
+    report_bytes = make_expert_excel(client_info, data, f_score)
+
+    # === 3. ОТПРАВКА В TELEGRAM ===
     try:
         import requests
+        comp_name = client_info.get('Наименование компании') or 'Не указана'
         
-        # Достаем имя компании
-        comp_name = client_info.get('Наименование компании') or client_info.get('Компания') or 'Не указана'
-        
-        # Вытаскиваем абсолютно все возможные поля контактов, которые заполнил пользователь
+        # Собираем контакты из тех полей, которые реально объявлялись в шапке
         contact_parts = []
-        for key in ['ФИО', 'Контактное лицо', 'Телефон', 'Контактный телефон', 'Email', 'Почта']:
+        for key in ['ФИО контактного лица', 'Должность', 'Контактный телефон', 'Email']:
             val = client_info.get(key)
             if val:
                 contact_parts.append(str(val))
-        
         contact_str = " | ".join(contact_parts) if contact_parts else "Не указаны"
 
-        # Собираем текстовый пакет
         tg_message = (
             f"🔔 *Сгенерирован экспертный отчет!*\n\n"
             f"🏢 *Компания:* {comp_name}\n"
@@ -1372,28 +1365,22 @@ if st.button("Сформировать экспертный отчет"):
             f"📅 *Дата:* {time.strftime('%d.%m.%Y %H:%M:%S')}"
         )
         
-        # Отправляем текстовые данные
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": tg_message, "parse_mode": "Markdown"}, timeout=5)
-        
-        # Отправляем сам сгенерированный Excel-файл
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"📁 Отчет: {comp_name}"}, files={'document': (f"Audit_v10_{comp_name.replace(' ', '_')}.xlsx", report_bytes)}, timeout=10)
-        
+        if TOKEN and CHAT_ID:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": tg_message, "parse_mode": "Markdown"}, timeout=5)
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"📁 Отчет: {comp_name}"}, files={'document': (f"Audit_v10_{comp_name.replace(' ', '_')}.xlsx", report_bytes)}, timeout=10)
     except Exception as tg_err:
         print(f"Ошибка Telegram: {tg_err}")
 
-    # --- 3. ОЧИСТКА И ФИНАЛЬНЫЙ ВЫВОД ---
-    # Полностью убираем временную 3-строчную ленту логов и желтый варнинг, чтобы не занимать место!
+    # === 4. ОЧИСТКА ЭКРАНА И ВЫВОД МОНОЛИТНОГО БАННЕРА ===
     log_matrix_placeholder.empty()
     warning_placeholder.empty()
     
-    # Переключаем главный статус в успех
     status_header.markdown("### ✅ Статус: *Экспертный анализ успешно завершен!*")
     
     import base64
     company_filename = comp_name.replace(" ", "_")
     b64_report = base64.b64encode(report_bytes).decode('utf-8')
 
-    # Отрисовываем наш красивый монолитный баннер, подогнанный тютелька в тютельку
     st.markdown(f"""
     <style>
         .cyber-monolith-banner {{
@@ -1431,6 +1418,3 @@ if st.button("Сформировать экспертный отчет"):
     """, unsafe_allow_html=True)
 
     st.success(f"✔️ Экспертный анализ успешно завершен. Итоговый уровень защищенности: {f_score}%")
-
-# Подвал приложения (БЕЗ отступов у левого края файла)
-st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
