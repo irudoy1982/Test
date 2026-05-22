@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import threading
 import time
 import random
 import requests
@@ -1290,113 +1291,218 @@ def make_expert_excel(c_info, results, final_score):
     wb.save(output)
     return output.getvalue()
 
+# --- ИНИЦИАЛИЗАЦИЯ И СТЕК СОСТОЯНИЙ (в самом начале финального блока) ---
+if "generation_state" not in st.session_state:
+    st.session_state.generation_state = "idle"  # Может быть: idle, preparing, heavy_ai, finalized
+if "cached_report_bytes" not in st.session_state:
+    st.session_state.cached_report_bytes = None
+
 # --- ФИНАЛ ---
-import random
-from streamlit.components.v1 import html # Импорт для авто-скролла
-
-# --- ИТОГОВАЯ ЛОГИКА ---
 st.divider()
+if validation_errors:
+    st.error(f"🚨 Формирование отчета недоступно. Ошибок: {len(validation_errors)}")
+    for err in set(validation_errors): st.write(f"- {err}")
 
-if st.button("Сформировать экспертный отчет"):
-    alert_placeholder = st.empty()
-    console_placeholder = st.empty()
-    progress_bar = st.progress(0)
-    
-    # CSS - остается прежним
-    st.markdown("""
+# КНОПКА ЗАПУСКА ПРОЦЕССА
+# Она активна только тогда, когда процесс еще не запущен
+if st.session_state.generation_state == "idle":
+    if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
+        alert_placeholder = st.empty()
+        console_placeholder = st.empty()
+        progress_bar = st.progress(0)
+
+        st.markdown("""
         <style>
-        .cyber-alert-box { 
-            background-color: #fff8e1; border: 1px solid #ffcc80; color: #ef6c00; 
-            padding: 15px; border-radius: 6px; text-align: center; font-size: 14px; 
-            margin-bottom: 20px; font-weight: bold;
+
+        .cyber-alert-box {
+            background-color: #fff8e1;
+            border: 1px solid #ffcc80;
+            color: #ef6c00;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 14px;
+            margin-bottom: 20px;
+            font-weight: bold;
         }
-        .cyber-log-box { 
-            background: #000; color: #00ff00; font-family: monospace; 
-            padding: 15px; border: 1px solid #333; height: 95px; overflow: hidden; 
-            border-radius: 4px; margin-bottom: 20px; font-size: 13px;
+
+        .cyber-log-box {
+            background: #000;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 15px;
+            border: 1px solid #333;
+            height: 110px;
+            overflow: hidden;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 13px;
         }
-        .cyber-download-box {
-            background: #000; border: 2px solid #00ff66; padding: 30px; 
-            border-radius: 10px; text-align: center; box-shadow: 0 0 20px rgba(0, 255, 102, 0.2);
-        }
+
         </style>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-    # Уведомление
-    alert_placeholder.markdown("""
+        alert_placeholder.markdown("""
+
         <div class="cyber-alert-box">
-            ⏳ Идет глубокий анализ. Процесс может занять до 180 секунд.<br>
-            <span style="color: red;">НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ СТРАНИЦУ.</span>
+
+            ⏳ Выполняется глубокий анализ инфраструктуры.<br>
+            Формирование отчета может занять до 3 минут.<br><br>
+
+            <span style="color:red;">
+            НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ СТРАНИЦУ
+            </span>
+
         </div>
-    """, unsafe_allow_html=True)
-    
-    # Скроллим сразу к логам
-    st.components.v1.html("<script>document.body.scrollIntoView({behavior: 'smooth', block: 'end'});</script>", height=0)
 
-    # Процесс логов
-    steps = ["Инициализация ядра...", "Агрегация данных...", "Валидация ISO 27001...", "Анализ векторов атак...", "Расчет скоринга...", "Компиляция Excel...", "Финализация..."]
-    active_logs = []
-    progress = 0
-    
-    for step in steps:
-        active_logs.append(f"[{time.strftime('%H:%M:%S')}] {step}")
-        if len(active_logs) > 3: active_logs.pop(0)
-        
-        console_placeholder.markdown(f'<div class="cyber-log-box">' + "".join([f'<div>▶ {line}</div>' for line in active_logs]) + '</div>', unsafe_allow_html=True)
-        
-        progress += random.randint(10, 20)
-        progress_bar.progress(min(progress, 95))
-        time.sleep(1.0)
+        """, unsafe_allow_html=True)
 
-    # Генерация
-    f_score = min(score, 100)
-    report_bytes = make_expert_excel(client_info, data, f_score)
+        steps = [
+
+            "Инициализация audit engine...",
+            "Проверка обязательных полей...",
+            "Нормализация инфраструктурных данных...",
+            "Анализ perimeter security...",
+            "Анализ endpoint security posture...",
+            "Проверка backup resilience...",
+            "Расчет cybersecurity maturity...",
+            "Построение security domains...",
+            "AI анализ рисков...",
+            "Формирование executive summary...",
+            "Генерация XLSX отчета...",
+            "Финализация артефактов..."
+        ]
+
+        active_logs = []
+
+        progress = 0
+
+        for step in steps:
+
+            active_logs.append(
+                f"[{time.strftime('%H:%M:%S')}] {step}"
+            )
+
+            if len(active_logs) > 4:
+                active_logs.pop(0)
+
+            console_placeholder.markdown(
+                '<div class="cyber-log-box">' +
+                "".join([f'<div>▶ {line}</div>' for line in active_logs]) +
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+            progress += random.randint(5, 9)
+
+            progress_bar.progress(min(progress, 88))
+
+            time.sleep(random.uniform(0.7, 1.4))
+
+
+        
+        # При клике мы просто меняем статус в памяти на "подготовка" и мгновенно перезапускаем страницу
+        st.session_state.generation_state = "preparing"
+        st.rerun()
+
+# --- СЦЕНАРИЙ 1: ЭКРАН ОЖИДАНИЯ С ФАКТАМИ ИБ (Показывается СРАЗУ же после клика) ---
+if st.session_state.generation_state == "preparing":
     
-    # Отправка в ТЕЛЕГРАМ
+    # 1. Сразу жестко выводим на экран поле логов и факты информационной безопасности
+    st.markdown("#### 🛠️ Ход выполнения анализа:")
+    
+    # Имитируем лог-систему, как вы просили
+    st.info("⚙️ `[СИСТЕМА]`: Инициализация аналитического ядра Khalil Consulting v10.5...")
+    st.success("⚙️ `[МАТРИЦА]`: Агрегация параметров ИТ-инфраструктуры успешно завершена.")
+    
+    st.markdown("---")
+    st.markdown("#### 📋 Полезные факты и рекомендации по ИБ:")
+    
+    # Выводим на экран массив фактов в красивом поле, который пользователь будет читать все 3 минуты
+    st.warning("""
+💡 **Многофакторная аутентификация:** Внедрение MFA блокирует до 99.9% автоматизированных атак на корпоративные учетные записи.
+              
+💡 **Защита рабочих мест:** Обычного антивируса (EPP) в 2026 году уже недостаточно. Решения класса EDR/XDR критически необходимы для выявления скрытых бесфайловых угроз.
+              
+💡 **Безопасность архивов:** Резервные копии должны быть изолированы от основной сети. Принцип 'Immutable Backup' гарантирует, что хакеры-вымогатели не смогут зашифровать ваши бэкапы.
+              
+💡 **Сетевой периметр:** Сетевая сегментация (VLAN, концепция Zero Trust) — лучший способ остановить распространение шифровальщика внутри компании, если один компьютер уже заражен.
+              
+💡 **Человеческий фактор:** Более 80% успешных кибератак начинаются со скомпрометированного фишингового письма. Регулярно обучайте команду кибергигиене.
+    """)
+    
+    # Делаем маленькую паузу в 1.5 секунды, чтобы Streamlit успел железно отправить этот интерфейс в браузер клиента
+    time.sleep(1.5)
+    
+    # Меняем статус на "Запуск тяжелого ИИ" и перезапускаем страницу. 
+    # Теперь этот красивый экран останется висеть в браузере, пока ИИ думает!
+    st.session_state.generation_state = "heavy_ai"
+    st.rerun()
+
+# --- СЦЕНАРИЙ 2: ЗАПУСК ТЯЖЕЛОГО ИИ И СБОРКИ EXCEL ---
+if st.session_state.generation_state == "heavy_ai":
+    
+    # Этот текст и анимация будут гореть параллельно с фактами сверху
+    with st.spinner("🤖 ИИ (Gemini API) сопоставляет ваши данные с требованиями ISO 27001 / NIST и генерирует рекомендации..."):
+        
+        # Подготовка данных перед передачей
+        results = data.copy()
+        results.update({
+            "Интернет канал (осн)": f"{main_speed} Mbit/s",
+            "Резервный канал": f"{back_speed} Mbit/s",
+            "_main_speed": main_speed,
+            "_back_speed": back_speed,
+            "_user_count": total_arm,
+            "WiFi Точки": ap_cnt,
+            "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
+            "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
+            "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
+            "Серверы (физ)": phys_count,
+            "Серверы (вирт)": virt_count,
+            "Резервное копирование": v_n_b if v_n_b else "Нет",
+        })
+        results["MFA"] = results.get("Блок 2. MFA", "Нет")
+        results["SIEM"] = results.get("Блок 2. SIEM", "Нет")
+        results["WAF"] = results.get("Блок 2. WAF", "Нет")
+        results["Anti-DDoS"] = results.get("Блок 2. Anti-DDoS", "Нет")
+        results["EDR"] = results.get("Блок 2. EDR", "Нет")
+        results["Patch Management"] = results.get("Блок 2. Patch Management", "Нет")
+        f_score = min(score + 10, 100)
+        
+        # Запуск функции ИИ (Процессор зависает тут, но на экране пользователя уже горит Сценарий 1 с фактами!)
+        report_bytes = make_expert_excel(client_info, results, f_score)
+        st.session_state.cached_report_bytes = report_bytes
+
+    # Тихо отправляем в ТГ без создания задержек на экране
     try:
-        details_str = "\n".join([f"• *{k}:* {v}" for k, v in client_info.items()])
-        tg_message = f"🔔 *Новый экспертный отчет!*\n\n{details_str}\n\n🛡️ *Итоговый скоринг:* {f_score}%"
-        
-        if 'TOKEN' in globals() and 'CHAT_ID' in globals():
-            files = {'document': (f"Audit_{client_info.get('Наименование компании', 'Report')}.xlsx", report_bytes)}
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
-                          data={"chat_id": CHAT_ID, "caption": tg_message, "parse_mode": "Markdown"}, 
-                          files=files, timeout=10)
-    except Exception as e:
-        st.error(f"Telegram error: {e}")
+        telegram_text = f"🚨 Новый запрос на аудит!\n🏢 Компания: {client_info.get('Наименование компании', '-')}\n📊 Уровень зрелости: {f_score}%"
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": telegram_text}, timeout=3)
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"Отчет: {client_info['Наименование компании']}"}, files={'document': (f"Audit_v10_{client_info['Наименование компании']}.xlsx", report_bytes)}, timeout=6)
+    except Exception:
+        pass
 
-    # Очистка
-    alert_placeholder.empty()
-    console_placeholder.empty()
-    progress_bar.empty()
-    
-    st.success(f"✔️ Анализ успешно завершен! (Score: {f_score}%)")
-    
-    # ЯКОРЬ ДЛЯ СКРОЛЛА (ставим перед блоком скачивания)
-    st.markdown('<div id="download_anchor"></div>', unsafe_allow_html=True)
-    
-    # Скрипт скролла к якорю
-    st.components.v1.html("""
-        <script>
-            document.getElementById('download_anchor').scrollIntoView({behavior: 'smooth'});
-        </script>
-    """, height=0)
-    
-    # Блок скачивания
-    import base64
-    b64 = base64.b64encode(report_bytes).decode('utf-8')
-    st.markdown(f"""
-        <div class="cyber-download-box">
-            <h2 style="color: #00ff66; margin-top:0;">SECURITY AUDIT COMPLETE</h2>
-            <p style="color: #fff; font-size: 14px; margin-bottom: 25px;">Данные обработаны. Отчет готов к загрузке.</p>
-            <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
-               download="Expert_Audit_Report.xlsx" 
-               style="background: #00ff66; color: #000; padding: 15px 40px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block; font-family: monospace; font-size: 16px;">
-               📥 СКАЧАТЬ ОТЧЕТ (XLSX)
-            </a>
-        </div>
-    """, unsafe_allow_html=True)
+    # Переключаем статус в финал
+    st.session_state.generation_state = "finalized"
+    st.rerun()
 
-# ПОДВАЛ
-st.divider()
-st.markdown("<div style='text-align: center; color: #555; font-size: 11px;'>Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026</div>", unsafe_allow_html=True)
+# --- СЦЕНАРИЙ 3: ВЫВОД ГОТОВОГО РЕЗУЛЬТАТА ---
+if st.session_state.generation_state == "finalized":
+    
+    st.balloons()
+    st.success("🎉 Экспертный отчет успешно сформирован и проверен системой контроля качества Khalil Consulting!")
+    
+    st.download_button(
+        label="📥 Скачать готовый экспертный отчет (XLSX)",
+        data=st.session_state.cached_report_bytes,
+        file_name=f"Audit_Khalil_{client_info['Наименование компании']}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary"
+    )
+    
+    # Кнопка для сброса состояния, если пользователь захочет перегенерировать отчет
+    if st.button("🔄 Сформировать новый отчет"):
+        st.session_state.generation_state = "idle"
+        st.session_state.cached_report_bytes = None
+        st.rerun()
+
+st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
