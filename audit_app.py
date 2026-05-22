@@ -1291,64 +1291,91 @@ def make_expert_excel(c_info, results, final_score):
     return output.getvalue()
 
 # --- ФИНАЛ ---
-# --- КНОПКА С ФИНАЛЬНЫМ КИБЕР-ДИЗАЙНОМ ---
 st.divider()
 
 if st.button("Сформировать экспертный отчет"):
-    # 1. Создаем контейнеры
-    warning_container = st.empty()
+    # 1. Подготовка UI
+    status_container = st.empty()
     log_container = st.empty()
+    progress_bar = st.progress(0)
     
-    # 2. Выводим черный баннер
-    warning_container.markdown("""
-        <div style="background-color: #000; color: #ff4b4b; padding: 25px; border-radius: 8px; 
-        border: 2px solid #ff4b4b; text-align: center; font-family: 'Courier New', monospace; 
-        font-weight: bold; font-size: 18px; margin-bottom: 20px;">
-        ⚠️ ВНИМАНИЕ: АНАЛИЗ ЗАПУЩЕН. НЕ ЗАКРЫВАЙТЕ ВКЛАДКУ!
-        </div>
+    # CSS для кибер-стилистики
+    st.markdown("""
+        <style>
+        .cyber-warning {
+            background-color: #1a0f00;
+            color: #ff9900;
+            padding: 15px;
+            border-left: 5px solid #ff9900;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .terminal-log {
+            background-color: #0e1117;
+            color: #00ff66;
+            font-family: 'Courier New', monospace;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #333;
+            height: 200px;
+            overflow-y: auto;
+        }
+        </style>
     """, unsafe_allow_html=True)
-    
-    # 3. Логи с "прокруткой"
+
+    # 2. Список задач (процесс на 3 минуты)
     steps = [
-        "Инициализация ядра...",
-        "Агрегация данных...",
-        "Расчет индексов...",
-        "Валидация ISO 27001...",
-        "Анализ угроз...",
-        "Генерация XLSX...",
-        "Калибровка стилей..."
+        ("Инициализация криптографического ядра...", 2),
+        ("Валидация целостности данных формы...", 3),
+        ("Загрузка отраслевых матриц угроз (ISO 27001)...", 4),
+        ("Сопоставление ИТ-активов с векторами атак...", 4),
+        ("Математическое моделирование скоринга...", 5),
+        ("Компиляция структуры Excel-отчета...", 3),
+        ("Рендеринг стилей Khalil Consulting...", 2),
+        ("Финальная верификация данных...", 2)
     ]
     
-    for i in range(len(steps)):
-        log_text = "<div style='background: #111; color: #00ff66; padding: 15px; border-radius: 5px; font-family: monospace;'>"
-        # Выводим последние 3 шага
-        for j in range(max(0, i-2), i + 1):
-            log_text += f"<div>[{time.strftime('%H:%M:%S')}] {steps[j]}</div>"
-        log_text += "</div>"
-        log_container.markdown(log_text, unsafe_allow_html=True)
-        time.sleep(0.7)
+    # 3. Запуск процесса
+    total_steps = len(steps)
+    logs = []
     
-    # 4. Генерация
+    status_container.markdown('<div class="cyber-warning">⚠️ СИСТЕМА ЗАНЯТА: Идет глубокий анализ. Пожалуйста, не обновляйте страницу и не закрывайте вкладку. Это займет около 180 секунд.</div>', unsafe_allow_html=True)
+    
+    for idx, (step, duration) in enumerate(steps):
+        # Апдейт лога
+        logs.append(f"> [{time.strftime('%H:%M:%S')}] {step}")
+        log_container.markdown(f'<div class="terminal-log">{"<br>".join(logs)}</div>', unsafe_allow_html=True)
+        
+        # Симуляция работы (в реальности тут работает генерация)
+        time.sleep(duration)
+        progress_bar.progress((idx + 1) / total_steps)
+
+    # 4. Генерация (твоя функция)
     f_score = min(score, 100)
     report_bytes = make_expert_excel(client_info, data, f_score)
     
     # 5. Очистка и финал
-    warning_container.empty()
+    status_container.empty()
     log_container.empty()
+    progress_bar.empty()
     
-    st.success("✅ Анализ успешно завершен!")
+    st.success(f"✔️ Экспертный анализ завершен (Score: {f_score}%)")
     
     # Баннер скачивания
     import base64
-    b64 = base64.b64encode(report_bytes).decode('utf-8')
+    b64_report = base64.b64encode(report_bytes).decode('utf-8')
     st.markdown(f"""
         <div style="background: #0e1117; border: 2px solid #00ff66; padding: 20px; border-radius: 8px; text-align: center;">
-            <h3 style="color: #00ff66;">SECURITY AUDIT COMPLETE</h3>
-            <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
-               download="Report.xlsx" style="color: #fff; font-weight: bold;">📥 СКАЧАТЬ ОТЧЕТ</a>
+            <h3 style="color: #00ff66;">ОТЧЕТ ГОТОВ К ВЫГРУЗКЕ</h3>
+            <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_report}" 
+               download="Expert_Audit_Report.xlsx" 
+               style="color: #00ff66; text-decoration: none; font-weight: bold; border: 1px solid #00ff66; padding: 10px 20px; border-radius: 4px;">
+               📥 СКАЧАТЬ XLSX
+            </a>
         </div>
     """, unsafe_allow_html=True)
 
-# --- ПОДВАЛ ---
+# 6. Твой фирменный подвал
 st.divider()
-st.markdown("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
+st.markdown("<div style='text-align: center; color: #666;'>Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026</div>", unsafe_allow_html=True)
