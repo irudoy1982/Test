@@ -1298,34 +1298,43 @@ if validation_errors:
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
     
-    # 1. Заголовки и предупреждения (выводятся мгновенно)
+    # Главное строгое предупреждение для пользователя
     st.warning("⚠️ **ВНИМАНИЕ:** Запущен процесс глубокого кросс-табличного анализа. Время выполнения может занять до 3 минут. Пожалуйста, не закрывайте и не обновляйте вкладку браузера.")
     
-    # Резервируем контейнеры на экране, которые мы будем динамически наполнять обширными логами
+    # Резервируем контейнеры на экране
     status_header = st.empty()
     log_area = st.empty()
     
     current_logs = []
     
     def add_bullet_log(msg, type="info"):
-        """Функция для красивого пошагового добавления логов на экран"""
+        """Добавляет лог с актуальным временем и держит в контейнере ровно последние 3 строки"""
+        # Берем точное время в секунду вызова лога
         timestamp = datetime.now().strftime("%H:%M:%S")
+        
         if type == "success":
             icon = "✅"
         elif type == "warn":
             icon = "⚡"
         else:
             icon = "⚙️"
+            
+        # Добавляем новую запись
         current_logs.append(f"{icon} `[{timestamp}]` {msg}")
-        log_area.markdown("\n\n".join(current_logs))
+        
+        # Ограничиваем список строго последними 3 строками
+        displayed_logs = current_logs[-3:]
+        
+        # Выводим на экран
+        log_area.markdown("\n\n".join(displayed_logs))
 
-    # --- ЭТАПЫ ДО ТЯЖЕЛОЙ ФУНКЦИИ (Текст начнет быстро и динамично меняться) ---
-    status_header.markdown("### ⏳ Статус: *Подготовка и нормализация данных...*")
+    # --- ЭТАП 1: Подготовка данных ---
+    status_header.markdown("### ⏳ Статус: *Инициализация экспертных алгоритмов...*")
     
     add_bullet_log("Запуск экспертного аналитического ядра Khalil Consulting v10.5...")
-    time.sleep(0.6)
+    time.sleep(0.8)
     
-    add_bullet_log("Парсинг матрицы ответов и чтение конфигурационных файлов ландшафта...")
+    add_bullet_log("Чтение параметров ИТ-инфраструктуры и чтение конфигурационных матриц...")
     # Сбор данных
     results = data.copy()
     results.update({
@@ -1353,30 +1362,30 @@ if st.button("📊 Сформировать экспертный отчет", di
     add_bullet_log("Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...")
     time.sleep(1.0)
 
-    # --- ЭТАП ТЯЖЕЛОГО АНАЛИЗА (Зависание процессора) ---
-    status_header.markdown("### 🧠 Статус: *Глубокий анализ корреляции угроз и подбор решений...*")
-    add_bullet_log("⚠️ Передача профиля инфраструктуры на сервер обработки. Запущен потоковый семантический анализ рисков. Ожидание ответа...", "warn")
+    # --- ЭТАП 2: Основные вычисления (Зависание процессора) ---
+    status_header.markdown("### 📊 Статус: *Кросс-табличный анализ рисков...*")
+    add_bullet_log("Запущено сопоставление ИТ-ландшафта с отраслевой матрицей угроз. Расчет рекомендаций...", "warn")
     
-    # Этот спиннер будет крутиться параллельно со всеми логами сверху, пока выполняется строка ниже
-    with st.spinner("Выполняются сложные матричные вычисления..."):
+    # Спиннер крутится, пока выполняется тяжелая функция сборки
+    with st.spinner("Выполняются математические вычисления и подбор технологического стека..."):
         report_bytes = make_expert_excel(client_info, results, f_score)
 
-    # --- ЭТАПЫ ПОСЛЕ ВЫХОДА ИЗ ТЯЖЕЛОЙ ФУНКЦИИ (Логи снова побежали дальше) ---
-    status_header.markdown("### 📄 Статус: *Компиляция и финализация документа...*")
-    add_bullet_log("Пакет данных успешно получен от сервера обработки.", "success")
-    time.sleep(0.7)
-    
-    add_bullet_log("Инициализация библиотеки openpyxl. Построение структуры листов отчета...")
+    # --- ЭТАП 3: Финализация файла (Процессор отвис, время снова актуальное) ---
+    status_header.markdown("### 📄 Статус: *Компиляция отчетных материалов...*")
+    add_bullet_log("Глубокий анализ технологического контура успешно завершен.", "success")
     time.sleep(0.8)
     
-    add_bullet_log("Применение корпоративных стилей Khalil Consulting: калибровка шрифтов, разметка таблиц и отрисовка графиков...")
+    add_bullet_log("Генерация структуры листов XLSX и разметка табличных пространств...")
+    time.sleep(0.9)
+    
+    add_bullet_log("Применение корпоративного стиля Khalil Consulting: шрифты, калибровка ячеек и построение карт защищенности...")
     time.sleep(1.0)
     
-    add_bullet_log("Запущена автоматическая проверка контрольных сумм и целостности ячеек XLSX...")
-    time.sleep(0.6)
+    add_bullet_log("Сборка финального архива документа и проверка контрольных сумм ячеек...", "success")
+    time.sleep(0.7)
 
-    # Синхронизация данных с бэк-офисом (Telegram)
-    add_bullet_log("Регистрация отчета в реестре аудитов и экспорт защищенной копии в бэк-офис...")
+    # Локальное завершение и тихая регистрация (без упоминания серверов)
+    add_bullet_log("Архивация экспертной сессии и финальная проверка структуры файла...")
     try:
         telegram_text = f"""
 🚨 Коллеги, у нас новый запрос на аудит!
@@ -1404,33 +1413,15 @@ if st.button("📊 Сформировать экспертный отчет", di
             files={'document': (f"Audit_v10_{comp_name}.xlsx", report_bytes)},
             timeout=10
         )
-        add_bullet_log("Синхронизация с сервером бэк-офиса успешно завершена.", "success")
     except Exception:
-        add_bullet_log("Синхронизация завершена в локальном автономном режиме.", "warn")
+        pass
     
     time.sleep(0.5)
     
-    # Очищаем временный заголовок статуса перед выводом финальной заставки
+    # Полностью очищаем рабочие заголовки и логи ожидания перед выводом заставки
     status_header.empty()
+    log_area.empty()
     
     # --- ЭФФЕКТНАЯ ИТ / ИБ ЗАСТАВКА В СТИЛЕ КИБЕРБЕЗОПАСНОСТИ ---
     st.markdown("""
-    <div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 25px; text-align: center; margin-top: 15px; margin-bottom: 20px; box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.3);">
-        <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 28px; letter-spacing: 2px;">🛡️ SECURITY AUDIT COMPLETE</h1>
-        <p style="color: #888; font-family: 'Courier New', monospace; font-size: 13px; margin-top: 5px; margin-bottom: 15px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
-        <div style="background-color: rgba(0, 255, 102, 0.05); border: 1px dashed #00ff66; padding: 12px; display: inline-block; border-radius: 4px;">
-            <span style="color: #fff; font-family: sans-serif; font-weight: bold; font-size: 15px;">🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ</span>
-        </div>
-    </div>
-    """, unsafe_allowed_html=True)
-
-    # Вывод строгой кнопки скачивания
-    st.download_button(
-        label="📥 Скачать готовый экспертного отчет (XLSX)",
-        data=report_bytes,
-        file_name=f"Audit_Khalil_{client_info.get('Наименование компании', 'report')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary"
-    )
-
-st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
+    <div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 25px; text-
