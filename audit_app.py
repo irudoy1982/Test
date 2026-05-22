@@ -1298,12 +1298,11 @@ from streamlit.components.v1 import html # Импорт для авто-скро
 st.divider()
 
 if st.button("Сформировать экспертный отчет"):
-    # 1. Фиксация места для уведомления и логов (чтобы ничего не дергалось)
     alert_placeholder = st.empty()
     console_placeholder = st.empty()
     progress_bar = st.progress(0)
     
-    # 2. Стиль "Спокойного" алерта и черный ИБ-дизайн
+    # CSS - остается прежним
     st.markdown("""
         <style>
         .cyber-alert-box { 
@@ -1323,7 +1322,7 @@ if st.button("Сформировать экспертный отчет"):
         </style>
     """, unsafe_allow_html=True)
 
-    # 3. Вывод алерта
+    # Уведомление
     alert_placeholder.markdown("""
         <div class="cyber-alert-box">
             ⏳ Идет глубокий анализ. Процесс может занять до 180 секунд.<br>
@@ -1331,10 +1330,10 @@ if st.button("Сформировать экспертный отчет"):
         </div>
     """, unsafe_allow_html=True)
     
-    # Скролл вниз к логам
-    st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
+    # Скроллим сразу к логам
+    st.components.v1.html("<script>document.body.scrollIntoView({behavior: 'smooth', block: 'end'});</script>", height=0)
 
-    # 4. Процесс
+    # Процесс логов
     steps = ["Инициализация ядра...", "Агрегация данных...", "Валидация ISO 27001...", "Анализ векторов атак...", "Расчет скоринга...", "Компиляция Excel...", "Финализация..."]
     active_logs = []
     progress = 0
@@ -1349,13 +1348,12 @@ if st.button("Сформировать экспертный отчет"):
         progress_bar.progress(min(progress, 95))
         time.sleep(1.0)
 
-    # 5. Генерация файла
+    # Генерация
     f_score = min(score, 100)
     report_bytes = make_expert_excel(client_info, data, f_score)
     
-    # 6. Отправка в ТЕЛЕГРАМ (Все поля)
+    # Отправка в ТЕЛЕГРАМ
     try:
-        # Формируем текст из всех полей словаря
         details_str = "\n".join([f"• *{k}:* {v}" for k, v in client_info.items()])
         tg_message = f"🔔 *Новый экспертный отчет!*\n\n{details_str}\n\n🛡️ *Итоговый скоринг:* {f_score}%"
         
@@ -1367,17 +1365,24 @@ if st.button("Сформировать экспертный отчет"):
     except Exception as e:
         st.error(f"Telegram error: {e}")
 
-    # 7. Очистка и вывод результата
+    # Очистка
     alert_placeholder.empty()
     console_placeholder.empty()
     progress_bar.empty()
     
     st.success(f"✔️ Анализ успешно завершен! (Score: {f_score}%)")
     
-    # Скролл к результату
-    st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
+    # ЯКОРЬ ДЛЯ СКРОЛЛА (ставим перед блоком скачивания)
+    st.markdown('<div id="download_anchor"></div>', unsafe_allow_html=True)
     
-    # 8. Финальный ИБ-блок
+    # Скрипт скролла к якорю
+    st.components.v1.html("""
+        <script>
+            document.getElementById('download_anchor').scrollIntoView({behavior: 'smooth'});
+        </script>
+    """, height=0)
+    
+    # Блок скачивания
     import base64
     b64 = base64.b64encode(report_bytes).decode('utf-8')
     st.markdown(f"""
