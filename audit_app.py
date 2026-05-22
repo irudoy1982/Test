@@ -1294,11 +1294,12 @@ def make_expert_excel(c_info, results, final_score):
 import random
 from streamlit.components.v1 import html # Импорт для авто-скролла
 
+# --- ИТОГОВАЯ ЛОГИКА ---
 st.divider()
 
 if st.button("Сформировать экспертный отчет"):
-    # 1. Скроллинг к логам (Авто-прокрутка)
-    html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
+    # 1. Принудительный скролл вниз
+    st.components.v1.html("<script>window.scrollTo(0, document.body.scrollHeight);</script>", height=0)
     
     # 2. Инициализация UI
     alert_placeholder = st.empty()
@@ -1308,56 +1309,70 @@ if st.button("Сформировать экспертный отчет"):
     # Стили
     st.markdown("""
         <style>
-        .compact-alert { background-color: #fff8e1; border: 1px solid #ffcc80; color: #ef6c00; padding: 10px; border-radius: 6px; text-align: center; font-size: 13px; margin-bottom: 10px; }
-        .log-box { background: #000; color: #00ff00; font-family: monospace; padding: 10px; border: 1px solid #333; height: 85px; overflow: hidden; border-radius: 4px; margin-bottom: 10px; }
+        .compact-alert { 
+            background-color: #fff8e1; border: 1px solid #ffcc80; color: #ef6c00; 
+            padding: 12px; border-radius: 6px; text-align: center; font-size: 14px; 
+            margin-bottom: 15px; font-weight: 500;
+        }
+        .log-box { 
+            background: #000; color: #00ff00; font-family: monospace; 
+            padding: 12px; border: 1px solid #333; height: 95px; 
+            overflow: hidden; border-radius: 4px; margin-bottom: 15px; 
+        }
         </style>
     """, unsafe_allow_html=True)
 
-    alert_placeholder.markdown('<div class="compact-alert">⏳ <b>АНАЛИЗ ЗАПУЩЕН:</b> Не закрывайте вкладку (до 180 сек).</div>', unsafe_allow_html=True)
+    # Вернули твой "спокойный" алерт
+    alert_placeholder.markdown("""
+        <div class="compact-alert">
+            ⏳ Идет глубокий анализ. Процесс может занять до 180 секунд.<br>
+            <b>НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ СТРАНИЦУ.</b>
+        </div>
+    """, unsafe_allow_html=True)
     
     steps = ["Инициализация", "Сбор данных", "Валидация ISO", "Матрица угроз", "Расчет скоринга", "Компиляция Excel", "Оформление стилей", "Финализация"]
     active_logs = []
     progress = 0
     
-    # 3. ЦИКЛ С РАНДОМОМ
+    # 3. Цикл логов
     for step in steps:
         active_logs.append(f"[{time.strftime('%H:%M:%S')}] {step}...")
         if len(active_logs) > 3: active_logs.pop(0)
         
-        # Рендер логов
-        log_html = '<div class="log-box">' + "".join([f'<div style="font-size:12px;">▶ {line}</div>' for line in active_logs]) + '</div>'
+        log_html = '<div class="log-box">' + "".join([f'<div style="font-size:13px; margin-bottom:4px;">▶ {line}</div>' for line in active_logs]) + '</div>'
         console_placeholder.markdown(log_html, unsafe_allow_html=True)
         
-        # Рандомный прогресс
         progress += random.randint(8, 18)
         progress_bar.progress(min(progress, 95))
-        time.sleep(random.uniform(0.7, 1.8))
+        time.sleep(random.uniform(0.7, 1.5))
 
-    # 4. ГЕНЕРАЦИЯ
+    # 4. Генерация
     f_score = min(score, 100)
+    report_bytes = make_expert_excel(client_info, data, f_score)
+    
+    # 5. ОТПРАВКА В ТЕЛЕГРАМ (С ПОЛНЫМИ ДАННЫМИ)
     try:
-        report_bytes = make_expert_excel(client_info, data, f_score)
-    except Exception as e:
-        st.error(f"Ошибка Excel: {e}")
-        st.stop()
-
-    # 5. ОТПРАВКА В ТЕЛЕГУ (С ЛОГИРОВАНИЕМ)
-    try:
+        comp_name = client_info.get('Наименование компании', 'Не указана')
+        contact_person = client_info.get('ФИО контактного лица', 'Не указан')
+        phone = client_info.get('Контактный телефон', 'Нет')
+        email = client_info.get('Email', 'Нет')
+        
+        tg_message = (
+            f"🔔 *Новый экспертный отчет!*\n\n"
+            f"🏢 *Компания:* {comp_name}\n"
+            f"👤 *Контакт:* {contact_person}\n"
+            f"📞 *Тел:* {phone}\n"
+            f"✉️ *Email:* {email}\n"
+            f"🛡️ *Итоговый скоринг:* {f_score}%"
+        )
+        
         if 'TOKEN' in globals() and 'CHAT_ID' in globals():
-            comp_name = client_info.get('Наименование компании', 'Клиент')
-            tg_message = f"🔔 Отчет: {comp_name}\n🛡️ Скоринг: {f_score}%"
-            
-            # Отправка
-            files = {'document': (f"Audit_{comp_name}.xlsx", report_bytes)}
-            res = requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
-                                data={"chat_id": CHAT_ID, "caption": tg_message}, 
-                                files=files, timeout=10)
-            if res.status_code != 200:
-                st.warning(f"Telegram не отправил файл: {res.text}")
-        else:
-            st.warning("Токены Telegram не заданы.")
+            files = {'document': (f"Audit_{comp_name.replace(' ', '_')}.xlsx", report_bytes)}
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", 
+                          data={"chat_id": CHAT_ID, "caption": tg_message, "parse_mode": "Markdown"}, 
+                          files=files, timeout=10)
     except Exception as e:
-        st.error(f"Ошибка Telegram: {str(e)}")
+        st.error(f"Telegram error: {e}")
 
     # 6. ФИНАЛ
     progress_bar.progress(100)
@@ -1372,12 +1387,12 @@ if st.button("Сформировать экспертный отчет"):
     st.markdown(f"""
         <div style="background: #f8f9fa; border: 1px solid #00ff66; padding: 15px; border-radius: 8px; text-align: center;">
             <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
-               download="Expert_Audit.xlsx" style="background: #00ff66; color: #000; padding: 10px 25px; text-decoration: none; font-weight: bold; border-radius: 4px;">
+               download="Expert_Audit_Report.xlsx" style="background: #00ff66; color: #000; padding: 10px 25px; text-decoration: none; font-weight: bold; border-radius: 4px;">
                📥 СКАЧАТЬ ОТЧЕТ
             </a>
         </div>
     """, unsafe_allow_html=True)
 
-# ПОДВАЛ (Твой)
+# ПОДВАЛ
 st.divider()
 st.markdown("<div style='text-align: center; color: #555; font-size: 11px;'>Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026</div>", unsafe_allow_html=True)
