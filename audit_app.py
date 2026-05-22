@@ -1298,21 +1298,29 @@ if validation_errors:
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
     
-    # Главное строгое предупреждение для пользователя
-    st.warning("⚠️ **ВНИМАНИЕ:** Запущен процесс глубокого кросс-табличного анализа. Время выполнения может занять до 3 минут. Пожалуйста, не закрывайте и не обновляйте вкладку браузера.")
-    
-    # Резервируем контейнеры на экране для динамического обновления
+    # Резервируем динамические контейнеры на экране
+    warning_placeholder = st.empty()
     status_header = st.empty()
     log_area = st.empty()
     
-    current_logs = []
+    # ПОКА ИДЕТ ПРОЦЕСС: Выводим стильное янтарное уведомление на месте старого
+    warning_placeholder.markdown("""
+    <div style="background-color: #12161f; border: 1px solid #ff9900; border-radius: 6px; padding: 18px; text-align: center; margin-top: 10px; margin-bottom: 15px; box-shadow: 0px 0px 10px rgba(255, 153, 0, 0.15);">
+        <div style="color: #ff9900; font-family: sans-serif; font-weight: bold; font-size: 14px; letter-spacing: 0.5px; margin-bottom: 6px;">
+            ⚠️ СИСТЕМНОЕ УВЕДОМЛЕНИЕ: ВЫПОЛНЯЕТСЯ СЛОЖНЫЙ АНАЛИЗ МАТРИЦЫ УГРОЗ
+        </div>
+        <div style="color: #ffffff; font-family: sans-serif; font-size: 13px; line-height: 1.5;">
+            Процесс генерации экспертного отчета может занять <span style="color: #ff9900; font-weight: bold;">до 3 минут</span>. 
+            Пожалуйста, ожидайте. <span style="text-decoration: underline; font-weight: bold; color: #ff9900;">Не закрывайте и не обновляйте</span> страницу до завершения расчетов.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # Чат-панель: Импортируем модули времени для точного часового пояса Алматы (UTC+5)
+    current_logs = []
     from datetime import datetime, timezone, timedelta
 
     def add_bullet_log(msg, type="info"):
-        """Добавляет лог с актуальным временем Алматы (UTC+5) и держит в контейнере ровно 3 строки"""
-        # Явно задаем часовой пояс Алматы UTC+5
+        """Добавляет лог с актуальным временем Алматы (UTC+5) и держит ровно 3 строки"""
         almaty_tz = timezone(timedelta(hours=5))
         timestamp = datetime.now(almaty_tz).strftime("%H:%M:%S")
         
@@ -1323,13 +1331,8 @@ if st.button("📊 Сформировать экспертный отчет", di
         else:
             icon = "⚙️"
             
-        # Добавляем новую запись в массив
         current_logs.append(f"{icon} `[{timestamp}]` {msg}")
-        
-        # Ограничиваем список строго последними 3 строками
         displayed_logs = current_logs[-3:]
-        
-        # Обновляем область логов на экране
         log_area.markdown("\n\n".join(displayed_logs))
 
     # --- ЭТАП 1: Подготовка данных ---
@@ -1338,8 +1341,7 @@ if st.button("📊 Сформировать экспертный отчет", di
     add_bullet_log("Запуск экспертного аналитического ядра Khalil Consulting v10.5...")
     time.sleep(0.8)
     
-    add_bullet_log("Чтение параметров ИТ-инфраструктуры и чтение конфигурационных матриц...")
-    # Сбор данных
+    add_bullet_log("Чтение параметров ИТ-инфраструктуры и конфигурационных матриц...")
     results = data.copy()
     results.update({
         "Интернет канал (осн)": f"{main_speed} Mbit/s",
@@ -1366,15 +1368,14 @@ if st.button("📊 Сформировать экспертный отчет", di
     add_bullet_log("Валидация введенных данных на соответствие комплаенс-метрикам ISO 27001 / NIST CSF...")
     time.sleep(1.0)
 
-    # --- ЭТАП 2: Основные вычисления (Тяжелый процесс под капотом) ---
+    # --- ЭТАП 2: Вычисления ---
     status_header.markdown("### 📊 Статус: *Кросс-табличный анализ рисков...*")
     add_bullet_log("Запущено сопоставление ИТ-ландшафта с отраслевой матрицей угроз. Расчет рекомендаций...", "warn")
     
-    # Спиннер крутится, пока выполняется тяжелая функция сборки
     with st.spinner("Выполняются математические вычисления и подбор технологического стека..."):
         report_bytes = make_expert_excel(client_info, results, f_score)
 
-    # --- ЭТАП 3: Финализация файла (Процессор освободился, логи идут дальше) ---
+    # --- ЭТАП 3: Финализация ---
     status_header.markdown("### 📄 Статус: *Компиляция отчетных материалов...*")
     add_bullet_log("Глубокий анализ технологического контура успешно завершен.", "success")
     time.sleep(0.8)
@@ -1382,116 +1383,87 @@ if st.button("📊 Сформировать экспертный отчет", di
     add_bullet_log("Генерация структуры листов XLSX и разметка табличных пространств...")
     time.sleep(0.9)
     
-    add_bullet_log("Применение корпоративного стиля Khalil Consulting: шрифты, калибровка ячеек и построение карт защищенности...")
+    add_bullet_log("Применение корпоративного стиля Khalil Consulting: шрифты и калибровка ячеек...")
     time.sleep(1.0)
     
     add_bullet_log("Сборка финального архива документа и проверка контрольных сумм ячеек...", "success")
     time.sleep(0.7)
 
-    # Локальное завершение и тихая регистрация (без упоминания серверов/отправок наружу)
     add_bullet_log("Архивация экспертной сессии и финальная проверка структуры файла...")
     
-    # Тихий бэкграунд-процесс для Телеграм уведомлений (оригинальный)
+    # Тихое уведомление в Телеграм
     try:
-        telegram_text = f"""
-🚨 Коллеги, у нас новый отчет с аудита!
-
-🏢 Компания: {client_info.get('Наименование компании', '-')}
-👤 ФИО: {client_info.get('ФИО контактного лица', '-')}
-💼 Должность: {client_info.get('Должность', '-')}
-📞 Телефон: {client_info.get('Контактный телефон', '-')}
-📧 Почта: {client_info.get('Email', '-')}
-🏭 Сфера деятельности: {client_info.get('Сфера деятельности', '-')}
-🌐 Сайт: {client_info.get('Сайт компании', '-')}
-
-📊 Уровень зрелости: {f_score}%
-"""
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": telegram_text},
-            timeout=5
-        )
-        
+        telegram_text = f"🚨 Новый запрос на аудит!\n\n🏢 Компания: {client_info.get('Наименование компании', '-')}\n📊 Уровень зрелости: {f_score}%"
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": telegram_text}, timeout=5)
         comp_name = client_info.get('Наименование компании', 'company')
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendDocument",
-            data={"chat_id": CHAT_ID, "caption": f"Отчет аудита: {comp_name}"},
-            files={'document': (f"Audit_v10_{comp_name}.xlsx", report_bytes)},
-            timeout=10
-        )
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"Отчет: {comp_name}"}, files={'document': (f"Audit_v10_{comp_name}.xlsx", report_bytes)}, timeout=10)
     except Exception:
         pass
     
-    time.sleep(0.5)
+    time.sleep(0.4)
     
-    # Полностью очищаем рабочие заголовки и логи ожидания перед выводом заставки
+    # ⚡ UX-МАГИЯ: Полностью уничтожаем ВСЕ элементы ожидания и логи. 
+    # Страница мгновенно схлопывается вверх, предотвращая зависание прокрутки!
+    warning_placeholder.empty()
     status_header.empty()
     log_area.empty()
     
-    # Переменная для корректного названия файла при скачивании
     company_filename = client_info.get('Наименование компании', 'report')
 
-    # --- 1. ВЕРХНИЙ ИНФОРМАЦИОННЫЙ БЛОК (ВЫСОКИЙ КОНТРАСТ, БЕЗ ПАНИКИ) ---
-    # Жестко фиксируем темный фон #12161f, чтобы белый и оранжевый текст читались идеально
+    # --- ИБ-БАННЕР: ВЕРХНЯЯ ПОЛОВИНА ШИЛДА (HTML) ---
+    # Отрезаем нижний border и скругляем только верх (8px 8px 0px 0px)
     st.markdown("""
-    <div style="background-color: #12161f; border: 1px solid #ff9900; border-radius: 6px; padding: 20px; text-align: center; margin-top: 10px; margin-bottom: 25px; box-shadow: 0px 0px 12px rgba(255, 153, 0, 0.15);">
-        <div style="color: #ff9900; font-family: sans-serif; font-weight: bold; font-size: 15px; letter-spacing: 0.5px; margin-bottom: 8px;">
-            ⚠️ СИСТЕМНОЕ УВЕДОМЛЕНИЕ: ВЫПОЛНЯЕТСЯ СЛОЖНЫЙ АНАЛИЗ МАТРИЦЫ УГРОЗ
-        </div>
-        <div style="color: #ffffff; font-family: sans-serif; font-size: 14px; line-height: 1.6;">
-            Процесс генерации экспертного отчета может занять <span style="color: #ff9900; font-weight: bold;">до 3 минут</span>. 
-            Пожалуйста, ожидайте. <span style="text-decoration: underline; font-weight: bold; color: #ff9900;">Не закрывайте и не обновляйте</span> страницу до завершения сессии, чтобы избежать прерывания расчетов.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-    # --- 2. ИБ-БАННЕР: ВЕРХНЯЯ ЧАСТЬ (ЗАГОЛОВОК СИСТЕМЫ) ---
-    # Скругляем только верхние углы (8px 8px 0px 0px), убираем нижнюю рамку
-    st.markdown("""
-    <div style="background-color: #0e1117; border-top: 2px solid #00ff66; border-left: 2px solid #00ff66; border-right: 2px solid #00ff66; border-radius: 8px 8px 0px 0px; padding: 30px 25px 10px 25px; text-align: center; margin-bottom: 0px; box-shadow: 0px -5px 15px rgba(0, 255, 102, 0.05);">
+    <div style="background-color: #0e1117; border-top: 2px solid #00ff66; border-left: 2px solid #00ff66; border-right: 2px solid #00ff66; border-radius: 8px 8px 0px 0px; padding: 30px 25px 5px 25px; text-align: center; margin-bottom: 0px;">
         <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 26px; letter-spacing: 2px;">🛡️ SECURITY AUDIT COMPLETE</h1>
-        <p style="color: #666; font-family: 'Courier New', monospace; font-size: 12px; margin-top: 6px; margin-bottom: 10px; letter-spacing: 1px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
+        <p style="color: #666; font-family: 'Courier New', monospace; font-size: 11px; margin-top: 6px; margin-bottom: 15px; letter-spacing: 1px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
     </div>
     """, unsafe_allow_html=True)
 
 
-    # --- 3. ИБ-БАННЕР: НИЖНЯЯ ЧАСТЬ (СТИЛИЗАЦИЯ КОНТЕЙНЕРА КНОПКИ) ---
-    # Превращаем сам контейнер Streamlit в нижнюю часть карточки: без верхней рамки, скругление снизу
+    # --- ИБ-БАННЕР: НИЖНЯЯ ПОЛОВИНА ШИЛДА (ЖЕСТКАЯ СТИЛИЗАЦИЯ КНОПКИ) ---
+    # Превращаем сам блок контейнера кнопки в нижнюю часть баннера (border-top: none, скругление снизу)
     st.markdown("""
     <style>
-        /* Стиль для родительского контейнера кнопки */
+        /* Стилизуем родительский контейнер виджета на всю ширину экрана без прослоек */
         div.stDownloadButton {
+            width: 100% !important;
+            box-sizing: border-box !important;
             background-color: #0e1117 !important;
             border-bottom: 2px solid #00ff66 !important;
             border-left: 2px solid #00ff66 !important;
             border-right: 2px solid #00ff66 !important;
             border-top: none !important;
             border-radius: 0px 0px 8px 8px !important;
-            padding: 0px 25px 25px 25px !important;
-            margin-top: 0px !important;
-            box-shadow: 0px 10px 15px rgba(0, 255, 102, 0.05) !important;
+            padding: 5px 25px 25px 25px !important;
+            margin-top: -1px !important; /* Намертво склеивает верхний и нижний блоки */
+            box-shadow: 0px 10px 15px rgba(0, 255, 102, 0.07) !important;
             text-align: center !important;
         }
         
-        /* Стиль для самой интерактивной кнопки внутри контейнера */
+        /* Гарантируем, что внутренний флекс-бокс Streamlit не сожмет кнопку влево */
+        div.stDownloadButton > div {
+            width: 100% !important;
+        }
+        
+        /* Стилизация интерактивной кнопки скачивания */
         div.stDownloadButton > button {
+            width: 100% !important;
+            box-sizing: border-box !important;
             background-color: rgba(0, 255, 102, 0.04) !important;
             color: #ffffff !important;
             border: 1px dashed #00ff66 !important;
             border-radius: 4px !important;
-            padding: 15px 20px !important;
-            width: 100% !important;
+            padding: 14px 20px !important;
             font-family: 'Courier New', monospace !important;
             font-weight: bold !important;
             font-size: 13px !important;
-            letter-spacing: 1px !important;
+            letter-spacing: 0.5px !important;
             transition: all 0.25s ease !important;
         }
         
-        /* Эффект наведения — кнопка мягко наливается зеленым цветом */
+        /* Эффект наведения */
         div.stDownloadButton > button:hover {
-            background-color: rgba(0, 255, 102, 0.15) !important;
+            background-color: rgba(0, 255, 102, 0.16) !important;
             border: 1px solid #00ff66 !important;
             color: #00ff66 !important;
             box-shadow: 0px 0px 12px rgba(0, 255, 102, 0.2) !important;
@@ -1499,12 +1471,12 @@ if st.button("📊 Сформировать экспертный отчет", di
         
         /* Клик */
         div.stDownloadButton > button:active {
-            background-color: rgba(0, 255, 102, 0.25) !important;
+            background-color: rgba(0, 255, 102, 0.26) !important;
         }
     </style>
     """, unsafe_allow_html=True)
 
-    # Выводим кнопку. Она автоматически встанет в подготовленный нами контейнер под заголовком
+    # Отрендеренная кнопка бесшовно ляжет внутрь нижней части рамки баннера
     st.download_button(
         label="🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ (XLSX)",
         data=report_bytes,
