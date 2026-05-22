@@ -1402,93 +1402,96 @@ if st.button("📊 Сформировать экспертный отчет", di
     
     time.sleep(0.4)
     
-    # ⚡ UX-МАГИЯ: Полностью уничтожаем ВСЕ элементы ожидания и логи. 
-    warning_placeholder.empty()
-    status_header.empty()
-    log_area.empty()
+    # --- ФИНАЛИЗАЦИЯ ИНТЕРФЕЙСА ---
     
+    # 1. Убираем ТОЛЬКО предупреждение. Статус и логи ОСТАВЛЯЕМ на экране, чтобы страница не сжималась!
+    warning_placeholder.empty()
+    
+    # 2. Обновляем статус на успешный завершающий
+    status_header.markdown("### ✅ Статус: *Экспертный анализ успешно завершен!*")
+    
+    # Подготавливаем имя файла и переводим байты отчета в Base64 для скачивания без перезагрузки страницы
+    import base64
     company_filename = client_info.get('Наименование компании', 'report').replace(" ", "_")
+    b64_report = base64.b64encode(report_bytes).decode('utf-8')
 
-    # --- ЕДИНЫЙ ИБ-БАННЕР (КОМПЛЕКСНАЯ СТИЛИЗАЦИЯ БЕЗ РАЗРЫВОВ) ---
-    st.markdown("""
+    # --- ЕДИНЫЙ МАТРИЧНЫЙ HTML-МОНОЛИТ (АБСОЛЮТНАЯ СИНХРОНИЗАЦИЯ ШИРИНЫ) ---
+    st.markdown(f"""
     <style>
-        /* 1. Верхняя половина блока (HTML заголовок) */
-        .unified-banner-top {
-            background-color: #0e1117 !important;
-            border-top: 2px solid #00ff66 !important;
-            border-left: 2px solid #00ff66 !important;
-            border-right: 2px solid #00ff66 !important;
-            border-bottom: none !important;
-            border-radius: 8px 8px 0px 0px !important;
-            padding: 25px 25px 10px 25px !important;
-            text-align: center !important;
-            box-shadow: 0px -5px 15px rgba(0, 255, 102, 0.03) !important;
-        }
+        /* Главный контейнер баннера */
+        .cyber-monolith-banner {{
+            background-color: #0e1117;
+            border: 2px solid #00ff66;
+            border-radius: 8px;
+            padding: 30px 25px;
+            text-align: center;
+            box-shadow: 0px 0px 20px rgba(0, 255, 102, 0.15);
+            font-family: 'Courier New', monospace;
+            margin-top: 20px;
+            margin-bottom: 25px;
+            width: 100%;
+            box-sizing: border-box;
+        }}
         
-        /* 2. Нижняя половина блока (Контейнер встроенной кнопки Streamlit) */
-        div.stDownloadButton {
-            background-color: #0e1117 !important;
-            border-bottom: 2px solid #00ff66 !important;
-            border-left: 2px solid #00ff66 !important;
-            border-right: 2px solid #00ff66 !important;
-            border-top: none !important;
-            border-radius: 0px 0px 8px 8px !important;
-            padding: 0px 25px 25px 25px !important;
-            margin-top: -1rem !important; /* Схлопываем стандартный отступ Streamlit */
-            box-shadow: 0px 10px 15px rgba(0, 255, 102, 0.05) !important;
-            text-align: center !important;
-        }
+        .cyber-title {{
+            color: #00ff66;
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 2px;
+            font-weight: bold;
+        }}
         
-        div.stDownloadButton > div {
-            width: 100% !important;
-        }
+        .cyber-subtitle {{
+            color: #666;
+            font-size: 11px;
+            margin-top: 6px;
+            margin-bottom: 25px;
+            letter-spacing: 1px;
+        }}
         
-        /* 3. Кастомизация самой кнопки внутри монолита */
-        div.stDownloadButton > button {
-            width: 100% !important;
-            box-sizing: border-box !important;
-            background-color: rgba(0, 255, 102, 0.03) !important;
+        /* Кнопка внутри баннера (чистый HTML/CSS) */
+        .cyber-download-link {{
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            background-color: rgba(0, 255, 102, 0.04);
             color: #ffffff !important;
-            border: 1px dashed rgba(0, 255, 102, 0.5) !important;
-            border-radius: 4px !important;
-            padding: 14px 20px !important;
-            font-family: 'Courier New', monospace !important;
-            font-weight: bold !important;
-            font-size: 13px !important;
-            letter-spacing: 0.5px !important;
-            transition: all 0.2s ease !important;
-        }
+            border: 1px dashed #00ff66;
+            border-radius: 4px;
+            padding: 15px 20px;
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            text-decoration: none;
+            transition: all 0.25s ease;
+        }}
         
-        div.stDownloadButton > button:hover {
-            background-color: rgba(0, 255, 102, 0.12) !important;
-            border: 1px solid #00ff66 !important;
+        /* Эффект наведения */
+        .cyber-download-link:hover {{
+            background-color: rgba(0, 255, 102, 0.16) !important;
             color: #00ff66 !important;
-            box-shadow: 0px 0px 10px rgba(0, 255, 102, 0.15) !important;
-        }
+            border: 1px solid #00ff66;
+            box-shadow: 0px 0px 12px rgba(0, 255, 102, 0.2);
+        }}
     </style>
-    """, unsafe_allow_html=True)
-
-    # Рендерим верхнюю часть монолитного баннера
-    st.markdown("""
-    <div class="unified-banner-top">
-        <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 24px; letter-spacing: 2px;">
-            🛡️ SECURITY AUDIT COMPLETE
-        </h1>
-        <p style="color: #666; font-family: 'Courier New', monospace; font-size: 11px; margin-top: 6px; margin-bottom: 10px; letter-spacing: 1px;">
-            STATUS CODE: 200 SUCCESS | CORE V10.5
-        </p>
+    
+    <div class="cyber-monolith-banner">
+        <h1 class="cyber-title">🛡️ SECURITY AUDIT COMPLETE</h1>
+        <p class="cyber-subtitle">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
+        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_report}" 
+           download="Audit_v10_{company_filename}.xlsx" 
+           class="cyber-download-link">
+            🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ (XLSX)
+        </a>
     </div>
+    
+    <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" 
+         onload="window.scrollTo({{top: document.body.scrollHeight, behavior: 'smooth'}});" 
+         style="display:none;">
     """, unsafe_allow_html=True)
 
-    # Рендерим саму кнопку (она приклеится к HTML блоку выше)
-    st.download_button(
-        label="🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ (XLSX)",
-        data=report_bytes,
-        file_name=f"Audit_v10_{company_filename}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
+    # Вывод финального уведомления под монолитом
     st.success(f"✔️ Экспертный анализ успешно завершен. Итоговый уровень защищенности: {f_score}%")
 
-# Эта строка идет БЕЗ отступов (в самом конце файла, на уровне основного кода)
+# Системная инфо-строка в самом низу приложения (без отступов)
 st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
