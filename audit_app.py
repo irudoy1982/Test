@@ -1431,45 +1431,74 @@ if st.button("📊 Сформировать экспертный отчет", di
     # Переменная для корректного названия файла при скачивании
     company_filename = client_info.get('Наименование компании', 'report')
 
-    # --- ЭФФЕКТНАЯ ИТ / ИБ ЗАСТАВКА В СТИЛЕ КИБЕРБЕЗОПАСНОСТИ ---
-    # Отрисовываем красивую рамку баннера сверху
+    # --- СЕНЬОР-ДИЗАЙН: ВЕРХНИЙ ИНФОРМАЦИОННЫЙ БЛОК (ПРОЦЕСС ИДЕТ) ---
+    # Стильный, привлекающий внимание янтарный баннер без паники
     st.markdown("""
-    <div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 25px; text-align: center; margin-top: 15px; margin-bottom: 5px; box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.3);">
-        <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 28px; letter-spacing: 2px;">🛡️ SECURITY AUDIT COMPLETE</h1>
-        <p style="color: #888; font-family: 'Courier New', monospace; font-size: 13px; margin-top: 5px; margin-bottom: 20px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
+    <div style="background-color: rgba(255, 165, 0, 0.03); border: 1px solid #ff9900; border-radius: 6px; padding: 18px; text-align: center; margin-top: 10px; margin-bottom: 20px; box-shadow: 0px 0px 10px rgba(255, 153, 0, 0.1);">
+        <div style="color: #ff9900; font-family: sans-serif; font-weight: bold; font-size: 15px; letter-spacing: 0.5px; margin-bottom: 6px;">
+            ⚠️ СИСТЕМНОЕ УВЕДОМЛЕНИЕ: ВЫПОЛНЯЕТСЯ СЛОЖНЫЙ АНАЛИЗ МАТРИЦЫ УГРОЗ
+        </div>
+        <div style="color: #e0e0e0; font-family: sans-serif; font-size: 14px; line-height: 1.5;">
+            Процесс генерации может занять <span style="color: #ff9900; font-weight: bold;">до 3 минут</span>. 
+            Пожалуйста, ожидайте. <span style="text-decoration: underline; font-weight: bold; color: #fff;">Не закрывайте и не обновляйте</span> страницу до завершения сессии, чтобы избежать прерывания расчетов.
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Кастомные CSS-стили, переопределяющие дизайн стандартной кнопки Streamlit
+
+    # --- СЕНЬОР-ДИЗАЙН: КИБЕР-БАННЕР С КНОПКОЙ ВНУТРИ ---
+    # Открываем рамку баннера, оставляя внизу место (padding-bottom: 15px)
+    st.markdown("""
+    <div style="background-color: #0e1117; border: 2px solid #00ff66; border-radius: 8px; padding: 30px 25px 15px 25px; text-align: center; box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.2); margin-bottom: 0px;">
+        <h1 style="color: #00ff66; font-family: 'Courier New', monospace; margin: 0; font-size: 28px; letter-spacing: 2px;">🛡️ SECURITY AUDIT COMPLETE</h1>
+        <p style="color: #666; font-family: 'Courier New', monospace; font-size: 12px; margin-top: 6px; margin-bottom: 25px; letter-spacing: 1px;">STATUS CODE: 200 SUCCESS | CORE V10.5</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Кастомные стили, которые «затягивают» кнопку внутрь рамки баннера и убирают дефолтные отступы Streamlit
     st.markdown("""
     <style>
+        /* Находим контейнер кнопки и двигаем его вверх, прямо внутрь предыдущего div */
+        div.stDownloadButton {
+            margin-top: -45px !important;
+            padding-left: 25px !important;
+            padding-right: 25px !important;
+            margin-bottom: 30px !important;
+        }
+        
+        /* Стилизуем саму кнопку под внутренний элемент баннера */
         div.stDownloadButton > button {
-            background-color: rgba(0, 255, 102, 0.05) !important;
+            background-color: rgba(0, 255, 102, 0.06) !important;
             color: #ffffff !important;
             border: 1px dashed #00ff66 !important;
             border-radius: 4px !important;
-            padding: 14px 24px !important;
+            padding: 15px 20px !important;
             width: 100% !important;
-            font-family: sans-serif !important;
+            font-family: 'Courier New', monospace !important;
             font-weight: bold !important;
-            font-size: 15px !important;
-            letter-spacing: 0.5px !important;
+            font-size: 14px !important;
+            letter-spacing: 1px !important;
             transition: all 0.3s ease !important;
-            box-shadow: 0px 0px 10px rgba(0, 255, 102, 0.1) !important;
+            box-shadow: 0px 0px 8px rgba(0, 255, 102, 0.05) !important;
         }
+        
+        /* Эффект наведения — кнопка становится плотной и загорается */
         div.stDownloadButton > button:hover {
             background-color: rgba(0, 255, 102, 0.15) !important;
             border: 1px solid #00ff66 !important;
-            box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.4) !important;
-            transform: scale(1.01);
+            box-shadow: 0px 0px 15px rgba(0, 255, 102, 0.3) !important;
+            color: #00ff66 !important;
         }
+        
+        /* Клик */
         div.stDownloadButton > button:active {
             background-color: rgba(0, 255, 102, 0.25) !important;
         }
     </style>
     """, unsafe_allow_html=True)
 
-    # Кнопка скачивания, которая благодаря CSS выше превратилась в центральный элемент баннера
+    # Сама кнопка. Она физически отрендерится под баннером, но CSS со сдвигом `margin-top: -45px` 
+    # втянет её ровно внутрь зеленой рамки, сделав дизайн единым целым.
     st.download_button(
         label="🔒 ЭКСПЕРТНЫЙ ОТЧЕТ СКОМПИЛИРОВАН И ГОТОВ К ВЫГРУЗКЕ (XLSX)",
         data=report_bytes,
