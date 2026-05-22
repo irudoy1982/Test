@@ -1298,70 +1298,46 @@ if validation_errors:
 
 if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
     
-    # Список полезных фактов и экспертных рекомендаций по ИБ (без упоминания ИИ)
-    security_advices = [
-        "🛡️ **Рекомендация ИБ:** Внедрение многофакторной аутентификации (MFA) блокирует до 99.9% автоматизированных атак на корпоративные учетные записи.",
-        "🛡️ **Экспертный факт:** Обычного антивируса (EPP) в современных реалиях уже недостаточно. Решения класса EDR/XDR необходимы для выявления скрытых угроз.",
-        "🛡️ **Обеспечение непрерывности:** Резервные копии должны быть изолированы от основной сети. Принцип 'Immutable Backup' гарантирует защиту архивов от шифровальщиков.",
-        "🛡️ **Архитектура сети:** Сетевая сегментация (VLAN, концепция Zero Trust) — лучший способ остановить распространение вредоносного ПО внутри периметра компании.",
-        "🛡️ **Анализ рисков:** Более 80% успешных кибератак начинаются со скомпрометированного фишингового письма. Регулярно проводите тренинги по кибергигиене."
-    ]
+    # Подготовка и нормализация данных под капотом (микросекунды)
+    results = data.copy()
+    results.update({
+        "Интернет канал (осн)": f"{main_speed} Mbit/s",
+        "Резервный канал": f"{back_speed} Mbit/s",
+        "_main_speed": main_speed,
+        "_back_speed": back_speed,
+        "_user_count": total_arm,
+        "WiFi Точки": ap_cnt,
+        "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
+        "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
+        "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
+        "Серверы (физ)": phys_count,
+        "Серверы (вирт)": virt_count,
+        "Резервное копирование": v_n_b if v_n_b else "Нет",
+    })
 
-    # Нативный контейнер статуса Streamlit для вывода логов в реальном времени
-    with st.status("🚀 Инициализация экспертного аналитического ядра...", expanded=True) as status:
+    # Маппинг флагов систем безопасности
+    for block in ["MFA", "SIEM", "WAF", "Anti-DDoS", "EDR", "Patch Management"]:
+        results[block] = results.get(f"Блок 2. {block}", "Нет")
         
-        st.write("⚙️ Нормализация параметров ИТ-инфраструктуры и расчет базовых индексов зрелости...")
-        st.info(security_advices[0])
-        time.sleep(1.5)
-        
-        # 1. Сбор и подготовка данных
-        results = data.copy()
-        results.update({
-            "Интернет канал (осн)": f"{main_speed} Mbit/s",
-            "Резервный канал": f"{back_speed} Mbit/s",
-            "_main_speed": main_speed,
-            "_back_speed": back_speed,
-            "_user_count": total_arm,
-            "WiFi Точки": ap_cnt,
-            "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
-            "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
-            "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
-            "Серверы (физ)": phys_count,
-            "Серверы (вирт)": virt_count,
-            "Резервное копирование": v_n_b if v_n_b else "Нет",
-        })
+    f_score = min(score + 10, 100)
 
-        # Выставление флагов соответствия для корректного маппинга
-        for block in ["MFA", "SIEM", "WAF", "Anti-DDoS", "EDR", "Patch Management"]:
-            results[block] = results.get(f"Блок 2. {block}", "Нет")
-            
-        f_score = min(score + 10, 100)
-        
-        # Обновление логов
-        status.update(label="📊 Анализ технологического ландшафта и сопоставление с матрицей угроз...", state="running")
-        st.write("🔍 Верификация соответствия ИТ-ландшафта стандартам ISO 27001 и NIST CSF...")
-        st.info(security_advices[1])
-        st.info(security_advices[2])
-        time.sleep(2)
-        
-        status.update(label="⚙️ Движок генерации: Расчет весов уязвимостей...", state="running")
-        st.write("📡 Запуск кросс-табличного анализа рисков для вашей сферы деятельности...")
-        st.info(security_advices[3])
-        
-        # 2. Тяжелый процесс генерации Excel (вызов вашей функции, где под капотом работает модель)
+    # Правильный, строгий текст предупреждения для пользователя
+    loading_message = """
+⚙️ **ЗАПУЩЕН АНАЛИЗ ИТ-ИНФРАСТРУКТУРЫ И МАТРИЦЫ УГРОЗ**
+
+Генерация экспертного отчета может занять **до 3 минут**. 
+Пожалуйста, подождите. **Не закрывайте и не обновляйте эту страницу** до завершения процесса, чтобы не прервать сессию валидации.
+"""
+
+    # Запуск процесса. st.spinner автоматически выводит крутящееся колесико загрузки
+    # и этот текст на экран СРАЗУ в момент нажатия на кнопку.
+    with st.spinner(loading_message):
+        # Тяжелый процесс генерации файла в openpyxl
         report_bytes = make_expert_excel(client_info, results, f_score)
-        
-        status.update(label="📄 Финализация экспертного документа...", state="running")
-        st.write("🎨 Стилизация таблиц, применение корпоративных шрифтов и построение карт защищенности...")
-        st.info(security_advices[4])
-        time.sleep(1.5)
-        
-        status.update(label="🔒 Проверка целостности и синхронизация отчета...", state="running")
-        st.write("📥 Валидация структуры файла openpyxl системой контроля качества...")
 
-        # 3. Синхронизация с Telegram (строго оригинальные переменные из полей ввода)
-        try:
-            telegram_text = f"""
+    # Фоновое уведомление бэк-офиса (со всеми контактными данными из полей)
+    try:
+        telegram_text = f"""
 🚨 Коллеги, у нас новый запрос на аудит!
 
 🏢 Компания: {client_info.get('Наименование компании', '-')}
@@ -1374,28 +1350,29 @@ if st.button("📊 Сформировать экспертный отчет", di
 
 📊 Уровень зрелости: {f_score}%
 """
-            requests.post(
-                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                data={"chat_id": CHAT_ID, "text": telegram_text},
-                timeout=5
-            )
-            
-            comp_name = client_info.get('Наименование компании', 'company')
-            requests.post(
-                f"https://api.telegram.org/bot{TOKEN}/sendDocument",
-                data={"chat_id": CHAT_ID, "caption": f"Отчет аудита: {comp_name}"},
-                files={'document': (f"Audit_v10_{comp_name}.xlsx", report_bytes)},
-                timeout=10
-            )
-        except Exception as e:
-            st.error(f"Фоновое уведомление бэк-офиса временно недоступно: {e}")
-            
-        status.update(label="🎉 Экспертный анализ успешно завершен!", state="complete")
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": telegram_text},
+            timeout=5
+        )
+        
+        comp_name = client_info.get('Наименование компании', 'company')
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendDocument",
+            data={"chat_id": CHAT_ID, "caption": f"Отчет аудита: {comp_name}"},
+            files={'document': (f"Audit_v10_{comp_name}.xlsx", report_bytes)},
+            timeout=10
+        )
+    except Exception:
+        pass  # Внешние сетевые задержки ТГ не заблокируют выдачу файла на экран
 
-    # Вывод результатов под логами после успешного выполнения
-    st.balloons()
-    st.success("🎉 Экспертный отчет успешно сформирован и проверен системой контроля качества Khalil Consulting!")
+    # ФИНАЛ: Эффект цифровых пикселей/снега (вместо шариков)
+    st.snow()
     
+    # Строгое оформление успешного завершения
+    st.success("✔️ **Анализ успешно завершен.** Структура документа верифицирована системой контроля качества Khalil Consulting.")
+    
+    # Вывод кнопки скачивания
     st.download_button(
         label="📥 Скачать готовый экспертный отчет (XLSX)",
         data=report_bytes,
