@@ -1299,49 +1299,6 @@ if "cached_report_bytes" not in st.session_state:
 
 # --- ФИНАЛ ---
 st.divider()
-# =========================
-# CYBER UI STYLES
-# =========================
-
-st.markdown("""
-<style>
-
-.cyber-alert-box {
-    background-color: #fff8e1;
-    border: 1px solid #ffcc80;
-    color: #ef6c00;
-    padding: 15px;
-    border-radius: 6px;
-    text-align: center;
-    font-size: 14px;
-    margin-bottom: 20px;
-    font-weight: bold;
-}
-
-.cyber-log-box {
-    background: #000;
-    color: #00ff66;
-    font-family: monospace;
-    padding: 15px;
-    border: 1px solid #333;
-    height: 120px;
-    overflow: hidden;
-    border-radius: 6px;
-    margin-bottom: 20px;
-    font-size: 13px;
-}
-
-.cyber-download-box {
-    background: #000;
-    border: 2px solid #00ff66;
-    padding: 30px;
-    border-radius: 12px;
-    text-align: center;
-    box-shadow: 0 0 20px rgba(0,255,102,0.15);
-}
-
-</style>
-""", unsafe_allow_html=True)
 if validation_errors:
     st.error(f"🚨 Формирование отчета недоступно. Ошибок: {len(validation_errors)}")
     for err in set(validation_errors): st.write(f"- {err}")
@@ -1389,13 +1346,11 @@ if st.session_state.generation_state == "idle":
 
         <div class="cyber-alert-box">
 
-            ⏳ Выполняется глубокий анализ инфраструктуры.<br>
-            Формирование отчета может занять до 3 минут.<br><br>
+            ⏳ Выполняется глубокий анализ инфраструктуры.
+            Формирование отчета может занять до 3 минут.
 
-            <span style="color:red;">
             НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ СТРАНИЦУ
-            </span>
-
+            
         </div>
 
         """, unsafe_allow_html=True)
@@ -1410,7 +1365,7 @@ if st.session_state.generation_state == "idle":
             "Проверка backup resilience...",
             "Расчет cybersecurity maturity...",
             "Построение security domains...",
-            "AI анализ рисков...",
+            "Глубокий анализ рисков...",
             "Формирование executive summary...",
             "Генерация XLSX отчета...",
             "Финализация артефактов..."
@@ -1486,7 +1441,7 @@ if st.session_state.generation_state == "preparing":
 if st.session_state.generation_state == "heavy_ai":
     
     # Этот текст и анимация будут гореть параллельно с фактами сверху
-    with st.spinner("🤖 ИИ (Gemini API) сопоставляет ваши данные с требованиями ISO 27001 / NIST и генерирует рекомендации..."):
+    with st.spinner("Производится глубокий анализ рисков..."):
         
         # Подготовка данных перед передачей
         results = data.copy()
@@ -1518,7 +1473,18 @@ if st.session_state.generation_state == "heavy_ai":
 
     # Тихо отправляем в ТГ без создания задержек на экране
     try:
-        telegram_text = f"🚨 Новый запрос на аудит!\n🏢 Компания: {client_info.get('Наименование компании', '-')}\n📊 Уровень зрелости: {f_score}%"
+        telegram_text = (
+    "🚨 Новый запрос на аудит!\n"
+    f"🏢 Компания: {client_info.get('Наименование компании', '-')}\n"
+    f"📍 Город: {client_info.get('Город', '-')}\n"
+    f"📊 Сфера: {client_info.get('Сфера деятельности', '-')}\n"
+    f"🌐 Сайт: {client_info.get('Сайт компании', '-')}\n"
+    f"📧 Email: {client_info.get('Email', '-')}\n"
+    f"📞 Телефон: {client_info.get('Контактный телефон', '-')}\n"
+    f"👤 Контакт: {client_info.get('ФИО контактного лица', '-')}\n"
+    f"💼 Должность: {client_info.get('Должность', '-')}\n"
+    f"📊 Уровень зрелости: {f_score}%"
+)
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": telegram_text}, timeout=3)
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"Отчет: {client_info['Наименование компании']}"}, files={'document': (f"Audit_v10_{client_info['Наименование компании']}.xlsx", report_bytes)}, timeout=6)
     except Exception:
@@ -1531,7 +1497,6 @@ if st.session_state.generation_state == "heavy_ai":
 # --- СЦЕНАРИЙ 3: ВЫВОД ГОТОВОГО РЕЗУЛЬТАТА ---
 if st.session_state.generation_state == "finalized":
     
-    st.balloons()
     st.success("🎉 Экспертный отчет успешно сформирован и проверен системой контроля качества Khalil Consulting!")
     
     st.download_button(
