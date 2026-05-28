@@ -1305,6 +1305,13 @@ if validation_errors:
 
 # КНОПКА ЗАПУСКА ПРОЦЕССА
 # Она активна только тогда, когда процесс еще не запущен
+st.markdown("""
+Нажимая «Сформировать отчет», вы даете согласие
+на обработку персональных данных в соответствии с
+<a href="/static/privacy_policy.html" target="_blank">
+Политикой конфиденциальности
+</a>.
+""", unsafe_allow_html=True)
 if st.session_state.generation_state == "idle":
     if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
         alert_placeholder = st.empty()
