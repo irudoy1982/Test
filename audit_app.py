@@ -1306,9 +1306,9 @@ if validation_errors:
 # КНОПКА ЗАПУСКА ПРОЦЕССА
 # Она активна только тогда, когда процесс еще не запущен
 st.markdown("""
-Нажимая «Сформировать отчет», вы даете согласие
+Нажимая «Сформировать экспертный отчет», вы даете согласие
 на обработку персональных данных в соответствии с
-<a href="https://docs.google.com/document/d/1KdEtvg9KHPJHr3tPugsksh0NcatuQFMdwZJp4rrimY0/edit?usp=sharing" target="_blank">
+<a href="https://drive.google.com/file/d/1ypEIH9_ePGo3elkR2ifLFBulD5CAFOfs/view?usp=sharing" target="_blank">
 Политикой конфиденциальности
 </a>.
 """, unsafe_allow_html=True)
