@@ -1515,8 +1515,8 @@ def make_expert_excel(c_info, results, final_score):
     # =========================
     context = build_context(results, client_info)
     top_risks = generate_rule_based_risks(
-    results,
-    context
+        results,
+        context
 )
     
     ws.merge_cells(f'A{current_row}:D{current_row}')
