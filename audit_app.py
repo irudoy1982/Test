@@ -1513,7 +1513,7 @@ def make_expert_excel(c_info, results, final_score):
     # =========================
     # TOP RISKS OVERVIEW
     # =========================
-    context = build_context(results, client_info)
+    context = build_context(results, c_info)
     top_risks = generate_rule_based_risks(
         results,
         context
