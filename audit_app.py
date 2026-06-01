@@ -830,16 +830,211 @@ def get_maturity_level(score):
     else:
         return "OPTIMIZED", "🔵"
 def build_context(results, client_info):
+
+    users = int(results.get("_user_count", 0))
+
+    industry = str(
+        client_info.get(
+            "Сфера деятельности",
+            ""
+        )
+    )
+
     context = {}
 
-    context["industry"] = client_info.get("Сфера деятельности", "")
-    context["has_dev"] = "Разработчики" in str(results)
-    context["has_critical_systems"] = any(x in str(results) for x in ["ERP", "CRM", "Учет"])
-    context["has_personal_data"] = context["has_critical_systems"]
-    context["infra_size"] = results.get("_user_count", 0)
+    # ==================================
+    # COMPANY SIZE
+    # ==================================
 
-    context["is_finance"] = "Финтех" in context["industry"]
-    context["is_gov"] = "Госсектор" in context["industry"]
+    context["users"] = users
+
+    context["small_company"] = users < 50
+
+    context["medium_company"] = (
+        50 <= users < 250
+    )
+
+    context["large_company"] = (
+        250 <= users < 1000
+    )
+
+    context["enterprise_company"] = (
+        users >= 1000
+    )
+
+    # ==================================
+    # INDUSTRY
+    # ==================================
+
+    context["industry"] = industry
+
+    context["is_finance"] = (
+        "Финтех" in industry
+        or "Банк" in industry
+    )
+
+    context["is_gov"] = (
+        "Госсектор" in industry
+    )
+
+    context["is_it_company"] = (
+        "IT" in industry
+        or "Разработка" in industry
+    )
+
+    context["is_retail"] = (
+        "Ритейл" in industry
+        or "E-commerce" in industry
+    )
+
+    context["is_manufacturing"] = (
+        "Производство" in industry
+    )
+
+    # ==================================
+    # BUSINESS SYSTEMS
+    # ==================================
+
+    result_text = str(results)
+
+    context["has_erp"] = (
+        "ERP" in result_text
+    )
+
+    context["has_crm"] = (
+        "CRM" in result_text
+    )
+
+    context["has_accounting"] = (
+        "Учет" in result_text
+        or "Бухгалтерия" in result_text
+    )
+
+    context["has_hrm"] = (
+        "HRM" in result_text
+    )
+
+    context["has_document_flow"] = (
+        "СЭД" in result_text
+    )
+
+    context["has_mail"] = (
+        results.get(
+            "1.5.1. Почтовая система",
+            "Нет"
+        ) != "Нет"
+    )
+
+    # ==================================
+    # CRITICAL DATA
+    # ==================================
+
+    context["has_personal_data"] = any([
+        context["has_hrm"],
+        context["has_crm"],
+        context["has_accounting"]
+    ])
+
+    context["has_critical_systems"] = any([
+        context["has_erp"],
+        context["has_crm"],
+        context["has_accounting"]
+    ])
+
+    # ==================================
+    # DEVELOPMENT
+    # ==================================
+
+    context["has_development"] = (
+        "4.1. Разработчики" in results
+    )
+
+    dev_count = int(
+        results.get(
+            "4.1. Разработчики",
+            0
+        )
+    )
+
+    context["developers"] = dev_count
+
+    context["large_dev_team"] = (
+        dev_count >= 10
+    )
+
+    # ==================================
+    # WEB
+    # ==================================
+
+    context["has_public_web"] = (
+        "3.1. Хостинг" in results
+    )
+
+    # ==================================
+    # INFRASTRUCTURE
+    # ==================================
+
+    context["servers"] = int(
+        results.get(
+            "Серверы (вирт)",
+            0
+        )
+    ) + int(
+        results.get(
+            "Серверы (физ)",
+            0
+        )
+    )
+
+    context["has_virtualization"] = (
+        context["servers"] > 0
+    )
+
+    context["has_backup"] = (
+        results.get(
+            "Резервное копирование",
+            "Нет"
+        ) != "Нет"
+    )
+
+    # ==================================
+    # SECURITY
+    # ==================================
+
+    context["has_ngfw"] = (
+        results.get(
+            "NGFW",
+            "Нет"
+        ) != "Нет"
+    )
+
+    context["has_siem"] = (
+        results.get(
+            "SIEM",
+            "Нет"
+        ) != "Нет"
+    )
+
+    context["has_edr"] = (
+        results.get(
+            "EDR",
+            "Нет"
+        ) != "Нет"
+    )
+
+    context["has_patch_management"] = (
+        results.get(
+            "Patch Management",
+            "Нет"
+        ) != "Нет"
+    )
+
+    context["has_mfa"] = (
+        results.get(
+            "MFA",
+            "Нет"
+        ) != "Нет"
+    )
 
     return context
 
