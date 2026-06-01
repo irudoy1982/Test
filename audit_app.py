@@ -1638,28 +1638,28 @@ def make_expert_excel(c_info, results, final_score):
     
     # AI Анализ
 
-context = build_context(
-    results,
-    c_info
-)
-
-rule_risks = generate_rule_based_risks(
-    results,
-    context
-)
-
-ai_data = ai_generate_risks_and_recs(
-    c_info,
-    results
-)
-
-if ai_data:
-    ai_data.extend(rule_risks)
-else:
-    ai_data = rule_risks
-
-if ai_data:
-    for item in ai_data:
+    context = build_context(
+        results,
+        c_info
+    )
+    
+    rule_risks = generate_rule_based_risks(
+        results,
+        context
+    )
+    
+    ai_data = ai_generate_risks_and_recs(
+        c_info,
+        results
+    )
+    
+    if ai_data:
+        ai_data.extend(rule_risks)
+    else:
+        ai_data = rule_risks
+    
+    if ai_data:
+        for item in ai_data:
 
             # Уровень и Название
             lvl = item.get('level', 'СРЕДНИЙ')
