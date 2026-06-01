@@ -92,7 +92,7 @@ def get_regulators_by_industry(industry):
 def generate_rule_based_risks(results, context):
 
     risks = []
-        users = context.get("users", 0)
+    users = context.get("users", 0)
 
     has_critical_systems = context.get(
         "has_critical_systems",
