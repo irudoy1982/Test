@@ -1510,12 +1510,15 @@ def make_expert_excel(c_info, results, final_score):
 
     current_row = 17
 
-        # =========================
+    # =========================
     # TOP RISKS OVERVIEW
     # =========================
-
-    top_risks = generate_rule_based_risks(results)
-
+    context = build_context(results, client_info)
+    top_risks = generate_rule_based_risks(
+    results,
+    context
+)
+    
     ws.merge_cells(f'A{current_row}:D{current_row}')
 
     risk_header = ws.cell(
@@ -1632,15 +1635,28 @@ def make_expert_excel(c_info, results, final_score):
     ws.cell(row=curr_row, column=1, value="ВЫЯВЛЕННЫЕ РИСКИ И РЕКОМЕНДАЦИИ").font = Font(bold=True, size=14)
     curr_row += 1
 
-        # AI Анализ
-    rule_risks = generate_rule_based_risks(results)
+    
+    # AI Анализ
 
-    ai_data = ai_generate_risks_and_recs(c_info, results)
+context = build_context(
+    results,
+    c_info
+)
 
-    if ai_data:
-        ai_data.extend(rule_risks)
-    else:
-        ai_data = rule_risks
+rule_risks = generate_rule_based_risks(
+    results,
+    context
+)
+
+ai_data = ai_generate_risks_and_recs(
+    c_info,
+    results
+)
+
+if ai_data:
+    ai_data.extend(rule_risks)
+else:
+    ai_data = rule_risks
 
     if ai_data:
         for item in ai_data:
