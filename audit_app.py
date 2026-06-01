@@ -1658,8 +1658,8 @@ if ai_data:
 else:
     ai_data = rule_risks
 
-    if ai_data:
-        for item in ai_data:
+if ai_data:
+    for item in ai_data:
 
             # Уровень и Название
             lvl = item.get('level', 'СРЕДНИЙ')
