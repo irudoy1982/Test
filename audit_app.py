@@ -89,9 +89,40 @@ def get_regulators_by_industry(industry):
 """
     )
 
-def generate_rule_based_risks(results):
+def generate_rule_based_risks(results, context):
 
     risks = []
+        users = context.get("users", 0)
+
+    has_critical_systems = context.get(
+        "has_critical_systems",
+        False
+    )
+
+    has_personal_data = context.get(
+        "has_personal_data",
+        False
+    )
+
+    has_public_web = context.get(
+        "has_public_web",
+        False
+    )
+
+    has_development = context.get(
+        "has_development",
+        False
+    )
+
+    large_company = context.get(
+        "large_company",
+        False
+    )
+
+    enterprise_company = context.get(
+        "enterprise_company",
+        False
+    )
 
     users = results.get("_user_count", 0)
 
@@ -111,20 +142,46 @@ def generate_rule_based_risks(results):
             "vendors": ["Cisco Duo", "Microsoft Entra ID", "FortiAuthenticator"]
         })
 
-    # =========================
+        # =========================
     # NO SIEM
     # =========================
 
     if results.get("Блок 2. SIEM") == "Нет":
 
+        severity = "MEDIUM"
+
+        if (
+            has_critical_systems
+            or has_personal_data
+            or large_company
+            or enterprise_company
+        ):
+            severity = "HIGH"
+
         risks.append({
-            "level": "HIGH",
+            "level": severity,
             "risk": "Отсутствует централизованный мониторинг ИБ",
-            "description": "События безопасности не агрегируются централизованно.",
-            "impact": "Увеличение времени обнаружения атак и невозможность полноценного расследования инцидентов.",
-            "recommendation": "Внедрить SIEM/SOC платформу с корреляцией событий.",
-            "regulators": ["ISO 27001", "NIST CSF"],
-            "vendors": ["Microsoft Sentinel", "Splunk", "QRadar"]
+            "description": (
+                "События безопасности не агрегируются "
+                "в единой системе мониторинга."
+            ),
+            "impact": (
+                "Увеличение времени обнаружения атак "
+                "и расследования инцидентов."
+            ),
+            "recommendation": (
+                "Рассмотреть внедрение SIEM "
+                "или подключение внешнего SOC."
+            ),
+            "regulators": [
+                "ISO 27001",
+                "NIST CSF"
+            ],
+            "vendors": [
+                "Microsoft Sentinel",
+                "IBM QRadar",
+                "Splunk"
+            ]
         })
 
     # =========================
@@ -176,21 +233,101 @@ def generate_rule_based_risks(results):
         })
 
     # =========================
-    # NO PATCH MANAGEMENT
+    # PATCH MANAGEMENT
     # =========================
+
+    old_os_detected = any([
+        results.get("ОС АРМ (Windows XP/Vista/7/8)", 0) > 0,
+        results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0) > 0
+    ])
 
     if results.get("Patch Management") == "Нет":
 
-        risks.append({
-            "level": "HIGH",
-            "risk": "Отсутствует централизованный patch management",
-            "description": "Обновления безопасности устанавливаются несистемно.",
-            "impact": "Высокая вероятность эксплуатации известных уязвимостей.",
-            "recommendation": "Внедрить централизованное управление обновлениями.",
-            "regulators": ["CIS", "NIST"],
-            "vendors": ["ManageEngine", "WSUS", "SCCM"]
-        })
+        severity = "MEDIUM"
 
+        if old_os_detected:
+            severity = "CRITICAL"
+
+        elif users > 100:
+            severity = "HIGH"
+
+        risks.append({
+            "level": severity,
+            "risk": "Отсутствует централизованный Patch Management",
+            "description": (
+                "Обновления устанавливаются "
+                "несистемно либо вручную."
+            ),
+            "impact": (
+                "Высокая вероятность эксплуатации "
+                "известных уязвимостей."
+            ),
+            "recommendation": (
+                "Внедрить централизованное "
+                "управление обновлениями."
+            ),
+            "regulators": [
+                "CIS Controls",
+                "NIST"
+            ],
+            "vendors": [
+                "ManageEngine",
+                "Ivanti",
+                "Tanium",
+                "Microsoft MECM"
+            ]
+        })
+    # =========================
+    # LEGACY OS
+    # =========================
+
+    legacy_workstations = (
+        results.get(
+            "ОС АРМ (Windows XP/Vista/7/8)",
+            0
+        )
+    )
+
+    legacy_servers = (
+        results.get(
+            "ОС Сервера (Windows Server 2008/2012 R2)",
+            0
+        )
+    )
+
+    if legacy_workstations > 0 or legacy_servers > 0:
+
+        risks.append({
+
+            "level": "CRITICAL",
+
+            "risk": "Использование устаревших операционных систем",
+
+            "description":
+                f"Обнаружены устаревшие ОС. "
+                f"АРМ: {legacy_workstations}, "
+                f"Серверы: {legacy_servers}.",
+
+            "impact":
+                "Уязвимости больше не исправляются "
+                "производителем.",
+
+            "recommendation":
+                "Разработать программу миграции "
+                "на поддерживаемые версии ОС.",
+
+            "regulators": [
+                "ISO 27001",
+                "CIS Controls"
+            ],
+
+            "vendors": [
+                "Microsoft",
+                "Red Hat",
+                "VMware",
+                "Citrix"
+            ]
+        })
     return risks
 def ai_generate_risks_and_recs(c_info, results):
     import google.generativeai as genai
