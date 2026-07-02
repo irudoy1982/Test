@@ -1,10 +1,12 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import os
+import html
+import base64
 import threading
 import time
 import random
-import requests
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -45,6 +47,15 @@ def load_vendor_matrix():
 
     except Exception as e:
         return f"Ошибка загрузки вендоров: {e}"
+
+
+def get_app_secret(name, default=None):
+    try:
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
+
 def get_regulators_by_industry(industry):
     regulators = {
         "Финтех / Банки": """
@@ -334,7 +345,7 @@ def ai_generate_risks_and_recs(c_info, results):
     import json
     import streamlit as st
 
-    api_key = st.secrets.get("GEMINI_API_KEY")
+    api_key = get_app_secret("GEMINI_API_KEY")
 
     if not api_key:
         return []
@@ -522,23 +533,419 @@ LOW
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Аудит ИТ и ИБ 2026", layout="wide", page_icon="🛡️")
 
+def inject_audit_design():
+    st.markdown("""
+    <style>
+    :root {
+        --audit-bg: #f6f7f9;
+        --audit-panel: #ffffff;
+        --audit-border: #d8dee8;
+        --audit-text: #151922;
+        --audit-muted: #667085;
+        --audit-accent: #0f766e;
+        --audit-accent-soft: #dff3ef;
+        --audit-warn: #b45309;
+        --audit-warn-soft: #fff7ed;
+        --audit-risk: #b42318;
+        --audit-risk-soft: #fff1f0;
+        --audit-ink: #1f2937;
+    }
+
+    .stApp {
+        background: var(--audit-bg);
+        color: var(--audit-text);
+    }
+
+    section[data-testid="stSidebar"] {
+        background: #fbfcfe;
+        border-right: 1px solid var(--audit-border);
+    }
+
+    div[data-testid="stHeader"] {
+        background: rgba(246, 247, 249, 0.92);
+        backdrop-filter: blur(10px);
+    }
+
+    .block-container {
+        padding-top: 2.2rem;
+        max-width: 1380px;
+    }
+
+    h1, h2, h3 {
+        letter-spacing: 0;
+    }
+
+    .audit-hero {
+        background: var(--audit-panel);
+        border: 1px solid var(--audit-border);
+        border-radius: 8px;
+        padding: 22px 24px;
+        margin: 0 0 14px 0;
+        box-shadow: 0 10px 30px rgba(16, 24, 40, 0.05);
+    }
+
+    .audit-brand-hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+        gap: 26px;
+        align-items: center;
+    }
+
+    .audit-kicker {
+        color: var(--audit-accent);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0;
+        margin-bottom: 8px;
+    }
+
+    .audit-title {
+        color: var(--audit-text);
+        font-size: 34px;
+        font-weight: 760;
+        line-height: 1.12;
+        margin: 0 0 8px 0;
+    }
+
+    .audit-subtitle {
+        color: var(--audit-muted);
+        font-size: 15px;
+        line-height: 1.55;
+        max-width: 900px;
+        margin: 0;
+    }
+
+    .audit-logo-lockup {
+        border-left: 1px solid var(--audit-border);
+        padding-left: 24px;
+        text-align: center;
+    }
+
+    .audit-logo-lockup img {
+        max-width: 320px;
+        max-height: 120px;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+    }
+
+    .audit-logo-lockup .brand-name {
+        color: var(--audit-text);
+        font-size: 13px;
+        font-weight: 760;
+        margin-top: 10px;
+    }
+
+    .audit-logo-lockup .brand-signature {
+        color: var(--audit-accent);
+        font-size: 12px;
+        font-weight: 760;
+        margin-top: 3px;
+    }
+
+    .audit-section {
+        background: var(--audit-panel);
+        border: 1px solid var(--audit-border);
+        border-radius: 8px;
+        padding: 16px 18px;
+        margin: 24px 0 14px 0;
+    }
+
+    .audit-section .eyebrow {
+        color: var(--audit-muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+
+    .audit-section .title {
+        color: var(--audit-text);
+        font-size: 22px;
+        font-weight: 760;
+        margin-bottom: 4px;
+    }
+
+    .audit-section .body {
+        color: var(--audit-muted);
+        font-size: 14px;
+        margin: 0;
+    }
+
+    .metric-card {
+        background: var(--audit-panel);
+        border: 1px solid var(--audit-border);
+        border-radius: 8px;
+        padding: 14px 14px 12px 14px;
+        min-height: 96px;
+    }
+
+    .metric-card .label {
+        color: var(--audit-muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+
+    .metric-card .value {
+        color: var(--audit-text);
+        font-size: 26px;
+        font-weight: 760;
+        line-height: 1.05;
+    }
+
+    .metric-card .hint {
+        color: var(--audit-muted);
+        font-size: 12px;
+        margin-top: 6px;
+    }
+
+    .domain-row {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        margin: 12px 0 18px 0;
+    }
+
+    .domain-card {
+        background: var(--audit-panel);
+        border: 1px solid var(--audit-border);
+        border-radius: 8px;
+        padding: 12px;
+        min-height: 86px;
+    }
+
+    .domain-card strong {
+        display: block;
+        color: var(--audit-text);
+        font-size: 13px;
+        margin-bottom: 10px;
+    }
+
+    .domain-score {
+        color: var(--audit-accent);
+        font-size: 24px;
+        font-weight: 760;
+    }
+
+    .risk-chip {
+        border-radius: 8px;
+        padding: 10px 12px;
+        border: 1px solid var(--audit-border);
+        background: var(--audit-panel);
+        color: var(--audit-ink);
+        margin-bottom: 8px;
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+    .risk-chip.critical {
+        background: var(--audit-risk-soft);
+        border-color: #fecdca;
+    }
+
+    .risk-chip.warn {
+        background: var(--audit-warn-soft);
+        border-color: #fed7aa;
+    }
+
+    .analysis-status-panel {
+        background: var(--audit-panel);
+        border: 1px solid var(--audit-border);
+        border-left: 4px solid var(--audit-accent);
+        border-radius: 8px;
+        padding: 16px 18px;
+        margin-bottom: 16px;
+        color: var(--audit-ink);
+    }
+
+    .analysis-status-title {
+        color: var(--audit-text);
+        font-size: 17px;
+        font-weight: 760;
+        margin-bottom: 6px;
+    }
+
+    .page-lock-note {
+        color: var(--audit-risk);
+        font-size: 13px;
+        font-weight: 700;
+        margin-top: 8px;
+    }
+
+    .analysis-log {
+        background: #f8fafc;
+        color: #344054;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        padding: 13px 14px;
+        border: 1px solid var(--audit-border);
+        min-height: 110px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 13px;
+        line-height: 1.55;
+    }
+
+    .facts-panel {
+        background: #fff8ed;
+        border: 1px solid #fed7aa;
+        border-left: 4px solid var(--audit-warn);
+        border-radius: 8px;
+        color: #1d2939;
+        padding: 16px 18px;
+        margin: 12px 0 18px 0;
+        line-height: 1.55;
+    }
+
+    .facts-panel strong {
+        color: #111827;
+    }
+
+    .sidebar-step {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 0;
+        color: #344054;
+        font-size: 13px;
+    }
+
+    .sidebar-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        flex: 0 0 9px;
+    }
+
+    .sidebar-dot.green {
+        background: var(--audit-accent);
+    }
+
+    .sidebar-dot.red {
+        background: var(--audit-risk);
+    }
+
+    .sidebar-dot.gray {
+        background: #98a2b3;
+    }
+
+    @media (max-width: 900px) {
+        .audit-title {
+            font-size: 26px;
+        }
+
+        .audit-brand-hero {
+            grid-template-columns: 1fr;
+        }
+
+        .audit-logo-lockup {
+            border-left: 0;
+            border-top: 1px solid var(--audit-border);
+            padding-left: 0;
+            padding-top: 14px;
+            text-align: center;
+        }
+
+        .audit-logo-lockup img {
+            max-width: min(100%, 330px);
+            max-height: 126px;
+        }
+
+        .domain-row {
+            grid-template-columns: 1fr;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def get_logo_data_uri(path="logo.png"):
+    if not os.path.exists(path):
+        return ""
+
+    with open(path, "rb") as logo_file:
+        encoded = base64.b64encode(logo_file.read()).decode("ascii")
+
+    return f"data:image/png;base64,{encoded}"
+
+
+def render_app_header():
+    logo_uri = get_logo_data_uri()
+    logo_html = (
+        f'<img src="{logo_uri}" alt="Khalil Trade">'
+        if logo_uri
+        else '<strong>Khalil Trade</strong>'
+    )
+
+    st.markdown(f"""
+    <div class="audit-hero audit-brand-hero">
+        <div>
+            <div class="audit-kicker">Технический ИТ- и ИБ-аудит</div>
+            <div class="audit-title">Опросник технического аудита ИТ и ИБ</div>
+            <p class="audit-subtitle">
+                Структурированный сбор данных для экспертной оценки инфраструктуры,
+                зрелости защиты и подготовки XLSX-отчета.
+            </p>
+        </div>
+        <div class="audit-logo-lockup">
+            {logo_html}
+            <div class="brand-name">Khalil Audit System v10.5</div>
+            <div class="brand-signature">by Ivan Rudoy</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_section_marker(kicker, title, body):
+    st.markdown(f"""
+    <div class="audit-section">
+        <div class="eyebrow">{html.escape(kicker)}</div>
+        <div class="title">{html.escape(title)}</div>
+        <p class="body">{html.escape(body)}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_generation_guard(active):
+    action = "install" if active else "remove"
+    components.html(f"""
+    <script>
+    const target = window.parent;
+    const message = "Экспертный отчет формируется. Это может занять до 4 минут. Не закрывайте и не обновляйте страницу.";
+
+    if (!target.__khalilBeforeUnloadHandler) {{
+      target.__khalilBeforeUnloadHandler = (event) => {{
+        event.preventDefault();
+        event.returnValue = message;
+        return message;
+      }};
+    }}
+
+    if ("{action}" === "install" && !target.__khalilBeforeUnloadActive) {{
+      target.addEventListener("beforeunload", target.__khalilBeforeUnloadHandler);
+      target.__khalilBeforeUnloadActive = true;
+    }}
+
+    if ("{action}" === "remove" && target.__khalilBeforeUnloadActive) {{
+      target.removeEventListener("beforeunload", target.__khalilBeforeUnloadHandler);
+      target.__khalilBeforeUnloadActive = false;
+    }}
+    </script>
+    """, height=0)
+
+
+inject_audit_design()
+
 # Якорь для принудительного перехода в начало страницы
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
 # --- НАСТРОЙКИ TELEGRAM (из Secrets) ---
-TOKEN = st.secrets.get("TELEGRAM_TOKEN")
-CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
+TOKEN = get_app_secret("TELEGRAM_TOKEN")
+CHAT_ID = get_app_secret("TELEGRAM_CHAT_ID")
 
-# --- 2. ЛОГОТИП И КОНТАКТЫ ---
-if os.path.exists("logo.png"):
-    st.image("logo.png", width=300)
-else:
-    st.title("Khalil Trade IT Audit & Consulting")
-
-st.markdown("### Мы поможем Вам стать лучше!")
-st.divider()
-
-st.title("📋 Опросник Технический аудит ИТ и ИБ by IRudoy(2026) v10.5")
+render_app_header()
 
 # --- ИНСТРУКЦИЯ ДЛЯ ПОЛЬЗОВАТЕЛЯ ---
 with st.expander("📖 Инструкция по заполнению (нажмите, чтобы развернуть)"):
@@ -558,9 +965,12 @@ data = {}
 client_info = {}
 validation_errors = []
 score = 0
-
 # --- ШАПКА: ОБЩАЯ ИНФОРМАЦИЯ ---
-st.header("📍 Общая информация")
+render_section_marker(
+    "01 / КОМПАНИЯ",
+    "Общая информация",
+    "Контекст компании, отрасль и контактные данные для экспертного отчета."
+)
 col_h1, col_h2 = st.columns(2)
 
 with col_h1:
@@ -621,7 +1031,11 @@ if not all([client_info.get('Город'), client_info.get('Наименован
 st.divider()
 
 # --- БЛОК 1: ИНФОРМАЦИОННЫЕ ТЕХНОЛОГИИ ---
-st.header("Блок 1: Информационные технологии")
+render_section_marker(
+    "02 / ИНФРАСТРУКТУРА",
+    "Информационные технологии",
+    "АРМ, сеть, серверы, хранение данных и внутренние бизнес-системы."
+)
 
 st.subheader("1.1. Конечные точки (АРМ)")
 total_arm = st.number_input("Общее количество АРМ (шт)", min_value=0, step=1, help="Общее число ПК, ноутбуков и тонких клиентов в организации.")
@@ -637,7 +1051,11 @@ if selected_os_arm:
 
 data['1.1. Примечание'] = st.text_area("Примечание к разделу 1.1", placeholder="Напр.: планируем обновление Windows 10 до 11 в Q3", key="note_1_1")
 
-if total_arm > 0 and sum_os_arm != total_arm:
+if total_arm <= 0:
+    validation_errors.append("Укажите количество АРМ")
+elif not selected_os_arm:
+    validation_errors.append("Выберите ОС на АРМ")
+elif sum_os_arm != total_arm:
     st.warning(f"⚠️ Ошибка: Сумма по ОС ({sum_os_arm}) должна быть равна общему количеству АРМ ({total_arm}).")
     validation_errors.append("Несовпадение количества АРМ и ОС")
 
@@ -648,8 +1066,9 @@ selected_routing = []
 ngfw_vendor = "Нет"
 wifi_enabled = False
 wifi_ctrl_enabled = False
+net_active = st.toggle("Своя сетевая инфраструктура", key="net_toggle", help="Активируйте, если организация самостоятельно управляет сетевым оборудованием.")
 
-if st.toggle("Своя сетевая инфраструктура", key="net_toggle", help="Активируйте, если организация самостоятельно управляет сетевым оборудованием."):
+if net_active:
     net_types = ["Оптика", "RJ45 (Ethernet)", "Радиорелейная", "Спутник", "4G/5G", "Starlink", "ADSL/VDSL", "Нет"]
     routing_types = ["Статическая", "RIP", "OSPF", "EIGRP", "BGP", "IS-IS"]
     
@@ -736,42 +1155,52 @@ if st.toggle("Своя сетевая инфраструктура", key="net_to
 
 st.write("---")
 st.subheader("1.3. Серверы и Виртуализация")
-col_s1, col_s2 = st.columns(2)
-with col_s1:
-    phys_count = st.number_input("Количество физических серверов", min_value=0, step=1, key="phys_srv", help="Количество 'железных' серверов в серверной или ЦОД.")
-    data['1.3.1. Физические серверы'] = phys_count
-with col_s2:
-    virt_count = st.number_input("Количество виртуальных серверов", min_value=0, step=1, key="virt_srv", help="Суммарное количество виртуальных машин (VM).")
-    data['1.3.2. Виртуальные серверы'] = virt_count
-
-s_os_list = ["Windows Server 2008/2012 R2", "Windows Server 2016", "Windows Server 2019", "Windows Server 2022", "Linux", "Unix", "Другое"]
-selected_os_srv = st.multiselect("Выберите ОС серверов", s_os_list, key="ms_srv_list", help="Операционные системы, установленные на серверах.")
 sum_os_srv = 0
-if selected_os_srv:
-    for os_s in selected_os_srv:
-        val_os = st.number_input(f"Кол-во на {os_s}", min_value=0, key=f"fsrv_{os_s}")
-        data[f"ОС Сервера ({os_s})"] = val_os
-        sum_os_srv += val_os
-
-if virt_count > 0 and sum_os_srv < virt_count:
-    st.warning(f"⚠️ Ошибка: Количество ОС ({sum_os_srv}) должно быть больше или равно количеству виртуальных серверов ({virt_count}).")
-    validation_errors.append("Недостаточное количество ОС для серверов")
-
-selected_virt_sys = st.multiselect("Выберите системы виртуализации", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys_list", help="Технологии управления виртуальной инфраструктурой.")
-if selected_virt_sys and "Нет" not in selected_virt_sys:
-    for v_sys in selected_virt_sys:
-        v_h_cnt = st.number_input(f"Количество хостов {v_sys}", min_value=0, step=1, key=f"fv_cnt_{v_sys}", help=f"Сколько физических серверов (нод) в кластере {v_sys}?")
-        data[f"Система виртуализации ({v_sys})"] = v_h_cnt
-        if v_h_cnt == 0: validation_errors.append(f"Укажите количество хостов для {v_sys}")
-
+phys_count = 0
+virt_count = 0
+server_active = st.toggle("Серверы и виртуализация", key="server_toggle", help="Включите, если у заказчика есть физические серверы, виртуальные машины или платформы виртуализации.")
 v_n_b = "Нет"
-if st.checkbox("Резервное копирование", key="ib_backup", help="Наличие специализированного ПО для бэкапа (Veeam, Commvault, Veritas и т.д.)."):
-    v_n_b = st.text_input("Вендор Резервного копирования", key="vn_backup", help="Укажите название используемого продукта.")
-    data["Резервное копирование"] = v_n_b
-    if not v_n_b: validation_errors.append("Укажите вендора резервного копирования")
-    score += 20
+selected_os_srv = []
+selected_virt_sys = []
 
-data['1.3. Примечание'] = st.text_area("Примечание к разделу 1.3", placeholder="Специфика серверного парка...", key="note_1_3")
+if server_active:
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        phys_count = st.number_input("Количество физических серверов", min_value=0, step=1, key="phys_srv", help="Количество 'железных' серверов в серверной или ЦОД.")
+        data['1.3.1. Физические серверы'] = phys_count
+    with col_s2:
+        virt_count = st.number_input("Количество виртуальных серверов", min_value=0, step=1, key="virt_srv", help="Суммарное количество виртуальных машин (VM).")
+        data['1.3.2. Виртуальные серверы'] = virt_count
+
+    if phys_count == 0 and virt_count == 0:
+        validation_errors.append("Укажите количество физических или виртуальных серверов")
+
+    s_os_list = ["Windows Server 2008/2012 R2", "Windows Server 2016", "Windows Server 2019", "Windows Server 2022", "Linux", "Unix", "Другое"]
+    selected_os_srv = st.multiselect("Выберите ОС серверов", s_os_list, key="ms_srv_list", help="Операционные системы, установленные на серверах.")
+    if selected_os_srv:
+        for os_s in selected_os_srv:
+            val_os = st.number_input(f"Кол-во на {os_s}", min_value=0, key=f"fsrv_{os_s}")
+            data[f"ОС Сервера ({os_s})"] = val_os
+            sum_os_srv += val_os
+
+    if virt_count > 0 and sum_os_srv < virt_count:
+        st.warning(f"⚠️ Ошибка: Количество ОС ({sum_os_srv}) должно быть больше или равно количеству виртуальных серверов ({virt_count}).")
+        validation_errors.append("Недостаточное количество ОС для серверов")
+
+    selected_virt_sys = st.multiselect("Выберите системы виртуализации", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys_list", help="Технологии управления виртуальной инфраструктурой.")
+    if selected_virt_sys and "Нет" not in selected_virt_sys:
+        for v_sys in selected_virt_sys:
+            v_h_cnt = st.number_input(f"Количество хостов {v_sys}", min_value=0, step=1, key=f"fv_cnt_{v_sys}", help=f"Сколько физических серверов (нод) в кластере {v_sys}?")
+            data[f"Система виртуализации ({v_sys})"] = v_h_cnt
+            if v_h_cnt == 0: validation_errors.append(f"Укажите количество хостов для {v_sys}")
+
+    if st.checkbox("Резервное копирование", key="ib_backup", help="Наличие специализированного ПО для бэкапа (Veeam, Commvault, Veritas и т.д.)."):
+        v_n_b = st.text_input("Вендор Резервного копирования", key="vn_backup", help="Укажите название используемого продукта.")
+        data["Резервное копирование"] = v_n_b
+        if not v_n_b: validation_errors.append("Укажите вендора резервного копирования")
+        score += 20
+
+    data['1.3. Примечание'] = st.text_area("Примечание к разделу 1.3", placeholder="Специфика серверного парка...", key="note_1_3")
 
 st.write("---")
 st.subheader("1.4. Системы хранения данных (СХД)")
@@ -855,7 +1284,11 @@ if is_active:
 st.divider()
 
 # --- БЛОК 2: ИНФОРМАЦИОННАЯ БЕЗОПАСНОСТЬ ---
-st.header("Блок 2: Информационная безопасность")
+render_section_marker(
+    "03 / БЕЗОПАСНОСТЬ",
+    "Информационная безопасность",
+    "Текущие средства защиты, мониторинг, доступ, приложения и управление уязвимостями."
+)
 
 enable_security = st.toggle("Включить блок ИБ", value=False)
 
@@ -872,7 +1305,7 @@ if enable_security:
     errors = []
 
     # =========================
-    # ENDPOINT SECURITY
+    # Защита конечных устройств
     # =========================
     st.markdown("#### Защита конечных устройств")
     col1, col2 = st.columns(2)
@@ -894,7 +1327,7 @@ if enable_security:
         data['Блок 2. MDR'] = mdr_v if mdr else "Нет"
 
     # =========================
-    # DATA SECURITY
+    # Защита данных
     # =========================
     st.markdown("#### Защита данных")
     col1, col2 = st.columns(2)
@@ -912,7 +1345,7 @@ if enable_security:
         data['Блок 2. CASB'] = casb_v if casb else "Нет"
 
     # =========================
-    # NETWORK SECURITY
+    # Сетевая безопасность
     # =========================
     st.markdown("#### Сетевая безопасность")
     col1, col2 = st.columns(2)
@@ -942,7 +1375,7 @@ if enable_security:
         data['Блок 2. ZTNA'] = ztna_v if ztna else "Нет"
 
     # =========================
-    # APPLICATION SECURITY
+    # Безопасность приложений
     # =========================
     st.markdown("#### Безопасность приложений")
     col1, col2 = st.columns(2)
@@ -956,7 +1389,7 @@ if enable_security:
         data['Блок 2. DAST'] = dast_v if dast else "Нет"
 
     # =========================
-    # ACCESS SECURITY
+    # Управление доступом
     # =========================
     st.markdown("#### Управление доступом")
     col1, col2 = st.columns(2)
@@ -1025,8 +1458,12 @@ if enable_security:
         validation_errors.extend(errors)
 
 # --- БЛОК 3: WEB-РЕСУРСЫ ---
-st.header("Блок 3: Web-ресурсы")
-web_active = st.toggle("Web-ресурсы", key="web_toggle")
+render_section_marker(
+    "04 / ЦИФРОВАЯ ПОВЕРХНОСТЬ",
+    "Веб-ресурсы",
+    "Публичная поверхность, фронтенд-стек и особенности размещения."
+)
+web_active = st.toggle("Веб-ресурсы", key="web_toggle")
 if web_active:
     data['3.1. Хостинг'] = st.selectbox("Хостинг", ["Собственный ЦОД", "Облако KZ", "Облако Global"])
     data['3.2. Frontend'] = st.multiselect("Frontend серверы", ["Nginx", "Apache", "IIS", "LiteSpeed", "Cloudflare"])
@@ -1035,7 +1472,11 @@ if web_active:
 st.divider()
 
 # --- БЛОК 4: РАЗРАБОТКА ---
-st.header("Блок 4: Разработка")
+render_section_marker(
+    "05 / РАЗРАБОТКА",
+    "Разработка",
+    "Команда разработки, языки, CI/CD и дополнительный технологический контекст."
+)
 dev_active = st.toggle("Разработка", key="dev_toggle")
 if dev_active:
     col_d1, col_d2 = st.columns(2)
@@ -1060,15 +1501,15 @@ if dev_active:
 #----Подготовка---
 def get_maturity_level(score):
     if score <= 20:
-        return "INITIAL", "🔴"
+        return "Начальный", "🔴"
     elif score <= 40:
-        return "BASIC", "🟠"
+        return "Базовый", "🟠"
     elif score <= 60:
-        return "DEVELOPING", "🟡"
+        return "Развивающийся", "🟡"
     elif score <= 80:
-        return "MANAGED", "🟢"
+        return "Управляемый", "🟢"
     else:
-        return "OPTIMIZED", "🔵"
+        return "Оптимальный", "🔵"
 def build_context(results, client_info):
 
     users = int(results.get("_user_count", 0))
@@ -1132,7 +1573,7 @@ def build_context(results, client_info):
     )
 
     # ==================================
-    # BUSINESS SYSTEMS
+    # Бизнес-системы
     # ==================================
 
     result_text = str(results)
@@ -1182,7 +1623,7 @@ def build_context(results, client_info):
     ])
 
     # ==================================
-    # DEVELOPMENT
+    # Разработка
     # ==================================
 
     context["has_development"] = (
@@ -1211,7 +1652,7 @@ def build_context(results, client_info):
     )
 
     # ==================================
-    # INFRASTRUCTURE
+    # Инфраструктура
     # ==================================
 
     context["servers"] = int(
@@ -1238,7 +1679,7 @@ def build_context(results, client_info):
     )
 
     # ==================================
-    # SECURITY
+    # Безопасность
     # ==================================
 
     context["has_ngfw"] = (
@@ -1293,127 +1734,141 @@ def is_enabled(value):
 def calculate_domain_scores(results):
 
     domains = {
-        "Network Security": 0,
-        "Endpoint Security": 0,
-        "Identity & Access": 0,
-        "Monitoring & SOC": 0,
-        "Backup & Recovery": 0,
-        "Infrastructure": 0
+        "Сетевая безопасность": 0,
+        "Защита конечных точек": 0,
+        "Идентификация и доступ": 0,
+        "Мониторинг и SOC": 0,
+        "Резервное копирование": 0,
+        "Инфраструктура": 0
     }
 
     # =========================
-    # NETWORK SECURITY
+    # Сетевая безопасность
     # =========================
 
     if is_enabled(results.get("NGFW")):
-        domains["Network Security"] += 25
+        domains["Сетевая безопасность"] += 25
 
     if is_enabled(results.get("WAF")):
-        domains["Network Security"] += 15
+        domains["Сетевая безопасность"] += 15
 
     if is_enabled(results.get("Anti-DDoS")):
-        domains["Network Security"] += 15
+        domains["Сетевая безопасность"] += 15
 
     if is_enabled(results.get("VPN")):
-        domains["Network Security"] += 10
+        domains["Сетевая безопасность"] += 10
 
     if is_enabled(results.get("NAC")):
-        domains["Network Security"] += 20
+        domains["Сетевая безопасность"] += 20
 
     if is_enabled(results.get("Сегментация сети")):
-        domains["Network Security"] += 15
+        domains["Сетевая безопасность"] += 15
 
     # =========================
-    # ENDPOINT SECURITY
+    # Защита конечных устройств
     # =========================
 
     if is_enabled(results.get("Антивирус")):
-        domains["Endpoint Security"] += 20
+        domains["Защита конечных точек"] += 20
 
     if is_enabled(results.get("EDR")):
-        domains["Endpoint Security"] += 40
+        domains["Защита конечных точек"] += 40
 
     if is_enabled(results.get("Patch Management")):
-        domains["Endpoint Security"] += 20
+        domains["Защита конечных точек"] += 20
 
     if is_enabled(results.get("MDM")):
-        domains["Endpoint Security"] += 10
+        domains["Защита конечных точек"] += 10
 
     if is_enabled(results.get("Device Control")):
-        domains["Endpoint Security"] += 10
+        domains["Защита конечных точек"] += 10
 
     # =========================
     # IAM
     # =========================
 
     if is_enabled(results.get("MFA")):
-        domains["Identity & Access"] += 35
+        domains["Идентификация и доступ"] += 35
 
     if is_enabled(results.get("IDM")):
-        domains["Identity & Access"] += 25
+        domains["Идентификация и доступ"] += 25
 
     if is_enabled(results.get("PAM")):
-        domains["Identity & Access"] += 25
+        domains["Идентификация и доступ"] += 25
 
     if is_enabled(results.get("SSO")):
-        domains["Identity & Access"] += 15
+        domains["Идентификация и доступ"] += 15
 
     # =========================
     # MONITORING
     # =========================
 
     if is_enabled(results.get("SIEM")):
-        domains["Monitoring & SOC"] += 40
+        domains["Мониторинг и SOC"] += 40
 
     if is_enabled(results.get("SOC")):
-        domains["Monitoring & SOC"] += 30
+        domains["Мониторинг и SOC"] += 30
 
     if is_enabled(results.get("NAD")):
-        domains["Monitoring & SOC"] += 15
+        domains["Мониторинг и SOC"] += 15
 
     if is_enabled(results.get("Threat Intelligence")):
-        domains["Monitoring & SOC"] += 15
+        domains["Мониторинг и SOC"] += 15
 
     # =========================
     # BACKUP
     # =========================
 
     if is_enabled(results.get("Резервное копирование")):
-        domains["Backup & Recovery"] += 30
+        domains["Резервное копирование"] += 30
 
     if is_enabled(results.get("Immutable Backup")):
-        domains["Backup & Recovery"] += 30
+        domains["Резервное копирование"] += 30
 
     if is_enabled(results.get("DR")):
-        domains["Backup & Recovery"] += 20
+        domains["Резервное копирование"] += 20
 
     if is_enabled(results.get("Air-Gap Backup")):
-        domains["Backup & Recovery"] += 20
+        domains["Резервное копирование"] += 20
 
     # =========================
     # INFRA
     # =========================
 
     if is_enabled(results.get("Виртуализация")):
-        domains["Infrastructure"] += 25
+        domains["Инфраструктура"] += 25
 
     if is_enabled(results.get("СХД")):
-        domains["Infrastructure"] += 25
+        domains["Инфраструктура"] += 25
 
     if is_enabled(results.get("Мониторинг")):
-        domains["Infrastructure"] += 20
+        domains["Инфраструктура"] += 20
 
     if is_enabled(results.get("Резервный канал")):
-        domains["Infrastructure"] += 15
+        domains["Инфраструктура"] += 15
 
     if is_enabled(results.get("Кластеризация")):
-        domains["Infrastructure"] += 15
+        domains["Инфраструктура"] += 15
 
     # Ограничение 100%
     for k in domains:
         domains[k] = min(domains[k], 100)
 
     return domains
+
+
+def risk_level_label(level):
+    labels = {
+        "CRITICAL": "Критический",
+        "HIGH": "Высокий",
+        "MEDIUM": "Средний",
+        "LOW": "Низкий",
+        "КРИТИЧЕСКИЙ": "Критический",
+        "ВЫСОКИЙ": "Высокий",
+        "СРЕДНИЙ": "Средний",
+        "НИЗКИЙ": "Низкий",
+    }
+    return labels.get(str(level).upper(), str(level))
 
 
 # --- Отчет ---
@@ -1454,7 +1909,7 @@ def make_expert_excel(c_info, results, final_score):
     # =========================
 
     ws.merge_cells('A1:D1')
-    ws['A1'] = "EXECUTIVE CYBERSECURITY ASSESSMENT REPORT"
+    ws['A1'] = "ЭКСПЕРТНЫЙ ОТЧЕТ ПО КИБЕРБЕЗОПАСНОСТИ"
     ws['A1'].font = Font(bold=True, size=20, color="1F1F1F")
 
     ws.merge_cells('A3:D3')
@@ -1468,11 +1923,11 @@ def make_expert_excel(c_info, results, final_score):
     ws['A5'] = f"{maturity_icon} Уровень зрелости: {maturity}"
 
     ws.merge_cells('A6:D6')
-    ws['A6'] = f"Общий Security Score: {final_score}%"
+    ws['A6'] = f"Общая оценка защиты: {final_score}%"
 
     # Executive Summary Block
     ws.merge_cells('A8:D8')
-    ws['A8'] = "EXECUTIVE SUMMARY"
+    ws['A8'] = "УПРАВЛЕНЧЕСКОЕ РЕЗЮМЕ"
     ws['A8'].font = Font(bold=True, size=16, color="FFFFFF")
     ws['A8'].fill = dark_blue_fill
     ws['A8'].alignment = Alignment(horizontal='center')
@@ -1524,7 +1979,7 @@ def make_expert_excel(c_info, results, final_score):
     risk_header = ws.cell(
         row=current_row,
         column=1,
-        value="TOP CYBERSECURITY RISKS"
+        value="КЛЮЧЕВЫЕ КИБЕРРИСКИ"
     )
 
     risk_header.font = white_font
@@ -1533,7 +1988,7 @@ def make_expert_excel(c_info, results, final_score):
 
     current_row += 1
 
-    headers = ["#", "Risk", "Severity", "Business Impact"]
+    headers = ["#", "Риск", "Критичность", "Влияние на бизнес"]
 
     for col_num, header in enumerate(headers, 1):
 
@@ -1556,7 +2011,7 @@ def make_expert_excel(c_info, results, final_score):
 
         ws.cell(row=current_row, column=1, value=idx).border = border
         ws.cell(row=current_row, column=2, value=risk.get("risk", "-")).border = border
-        ws.cell(row=current_row, column=3, value=level).border = border
+        ws.cell(row=current_row, column=3, value=risk_level_label(level)).border = border
         ws.cell(row=current_row, column=4, value=impact).border = border
 
         if "CRITICAL" in str(level).upper():
@@ -1572,18 +2027,18 @@ def make_expert_excel(c_info, results, final_score):
     current_row += 2
 
     # =========================
-    # DOMAIN SECURITY ASSESSMENT
+    # Оценка доменов безопасности
     # =========================
 
     ws.merge_cells(f'A{current_row}:D{current_row}')
-    dom_cell = ws.cell(row=current_row, column=1, value="SECURITY DOMAIN ASSESSMENT")
+    dom_cell = ws.cell(row=current_row, column=1, value="ОЦЕНКА ДОМЕНОВ БЕЗОПАСНОСТИ")
     dom_cell.font = white_font
     dom_cell.fill = dark_blue_fill
     dom_cell.alignment = Alignment(horizontal='center')
 
     current_row += 1
 
-    headers = ["Security Domain", "Score", "Status"]
+    headers = ["Домен безопасности", "Оценка", "Статус"]
 
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=current_row, column=col_num, value=header)
@@ -1596,15 +2051,15 @@ def make_expert_excel(c_info, results, final_score):
     for domain, score in domain_scores.items():
 
         if score >= 80:
-            status = "🟢 STRONG"
+            status = "🟢 Сильный"
             fill = light_blue_fill
 
         elif score >= 50:
-            status = "🟠 MODERATE"
+            status = "🟠 Средний"
             fill = medium_fill
 
         else:
-            status = "🔴 WEAK"
+            status = "🔴 Слабый"
             fill = critical_fill
 
         ws.cell(row=current_row, column=1, value=domain).border = border
@@ -1669,7 +2124,7 @@ def make_expert_excel(c_info, results, final_score):
             cell = ws.cell(
                 row=curr_row,
                 column=1,
-                value=f"[{lvl}] {item.get('risk', 'Риск')}"
+                value=f"[{risk_level_label(lvl)}] {item.get('risk', 'Риск')}"
             )
 
             cell.font = Font(bold=True)
@@ -1742,11 +2197,278 @@ def make_expert_excel(c_info, results, final_score):
     wb.save(output)
     return output.getvalue()
 
+
+def build_report_results(
+    data,
+    main_speed,
+    back_speed,
+    total_arm,
+    ap_cnt,
+    selected_routing,
+    ngfw_vendor,
+    phys_count,
+    virt_count,
+    v_n_b
+):
+    results = data.copy()
+    results.update({
+        "Интернет канал (осн)": f"{main_speed} Mbit/s",
+        "Резервный канал": f"{back_speed} Mbit/s",
+        "_main_speed": main_speed,
+        "_back_speed": back_speed,
+        "_user_count": total_arm,
+        "WiFi Точки": ap_cnt,
+        "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
+        "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
+        "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
+        "Серверы (физ)": phys_count,
+        "Серверы (вирт)": virt_count,
+        "Резервное копирование": v_n_b if v_n_b else "Нет",
+    })
+
+    results["MFA"] = results.get("Блок 2. MFA", "Нет")
+    results["SIEM"] = results.get("Блок 2. SIEM", "Нет")
+    results["WAF"] = results.get("Блок 2. WAF", "Нет")
+    results["Anti-DDoS"] = results.get("Блок 2. Anti-DDoS", "Нет")
+    results["EDR"] = results.get("Блок 2. EDR", "Нет")
+    results["Patch Management"] = results.get("Блок 2. Patch Management", "Нет")
+    return results
+
+
+def _status_label(score_value):
+    if score_value >= 80:
+        return "Сильный"
+    if score_value >= 50:
+        return "Средний"
+    return "Слабый"
+
+
+def _quick_win_signals(results):
+    signals = []
+
+    if results.get("MFA") == "Нет":
+        signals.append(("critical", "MFA", "Внедрение MFA обычно быстрее всего снижает риск компрометации учетных записей."))
+
+    if results.get("SIEM") == "Нет":
+        signals.append(("warn", "SIEM / SOC", "Нет централизованного мониторинга: инциденты сложнее обнаруживать и расследовать."))
+
+    if results.get("EDR") == "Нет":
+        signals.append(("warn", "Endpoint", "Без EDR/XDR защита рабочих мест остается слабее против сложных атак."))
+
+    if results.get("Резервное копирование") == "Нет":
+        signals.append(("critical", "Backup", "Не указан backup-контур: это критично для устойчивости к ransomware и сбоям."))
+
+    if results.get("Patch Management") == "Нет":
+        signals.append(("warn", "Patch Management", "Без централизованных обновлений растет риск эксплуатации известных уязвимостей."))
+
+    legacy_arm = results.get("ОС АРМ (Windows XP/Vista/7/8)", 0)
+    legacy_srv = results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0)
+    if legacy_arm or legacy_srv:
+        signals.append(("critical", "Legacy OS", "Обнаружены устаревшие ОС: нужен план миграции или изоляции."))
+
+    return signals[:5]
+
+
+def section_status(enabled, complete):
+    if not enabled:
+        return "disabled"
+    return "complete" if complete else "missing"
+
+
+def render_audit_cockpit(client_info, results, validation_errors, final_score, section_statuses):
+    required_fields = [
+        client_info.get('Город'),
+        client_info.get('Наименование компании'),
+        client_info.get('Сфера деятельности'),
+        client_info.get('Сайт компании'),
+        client_info.get('Email'),
+        client_info.get('ФИО контактного лица'),
+        client_info.get('Должность'),
+        client_info.get('Контактный телефон'),
+    ]
+
+    filled_required = sum(1 for value in required_fields if value)
+    required_readiness = (filled_required / len(required_fields)) * 40
+
+    active_sections = [
+        status for _, status in section_statuses
+        if status != "disabled"
+    ]
+    completed_sections = sum(
+        1 for status in active_sections
+        if status == "complete"
+    )
+    section_readiness = (
+        (completed_sections / len(active_sections)) * 45
+        if active_sections
+        else 0
+    )
+    validation_readiness = 15 if not validation_errors else 0
+    readiness = int(round(
+        min(100, required_readiness + section_readiness + validation_readiness)
+    ))
+
+    domain_scores = calculate_domain_scores(results)
+    risk_signals = _quick_win_signals(results)
+    maturity, maturity_icon = get_maturity_level(final_score)
+
+    st.sidebar.markdown("### Навигатор аудита")
+    st.sidebar.progress(readiness, text=f"Готовность анкеты: {readiness}%")
+    st.sidebar.metric("Оценка защиты", f"{final_score}%")
+    st.sidebar.caption(f"{maturity_icon} {maturity}")
+    st.sidebar.metric("Ошибки заполнения", len(validation_errors))
+
+    st.sidebar.markdown("#### Разделы")
+    status_styles = {
+        "complete": ("green", "заполнен"),
+        "missing": ("red", "не заполнен"),
+        "disabled": ("gray", "не включен"),
+    }
+
+    for step, status in section_statuses:
+        dot_class, title = status_styles.get(status, status_styles["disabled"])
+        st.sidebar.markdown(
+            f'<div class="sidebar-step" title="{html.escape(title)}">'
+            f'<span class="sidebar-dot {dot_class}"></span><span>{html.escape(step)}</span>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    if validation_errors:
+        st.sidebar.markdown("#### Требует внимания")
+        for err in list(dict.fromkeys(validation_errors))[:6]:
+            st.sidebar.warning(err)
+
+
+def render_analysis_preview(results, final_score):
+    domain_scores = calculate_domain_scores(results)
+    risk_signals = _quick_win_signals(results)
+    maturity, maturity_icon = get_maturity_level(final_score)
+
+    st.markdown("### Сводка аудита")
+    metric_cols = st.columns(4)
+    metric_values = [
+        ("Оценка защиты", f"{final_score}%", f"{maturity_icon} {maturity}"),
+        ("Доменов", str(len(domain_scores)), "в текущей оценке"),
+        ("Рисков", str(len(risk_signals)), "быстрые сигналы"),
+        ("Статус", "Предпросмотр", "перед XLSX"),
+    ]
+
+    for col, (label, value, hint) in zip(metric_cols, metric_values):
+        with col:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="label">{html.escape(label)}</div>
+                <div class="value">{html.escape(value)}</div>
+                <div class="hint">{html.escape(hint)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    domain_cards = ''.join(
+        f'<div class="domain-card">'
+        f'<strong>{html.escape(domain)}</strong>'
+        f'<div class="domain-score">{score_value}%</div>'
+        f'<div class="hint">{html.escape(_status_label(score_value))}</div>'
+        f'</div>'
+        for domain, score_value in domain_scores.items()
+    )
+    st.markdown(f'<div class="domain-row">{domain_cards}</div>', unsafe_allow_html=True)
+
+    if risk_signals:
+        st.markdown("#### Быстрые улучшения")
+        for kind, title, body in risk_signals:
+            st.markdown(f"""
+            <div class="risk-chip {html.escape(kind)}">
+                <strong>{html.escape(title)}</strong><br>
+                {html.escape(body)}
+            </div>
+            """, unsafe_allow_html=True)
+
 # --- ИНИЦИАЛИЗАЦИЯ И СТЕК СОСТОЯНИЙ (в самом начале финального блока) ---
 if "generation_state" not in st.session_state:
     st.session_state.generation_state = "idle"  # Может быть: idle, preparing, heavy_ai, finalized
 if "cached_report_bytes" not in st.session_state:
     st.session_state.cached_report_bytes = None
+
+render_generation_guard(
+    st.session_state.generation_state in {"preparing", "heavy_ai"}
+)
+
+preview_results = build_report_results(
+    data,
+    main_speed,
+    back_speed,
+    total_arm,
+    ap_cnt,
+    selected_routing,
+    ngfw_vendor,
+    phys_count,
+    virt_count,
+    v_n_b
+)
+preview_score = min(score + 10, 100)
+
+def has_validation_error(*markers):
+    return any(
+        any(marker in err for marker in markers)
+        for err in validation_errors
+    )
+
+
+general_complete = all([
+    client_info.get('Город'),
+    client_info.get('Наименование компании'),
+    client_info.get('Сфера деятельности'),
+    client_info.get('Сайт компании'),
+    client_info.get('Email'),
+    client_info.get('ФИО контактного лица'),
+    client_info.get('Должность'),
+    client_info.get('Контактный телефон'),
+])
+endpoint_complete = total_arm > 0 and bool(selected_os_arm) and sum_os_arm == total_arm
+network_complete = net_active and bool(selected_routing) and not has_validation_error(
+    "маршрутизации",
+    "маршрутизаторов",
+    "коммутаторов",
+    "Core-уровня",
+    "уровня распределения",
+    "уровня доступа",
+    "Wi-Fi",
+    "NGFW",
+)
+server_complete = server_active and (phys_count > 0 or virt_count > 0) and not has_validation_error(
+    "серверов",
+    "хостов",
+    "резервного копирования",
+)
+storage_complete = storage_active and not has_validation_error("СХД", "RAID")
+systems_complete = is_active and not has_validation_error("название и версию", "версию")
+security_complete = enable_security and not has_validation_error("производитель")
+web_complete = web_active
+dev_complete = dev_active and not has_validation_error("разработчиков", "языки разработки")
+
+section_statuses = [
+    ("Компания", section_status(True, general_complete)),
+    ("Конечные точки", section_status(True, endpoint_complete)),
+    ("Сеть", section_status(net_active, network_complete)),
+    ("Серверы", section_status(server_active, server_complete)),
+    ("СХД", section_status(storage_active, storage_complete)),
+    ("ИС", section_status(is_active, systems_complete)),
+    ("ИБ", section_status(enable_security, security_complete)),
+    ("Веб", section_status(web_active, web_complete)),
+    ("Разработка", section_status(dev_active, dev_complete)),
+]
+
+render_audit_cockpit(
+    client_info,
+    preview_results,
+    validation_errors,
+    preview_score,
+    section_statuses
+)
+
+with st.expander("Предпросмотр анализа: сводка аудита и быстрые улучшения", expanded=False):
+    render_analysis_preview(preview_results, preview_score)
 
 # --- ФИНАЛ ---
 st.divider()
@@ -1764,67 +2486,35 @@ st.markdown("""
 </a>.
 """, unsafe_allow_html=True)
 if st.session_state.generation_state == "idle":
-    if st.button("📊 Сформировать экспертный отчет", disabled=len(validation_errors) > 0):
+    if st.button("Сформировать экспертный отчет", disabled=len(validation_errors) > 0, type="primary"):
+        render_generation_guard(True)
         alert_placeholder = st.empty()
         console_placeholder = st.empty()
         progress_bar = st.progress(0)
 
-        st.markdown("""
-        <style>
-
-        .cyber-alert-box {
-            background-color: #fff8e1;
-            border: 1px solid #ffcc80;
-            color: #ef6c00;
-            padding: 15px;
-            border-radius: 6px;
-            text-align: center;
-            font-size: 14px;
-            margin-bottom: 20px;
-            font-weight: bold;
-        }
-
-        .cyber-log-box {
-            background: #000;
-            color: #00ff00;
-            font-family: monospace;
-            padding: 15px;
-            border: 1px solid #333;
-            height: 110px;
-            overflow: hidden;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            font-size: 13px;
-        }
-
-        </style>
-        """, unsafe_allow_html=True)
-
-        alert_placeholder.markdown("""
-
-        <div class="cyber-alert-box">
-
-            ⏳ Выполняется глубокий анализ инфраструктуры.
-            Формирование отчета может занять до 3 минут.
-
-            НЕ ЗАКРЫВАЙТЕ И НЕ ОБНОВЛЯЙТЕ СТРАНИЦУ
-            
-        </div>
-
-        """, unsafe_allow_html=True)
+        alert_placeholder.markdown(
+            """
+            <div class="analysis-status-panel">
+                <div class="analysis-status-title">Формируется экспертный отчет</div>
+                Выполняется нормализация данных, расчет зрелости и сборка XLSX. Это может занять до 4 минут.
+                <div class="page-lock-note">Не закрывайте и не обновляйте страницу до завершения формирования.</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
         steps = [
 
-            "Инициализация audit engine...",
+            "Инициализация ядра аудита...",
             "Проверка обязательных полей...",
             "Нормализация инфраструктурных данных...",
-            "Анализ perimeter security...",
-            "Анализ endpoint security posture...",
-            "Проверка backup resilience...",
-            "Расчет cybersecurity maturity...",
-            "Построение security domains...",
+            "Анализ сетевого периметра...",
+            "Анализ защищенности конечных точек...",
+            "Проверка устойчивости резервного копирования...",
+            "Расчет зрелости киберзащиты...",
+            "Построение доменов безопасности...",
             "Глубокий анализ рисков...",
-            "Формирование executive summary...",
+            "Формирование управленческого резюме...",
             "Генерация XLSX отчета...",
             "Финализация артефактов..."
         ]
@@ -1843,7 +2533,7 @@ if st.session_state.generation_state == "idle":
                 active_logs.pop(0)
 
             console_placeholder.markdown(
-                '<div class="cyber-log-box">' +
+                '<div class="analysis-log">' +
                 "".join([f'<div>▶ {line}</div>' for line in active_logs]) +
                 '</div>',
                 unsafe_allow_html=True
@@ -1872,20 +2562,18 @@ if st.session_state.generation_state == "preparing":
     st.success("⚙️ `[МАТРИЦА]`: Агрегация параметров ИТ-инфраструктуры успешно завершена.")
     
     st.markdown("---")
-    st.markdown("#### 📋 Полезные факты и рекомендации по ИБ:")
+    st.markdown("#### Полезные факты и рекомендации по ИБ:")
     
     # Выводим на экран массив фактов в красивом поле, который пользователь будет читать все 3 минуты
-    st.warning("""
-💡 **Многофакторная аутентификация:** Внедрение MFA блокирует до 99.9% автоматизированных атак на корпоративные учетные записи.
-              
-💡 **Защита рабочих мест:** Обычного антивируса (EPP) в 2026 году уже недостаточно. Решения класса EDR/XDR критически необходимы для выявления скрытых бесфайловых угроз.
-              
-💡 **Безопасность архивов:** Резервные копии должны быть изолированы от основной сети. Принцип 'Immutable Backup' гарантирует, что хакеры-вымогатели не смогут зашифровать ваши бэкапы.
-              
-💡 **Сетевой периметр:** Сетевая сегментация (VLAN, концепция Zero Trust) — лучший способ остановить распространение шифровальщика внутри компании, если один компьютер уже заражен.
-              
-💡 **Человеческий фактор:** Более 80% успешных кибератак начинаются со скомпрометированного фишингового письма. Регулярно обучайте команду кибергигиене.
-    """)
+    st.markdown("""
+    <div class="facts-panel">
+        <p><strong>Многофакторная аутентификация:</strong> внедрение MFA блокирует до 99.9% автоматизированных атак на корпоративные учетные записи.</p>
+        <p><strong>Защита рабочих мест:</strong> обычного антивируса (EPP) в 2026 году уже недостаточно. Решения класса EDR/XDR критически необходимы для выявления скрытых бесфайловых угроз.</p>
+        <p><strong>Безопасность архивов:</strong> резервные копии должны быть изолированы от основной сети. Принцип Immutable Backup снижает риск шифрования бэкапов.</p>
+        <p><strong>Сетевой периметр:</strong> сетевая сегментация, VLAN и Zero Trust помогают остановить распространение атаки внутри компании.</p>
+        <p><strong>Человеческий фактор:</strong> значительная часть успешных кибератак начинается с фишингового письма. Регулярное обучение снижает этот риск.</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Делаем маленькую паузу в 1.5 секунды, чтобы Streamlit успел железно отправить этот интерфейс в браузер клиента
     time.sleep(1.5)
@@ -1902,27 +2590,18 @@ if st.session_state.generation_state == "heavy_ai":
     with st.spinner("Производится глубокий анализ рисков..."):
         
         # Подготовка данных перед передачей
-        results = data.copy()
-        results.update({
-            "Интернет канал (осн)": f"{main_speed} Mbit/s",
-            "Резервный канал": f"{back_speed} Mbit/s",
-            "_main_speed": main_speed,
-            "_back_speed": back_speed,
-            "_user_count": total_arm,
-            "WiFi Точки": ap_cnt,
-            "WiFi Контроллер": data.get('Wi-Fi Контроллер', "Нет"),
-            "Маршрутизация": ", ".join(selected_routing) if selected_routing else "Нет",
-            "NGFW": ngfw_vendor if ngfw_vendor else "Нет",
-            "Серверы (физ)": phys_count,
-            "Серверы (вирт)": virt_count,
-            "Резервное копирование": v_n_b if v_n_b else "Нет",
-        })
-        results["MFA"] = results.get("Блок 2. MFA", "Нет")
-        results["SIEM"] = results.get("Блок 2. SIEM", "Нет")
-        results["WAF"] = results.get("Блок 2. WAF", "Нет")
-        results["Anti-DDoS"] = results.get("Блок 2. Anti-DDoS", "Нет")
-        results["EDR"] = results.get("Блок 2. EDR", "Нет")
-        results["Patch Management"] = results.get("Блок 2. Patch Management", "Нет")
+        results = build_report_results(
+            data,
+            main_speed,
+            back_speed,
+            total_arm,
+            ap_cnt,
+            selected_routing,
+            ngfw_vendor,
+            phys_count,
+            virt_count,
+            v_n_b
+        )
         f_score = min(score + 10, 100)
         
         # Запуск функции ИИ (Процессор зависает тут, но на экране пользователя уже горит Сценарий 1 с фактами!)
@@ -1930,8 +2609,11 @@ if st.session_state.generation_state == "heavy_ai":
         st.session_state.cached_report_bytes = report_bytes
 
     # Тихо отправляем в ТГ без создания задержек на экране
-    try:
-        telegram_text = (
+    if TOKEN and CHAT_ID:
+        try:
+            import requests
+
+            telegram_text = (
     "🚨 Новый запрос на аудит!\n"
     f"🏢 Компания: {client_info.get('Наименование компании', '-')}\n"
     f"📍 Город: {client_info.get('Город', '-')}\n"
@@ -1943,10 +2625,10 @@ if st.session_state.generation_state == "heavy_ai":
     f"💼 Должность: {client_info.get('Должность', '-')}\n"
     f"📊 Уровень зрелости: {f_score}%"
 )
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": telegram_text}, timeout=3)
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"Отчет: {client_info['Наименование компании']}"}, files={'document': (f"Audit_v10_{client_info['Наименование компании']}.xlsx", report_bytes)}, timeout=6)
-    except Exception:
-        pass
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": telegram_text}, timeout=3)
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendDocument", data={"chat_id": CHAT_ID, "caption": f"Отчет: {client_info['Наименование компании']}"}, files={'document': (f"Audit_v10_{client_info['Наименование компании']}.xlsx", report_bytes)}, timeout=6)
+        except Exception:
+            pass
 
     # Переключаем статус в финал
     st.session_state.generation_state = "finalized"
@@ -1958,7 +2640,7 @@ if st.session_state.generation_state == "finalized":
     st.success("🎉 Экспертный отчет успешно сформирован и проверен системой контроля качества Khalil Consulting!")
     
     st.download_button(
-        label="📥 Скачать готовый экспертный отчет (XLSX)",
+        label="Скачать готовый экспертный отчет (XLSX)",
         data=st.session_state.cached_report_bytes,
         file_name=f"Audit_Khalil_{client_info['Наименование компании']}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1966,9 +2648,9 @@ if st.session_state.generation_state == "finalized":
     )
     
     # Кнопка для сброса состояния, если пользователь захочет перегенерировать отчет
-    if st.button("🔄 Сформировать новый отчет"):
+    if st.button("Сформировать новый отчет"):
         st.session_state.generation_state = "idle"
         st.session_state.cached_report_bytes = None
         st.rerun()
 
-st.info("Khalil Audit System v10.5 | Ivan Rudoy Production | Almaty 2026")
+st.info("Khalil Audit System v10.5 | by Ivan Rudoy | Алматы 2026")
