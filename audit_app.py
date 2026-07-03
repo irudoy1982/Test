@@ -1225,20 +1225,53 @@ def draft_safe_value(value):
     return None
 
 
+DRAFT_SYSTEM_KEYS = {
+    "draft_upload",
+    "draft_expander_download",
+    "floating_draft_download",
+    "cached_report_bytes",
+    "report_ready",
+    "generation_active",
+    "draft_link_ready",
+    "draft_link_notice",
+    "_draft_query_marker",
+}
+
+DRAFT_FORBIDDEN_WIDGET_KEYS = {
+    "draft_upload",
+    "draft_expander_download",
+    "floating_draft_download",
+}
+
+
+def is_draft_system_key(key):
+    key_text = str(key)
+    return (
+        key_text in DRAFT_SYSTEM_KEYS
+        or key_text.startswith("FormSubmitter:")
+        or key_text.startswith("floating_")
+    )
+
+
+def is_forbidden_widget_state_key(key):
+    key_text = str(key)
+    return (
+        key_text in DRAFT_FORBIDDEN_WIDGET_KEYS
+        or key_text.startswith("FormSubmitter:")
+    )
+
+
+def clear_forbidden_widget_state():
+    for key in list(st.session_state.keys()):
+        if is_forbidden_widget_state_key(key):
+            st.session_state.pop(key, None)
+
+
 def collect_draft_state():
-    excluded_keys = {
-        "draft_upload",
-        "cached_report_bytes",
-        "report_ready",
-        "generation_active",
-        "draft_link_ready",
-        "draft_link_notice",
-        "_draft_query_marker",
-    }
     draft_state = {}
 
     for key, value in st.session_state.items():
-        if key in excluded_keys or str(key).startswith("FormSubmitter:"):
+        if is_draft_system_key(key):
             continue
 
         safe_value = draft_safe_value(value)
@@ -1286,11 +1319,10 @@ def apply_draft_state(payload):
     if not isinstance(state, dict):
         raise ValueError("Файл черновика не содержит блок state.")
 
-    skipped_keys = {"draft_upload", "cached_report_bytes", "report_ready", "generation_active"}
     applied = 0
 
     for key, value in state.items():
-        if key in skipped_keys or str(key).startswith("FormSubmitter:"):
+        if is_draft_system_key(key):
             continue
         if key == "client_phone_code" and isinstance(value, list):
             value = tuple(value)
@@ -1771,6 +1803,7 @@ TOKEN = get_app_secret("TELEGRAM_TOKEN")
 CHAT_ID = get_app_secret("TELEGRAM_CHAT_ID")
 
 restore_draft_from_query()
+clear_forbidden_widget_state()
 
 render_app_header()
 render_floating_draft_save()
