@@ -433,6 +433,47 @@ def prepare_ai_risks_for_report(items, min_items=1):
     return prepared if len(prepared) >= min_items else []
 
 
+def ai_quality_gate(items, min_items=6):
+    prepared = prepare_ai_risks_for_report(items, min_items=1)
+    if len(prepared) < min_items:
+        return [], f"ИИ дал только {len(prepared)} пригодных пунктов из минимально ожидаемых {min_items}."
+
+    security_markers = (
+        "mfa", "edr", "xdr", "mdr", "epp", "siem", "soc", "pam", "dlp",
+        "waf", "ids", "ips", "ztna", "mail", "почт", "уязв", "patch",
+        "учет", "доступ", "endpoint", "мониторинг событий", "реагирован"
+    )
+    it_markers = (
+        "backup", "резерв", "dr", "rto", "rpo", "сервер", "сеть", "схд",
+        "виртуал", "мониторинг", "обновлен", "ос", "инфраструкт",
+        "эксплуатац", "емкост", "производительност", "бизнес-систем"
+    )
+
+    security_count = 0
+    it_count = 0
+    weak_text_count = 0
+    for item in prepared:
+        combined = " ".join(
+            str(item.get(field, ""))
+            for field in ("risk", "description", "impact", "recommendation")
+        ).lower()
+        if any(marker in combined for marker in security_markers):
+            security_count += 1
+        if any(marker in combined for marker in it_markers):
+            it_count += 1
+        if len(str(item.get("recommendation", "")).strip()) < 90:
+            weak_text_count += 1
+
+    if weak_text_count > max(2, len(prepared) // 3):
+        return [], "ИИ дал слишком короткие рекомендации; включены экспертные правила."
+    if security_count < 3:
+        return [], "ИИ почти не покрыл ИБ-домены; включены экспертные правила."
+    if it_count < 2:
+        return [], "ИИ почти не покрыл ИТ-инфраструктуру; включены экспертные правила."
+
+    return prepared, ""
+
+
 def normalize_site_domain(site):
     value = str(site or "").strip().lower()
     value = re.sub(r"^https?://", "", value)
@@ -1510,15 +1551,13 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                         continue
 
                     normalized_payload = normalize_ai_risks_payload(parsed_payload)
-                    prepared_payload = prepare_ai_risks_for_report(normalized_payload)
+                    prepared_payload, quality_error = ai_quality_gate(normalized_payload)
                     if prepared_payload:
                         st.session_state.ai_last_error = ""
                         st.session_state.ai_model_used = active_model
                         return prepared_payload
 
-                    ai_errors.append(
-                        f"{active_model}: нет пригодных законченных рекомендаций"
-                    )
+                    ai_errors.append(f"{active_model}: {quality_error or 'нет пригодных законченных рекомендаций'}")
                 except Exception as exc:
                     ai_errors.append(f"{active_model}: {redact_secret(exc, api_key)}")
 
@@ -4520,6 +4559,193 @@ def build_sales_opportunities(results, context, roadmap_items):
     return sorted(opportunities, key=lambda item: priority_order.get(item["priority"], 99))[:10]
 
 
+def build_sales_conversation_pack(c_info, results, context, roadmap_items, opportunities):
+    company = c_info.get("Наименование компании", "клиент")
+    users = context.get("users", 0)
+    servers = context.get("servers", 0)
+    profile_title, profile_text = infrastructure_profile(context)
+
+    pains = []
+
+    def add_pain(priority, pain, evidence, commercial_angle, discovery_question):
+        pains.append({
+            "priority": priority,
+            "pain": pain,
+            "evidence": evidence,
+            "commercial_angle": commercial_angle,
+            "discovery_question": discovery_question,
+        })
+
+    if results.get("MFA") == "Нет":
+        add_pain(
+            "P1",
+            "Компрометация учетных записей остается одним из самых быстрых сценариев инцидента.",
+            "В анкете не указана MFA для критичных доступов.",
+            "MFA/IAM-пилот для администраторов, VPN, почты и критичных систем.",
+            "Где сейчас находятся самые критичные учетные записи: почта, VPN, AD, ERP/CRM, облака?"
+        )
+
+    if results.get("Резервное копирование") == "Нет":
+        add_pain(
+            "P1",
+            "Нет подтвержденного сценария восстановления после сбоя или ransomware.",
+            f"Серверов указано: {servers}; backup-контур не указан.",
+            "Backup assessment, дизайн RPO/RTO и внедрение резервного копирования.",
+            "Какие сервисы бизнес должен восстановить первыми и за какое время?"
+        )
+    elif results.get("Immutable Backup") == "Нет":
+        add_pain(
+            "P2",
+            "Backup есть, но его устойчивость к ransomware не подтверждена.",
+            "Не указаны immutable/offline-копии и регулярный тест восстановления.",
+            "Immutable backup, контрольное восстановление, регламент RTO/RPO.",
+            "Когда последний раз проводили тестовое восстановление и кто подписал результат?"
+        )
+
+    if results.get("Patch Management") == "Нет":
+        add_pain(
+            "P1",
+            "Риск эксплуатации известных уязвимостей растет быстрее, чем команда успевает обновлять вручную.",
+            f"Масштаб: {users} АРМ, {servers} серверов; централизованный patch management не указан.",
+            "Инвентаризация, vulnerability/patch management, регулярный отчет по критичным CVE.",
+            "Как сейчас принимается решение, какие обновления ставить срочно, а какие можно отложить?"
+        )
+
+    if results.get("EDR") == "Нет":
+        add_pain(
+            "P1",
+            "Команда может не увидеть сложную атаку на рабочих местах до влияния на бизнес.",
+            "EDR/XDR/MDR не указаны; EPP без расследования и реагирования закрывает только базовый уровень.",
+            "EDR/MDR-пилот на критичных группах пользователей и серверов.",
+            "Есть ли сейчас возможность понять цепочку атаки: пользователь, файл, процесс, сеть, сервер?"
+        )
+
+    if results.get("SIEM") == "Нет" and not context.get("small_company"):
+        add_pain(
+            "P2",
+            "События ИБ разрознены, поэтому инциденты сложно обнаруживать и расследовать.",
+            "SIEM/SOC не указан при наличии инфраструктуры, требующей централизованного мониторинга.",
+            "MSSP/SOC или поэтапное подключение SIEM для минимального critical scope.",
+            "Какие источники логов сейчас реально просматриваются ежедневно, а какие только после инцидента?"
+        )
+
+    if context.get("has_public_web") and results.get("WAF") == "Нет":
+        add_pain(
+            "P2",
+            "Публичные веб-сервисы увеличивают поверхность атаки и риск простоя.",
+            "Публичный web-контур есть, WAF/CDN-защита не указана.",
+            "Экспресс-аудит web-периметра, WAF/CDN/DDoS-пилот.",
+            "Какие публичные сервисы приносят выручку или обслуживают клиентов напрямую?"
+        )
+
+    if context.get("servers", 0) >= 10 and results.get("Мониторинг") == "Нет":
+        add_pain(
+            "P2",
+            "Инфраструктурные сбои могут обнаруживаться после жалоб пользователей.",
+            "Есть серверный контур, но эксплуатационный мониторинг не указан.",
+            "Мониторинг серверов, сети, СХД, виртуализации и бизнес-сервисов.",
+            "Какие показатели сейчас отслеживаются: доступность, диски, latency, backup jobs, сервисы?"
+        )
+
+    if not pains:
+        add_pain(
+            "P3",
+            "Анкета не показывает явных критичных разрывов, но нужен экспертный разбор целевой модели.",
+            profile_text,
+            "Пресейл-воркшоп по roadmap и проверка приоритетов.",
+            "Какая зона сейчас больше всего беспокоит бизнес: доступность, безопасность, производительность или compliance?"
+        )
+
+    call_script = [
+        {
+            "stage": "Открытие",
+            "talk_track": (
+                f"Мы посмотрели анкету {company}. По масштабу это {profile_title.lower()}: "
+                f"{users} АРМ и {servers} серверов. Цель звонка - не продавать набор продуктов, "
+                "а подтвердить 2-3 приоритета, которые быстрее всего снизят риск."
+            )
+        },
+        {
+            "stage": "Подтверждение боли",
+            "talk_track": (
+                f"Главная гипотеза: {pains[0]['pain']} Основание: {pains[0]['evidence']} "
+                "Правильно ли мы поняли ситуацию, или внутри есть компенсирующие меры?"
+            )
+        },
+        {
+            "stage": "Переход к решению",
+            "talk_track": (
+                f"Логичный первый шаг - {pains[0]['commercial_angle']} "
+                "Мы можем начать с короткого assessment/pilot, чтобы не запускать тяжелый проект без подтверждения эффекта."
+            )
+        },
+        {
+            "stage": "Закрытие на следующий шаг",
+            "talk_track": (
+                "Предлагаю 45-минутную встречу с ИТ/ИБ: подтверждаем scope, фиксируем текущие ограничения "
+                "и готовим короткий план действий/КП по первому приоритету."
+            )
+        },
+    ]
+
+    questions = [
+        ("Бизнес-критичность", "Какие 3 сервиса нельзя потерять даже на несколько часов?"),
+        ("Восстановление", "Какой реальный RTO/RPO приемлем для ключевых систем?"),
+        ("Доступы", "Где сейчас администраторские и удаленные доступы защищены сильнее всего, а где слабее?"),
+        ("Обновления", "Кто принимает решение о срочных патчах и как быстро они доходят до АРМ/серверов?"),
+        ("Мониторинг", "Какие события ИБ и ИТ команда видит ежедневно, а какие обнаруживаются только после жалоб?"),
+        ("Бюджетирование", "Что проще согласовать первым: пилот, assessment, продление/замена продукта или сервисная модель?"),
+    ]
+    if context.get("has_public_web"):
+        questions.append(("Web", "Какие публичные приложения критичны для выручки или клиентского сервиса?"))
+    if context.get("has_development"):
+        questions.append(("Разработка", "Есть ли сейчас security gate перед релизом: SAST, DAST, dependency check?"))
+
+    objections = [
+        (
+            "У нас уже есть антивирус/NGFW",
+            "Согласиться и развести уровни: EPP/NGFW - базовая защита, а вопрос отчета про обнаружение, расследование, доступы, backup и управляемость."
+        ),
+        (
+            "Сейчас нет бюджета",
+            "Предложить assessment/pilot с ограниченным scope и показать, какие риски можно закрыть быстро без enterprise-проекта."
+        ),
+        (
+            "Мы маленькая компания, SIEM нам не нужен",
+            "Подтвердить: тяжелый SIEM не нужен как первый шаг. Предложить минимальный сбор критичных логов или управляемый сервис."
+        ),
+        (
+            "Все работает, инцидентов не было",
+            "Сместить разговор на проверяемость: тест восстановления, отчет по критичным CVE, MFA для админов, мониторинг событий."
+        ),
+    ]
+
+    next_steps = []
+    for item in opportunities[:5]:
+        next_steps.append({
+            "priority": item["priority"],
+            "step": item["next_step"],
+            "offer": item["offer"],
+            "success_criteria": "Подтвержден scope, владелец со стороны клиента и понятный следующий артефакт: пилот, assessment или КП.",
+        })
+    if not next_steps and roadmap_items:
+        for item in roadmap_items[:3]:
+            next_steps.append({
+                "priority": item["priority"],
+                "step": item["action"],
+                "offer": "Экспертный воркшоп по roadmap",
+                "success_criteria": "Клиент подтвердил приоритет и согласовал следующий созвон с техническими владельцами.",
+            })
+
+    return {
+        "pains": pains[:8],
+        "call_script": call_script,
+        "questions": questions,
+        "objections": objections,
+        "next_steps": next_steps,
+    }
+
+
 def build_expert_conclusion(results, context, final_score, domain_scores, roadmap_items):
     profile_title, _ = infrastructure_profile(context)
     users = context.get("users", 0)
@@ -5305,6 +5531,56 @@ def make_expert_excel(c_info, results, final_score):
     current_row += 2
 
     # =========================
+    # 7 / 30 / 90 DAY ACTION PLAN
+    # =========================
+    ws.merge_cells(f'A{current_row}:D{current_row}')
+    plan_header = ws.cell(row=current_row, column=1, value="ПЛАН ДЕЙСТВИЙ: 7 / 30 / 90 ДНЕЙ")
+    plan_header.font = white_font
+    plan_header.fill = dark_blue_fill
+    plan_header.alignment = Alignment(horizontal='center')
+    current_row += 1
+
+    action_plan = [
+        (
+            "Первые 7 дней",
+            "Подтвердить владельцев рисков, критичные сервисы, RTO/RPO, администраторские доступы и текущий порядок обновлений.",
+            "Появляется единый список приоритетов и ответственных, без запуска тяжелого проекта."
+        ),
+        (
+            "До 30 дней",
+            "; ".join(item["action"] for item in roadmap_items if item["phase"] == "0-30 дней") or
+            "Закрыть быстрые меры: MFA для критичных доступов, проверка backup, инвентаризация активов и критичных уязвимостей.",
+            "Снижаются наиболее вероятные сценарии инцидентов и появляется измеримый baseline."
+        ),
+        (
+            "До 90 дней",
+            "; ".join(item["action"] for item in roadmap_items if item["phase"] in {"31-60 дней", "61-90 дней"})[:420] or
+            "Перейти от точечных мер к управляемой модели мониторинга, обновлений, восстановления и реагирования.",
+            "Формируется программа улучшений с метриками контроля и понятным бюджетированием."
+        ),
+    ]
+
+    for period, action, result in action_plan:
+        ws.cell(row=current_row, column=1, value=period).font = Font(bold=True)
+        ws.cell(row=current_row, column=1).fill = light_blue_fill
+        ws.cell(row=current_row, column=1).border = border
+        ws.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=3)
+        action_cell = ws.cell(row=current_row, column=2, value=action)
+        action_cell.alignment = Alignment(wrap_text=True, vertical='top')
+        action_cell.fill = gray_fill
+        action_cell.border = border
+        result_cell = ws.cell(row=current_row, column=4, value=result)
+        result_cell.alignment = Alignment(wrap_text=True, vertical='top')
+        result_cell.fill = gray_fill
+        result_cell.border = border
+        for col in range(3, 4):
+            ws.cell(row=current_row, column=col).fill = gray_fill
+            ws.cell(row=current_row, column=col).border = border
+        current_row += 1
+
+    current_row += 2
+
+    # =========================
     # TOP RISKS OVERVIEW
     # =========================
     ws.merge_cells(f'A{current_row}:D{current_row}')
@@ -5648,6 +5924,42 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
     rule_risks = generate_rule_based_risks(results, context)
     roadmap_items = build_contextual_roadmap(results, context, domain_scores, rule_risks)
     sales_opportunities = build_sales_opportunities(results, context, roadmap_items)
+    sales_pack = build_sales_conversation_pack(
+        c_info,
+        results,
+        context,
+        roadmap_items,
+        sales_opportunities
+    )
+
+    def style_sales_header(sheet, title, end_col):
+        sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
+        sheet.cell(row=1, column=1, value=title)
+        sheet.cell(row=1, column=1).font = Font(bold=True, size=18, color="FFFFFF")
+        sheet.cell(row=1, column=1).fill = dark_fill
+        sheet.cell(row=1, column=1).alignment = Alignment(horizontal='center')
+
+    def write_table(sheet, start_row, headers, rows, widths):
+        for col_num, header in enumerate(headers, 1):
+            cell = sheet.cell(row=start_row, column=col_num, value=header)
+            cell.font = white_font
+            cell.fill = dark_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        row_idx = start_row + 1
+        for row_values in rows:
+            for col_num, value in enumerate(row_values, 1):
+                cell = sheet.cell(row=row_idx, column=col_num, value=value)
+                cell.border = border
+                cell.alignment = Alignment(wrap_text=True, vertical='top')
+                if row_idx % 2 == 0:
+                    cell.fill = gray_fill
+            row_idx += 1
+        for col_letter, width in widths.items():
+            sheet.column_dimensions[col_letter].width = width
+        sheet.freeze_panes = f"A{start_row + 1}"
+        sheet.auto_filter.ref = f"A{start_row}:{chr(64 + len(headers))}{max(row_idx - 1, start_row)}"
+        return row_idx
 
     ws.merge_cells('A1:G1')
     ws['A1'] = "ВНУТРЕННИЙ SALES PLAYBOOK ПО ИТОГАМ АУДИТА"
@@ -5802,7 +6114,80 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
 
     ws.column_dimensions['H'].width = 1
 
-    answers_ws = wb.create_sheet("04 Заполненная анкета")
+    pains_ws = wb.create_sheet("04 Боли и гипотезы")
+    style_sales_header(pains_ws, "БОЛИ КЛИЕНТА И ГИПОТЕЗЫ ПРОДАЖ", 5)
+    pains_rows = [
+        [
+            item["priority"],
+            item["pain"],
+            item["evidence"],
+            item["commercial_angle"],
+            item["discovery_question"],
+        ]
+        for item in sales_pack["pains"]
+    ]
+    write_table(
+        pains_ws,
+        3,
+        ["Приоритет", "Боль клиента", "Факт из анкеты", "Коммерческий заход", "Вопрос для подтверждения"],
+        pains_rows,
+        {"A": 12, "B": 42, "C": 42, "D": 44, "E": 52}
+    )
+
+    script_ws = wb.create_sheet("05 Сценарий звонка")
+    style_sales_header(script_ws, "СЦЕНАРИЙ ПЕРВОГО ЗВОНКА", 3)
+    script_rows = [
+        [idx, item["stage"], item["talk_track"]]
+        for idx, item in enumerate(sales_pack["call_script"], start=1)
+    ]
+    write_table(
+        script_ws,
+        3,
+        ["#", "Этап", "Что сказать"],
+        script_rows,
+        {"A": 8, "B": 28, "C": 110}
+    )
+
+    questions_ws = wb.create_sheet("06 Вопросы")
+    style_sales_header(questions_ws, "ВОПРОСЫ ДЛЯ УТОЧНЕНИЯ НА ВСТРЕЧЕ", 2)
+    write_table(
+        questions_ws,
+        3,
+        ["Тема", "Вопрос"],
+        [[topic, question] for topic, question in sales_pack["questions"]],
+        {"A": 28, "B": 110}
+    )
+
+    objections_ws = wb.create_sheet("07 Возражения")
+    style_sales_header(objections_ws, "ТИПОВЫЕ ВОЗРАЖЕНИЯ И ОТРАБОТКА", 2)
+    write_table(
+        objections_ws,
+        3,
+        ["Возражение", "Как отвечать"],
+        [[objection, answer] for objection, answer in sales_pack["objections"]],
+        {"A": 45, "B": 105}
+    )
+
+    next_ws = wb.create_sheet("08 Следующие шаги")
+    style_sales_header(next_ws, "РЕКОМЕНДУЕМЫЕ СЛЕДУЮЩИЕ ШАГИ", 4)
+    next_rows = [
+        [
+            item["priority"],
+            item["offer"],
+            item["step"],
+            item["success_criteria"],
+        ]
+        for item in sales_pack["next_steps"]
+    ]
+    write_table(
+        next_ws,
+        3,
+        ["Приоритет", "Предложение", "Действие сейла", "Критерий успеха"],
+        next_rows,
+        {"A": 12, "B": 42, "C": 60, "D": 70}
+    )
+
+    answers_ws = wb.create_sheet("09 Заполненная анкета")
     answers_ws.merge_cells('A1:B1')
     answers_ws['A1'] = "ЗАПОЛНЕННАЯ АНКЕТА / ДАННЫЕ ДЛЯ СЕЙЛА И ПРЕСЕЙЛА"
     answers_ws['A1'].font = Font(bold=True, size=18, color="FFFFFF")
