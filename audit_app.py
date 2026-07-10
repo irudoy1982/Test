@@ -82,6 +82,9 @@ def load_vendor_matrix():
 
 def load_vendor_names():
     try:
+        detailed = load_detailed_vendor_names()
+        if detailed:
+            return detailed
         df = pd.read_excel("Портфель для отчета.xlsx", header=None)
         values = []
         for value in df.iloc[:, 0].dropna().tolist():
@@ -4703,6 +4706,54 @@ def clean_vendor_display_name(value):
     return fixes.get(vendor.lower(), vendor)
 
 
+DETAILED_VENDOR_MATRIX_FILE = "vendor_matrix_detailed.xlsx"
+
+
+def load_detailed_vendor_names():
+    try:
+        if not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
+            return []
+        df = pd.read_excel(DETAILED_VENDOR_MATRIX_FILE)
+        if df.empty or "Vendor" not in df.columns:
+            return []
+        values = []
+        for value in df["Vendor"].dropna().tolist():
+            vendor = clean_vendor_display_name(value)
+            if vendor and vendor.lower() not in {"nan", "none"}:
+                values.append(vendor)
+        return list(dict.fromkeys(values))
+    except Exception:
+        return []
+
+
+def load_detailed_solution_vendor_map():
+    try:
+        if not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
+            return {}
+        df = pd.read_excel(DETAILED_VENDOR_MATRIX_FILE)
+        if df.empty or "Vendor" not in df.columns:
+            return {}
+
+        category_map = {}
+        for _, row in df.iterrows():
+            vendor = clean_vendor_display_name(row.get("Vendor"))
+            if not vendor:
+                continue
+            for column in df.columns:
+                if column == "Vendor":
+                    continue
+                marker = str(row.get(column) or "").strip()
+                if marker == "+":
+                    category_map.setdefault(str(column).strip(), []).append(vendor)
+
+        return {
+            category: list(dict.fromkeys(vendors))
+            for category, vendors in category_map.items()
+        }
+    except Exception:
+        return {}
+
+
 def load_solution_vendor_map():
     solution_aliases = {
         "DLP": ("dlp", "утеч", "защита данных"),
@@ -4732,6 +4783,39 @@ def load_solution_vendor_map():
         "ITSM/CMDB": ("itsm", "cmdb", "change management", "configuration management", "управление изменениями", "управление конфигурациями"),
         "Миграция и виртуализация": ("миграция ос", "виртуализация", "virtualization", "migration project"),
     }
+    detailed_matrix = load_detailed_solution_vendor_map()
+    if detailed_matrix:
+        solutions = list(solution_aliases)
+        solution_categories = {
+            solutions[0]: ("DLP",),
+            solutions[1]: ("Encryption",),
+            solutions[2]: ("PAM", "IGA"),
+            solutions[3]: ("Backup", "Archiving"),
+            solutions[4]: ("DAM/DB Security", "Data Discovery"),
+            solutions[5]: ("NGFW",),
+            solutions[6]: ("Network Equipment",),
+            solutions[7]: ("IDS/IPS",),
+            solutions[8]: ("WAF",),
+            solutions[9]: ("Anti-DDoS",),
+            solutions[10]: ("Cloud Security", "CASB", "CNAPP", "CWPP"),
+            solutions[11]: ("VM", "Cyber Risk"),
+            solutions[12]: ("SIEM", "SOAR", "UEBA"),
+            solutions[13]: ("Email Security",),
+            solutions[14]: ("CASB", "CWPP", "CNAPP"),
+            solutions[15]: ("MDM",),
+            solutions[16]: ("EDR", "XDR", "AV"),
+            solutions[17]: ("MFA",),
+            solutions[18]: (),
+            solutions[19]: (),
+        }
+        vendor_map = {}
+        for solution, categories in solution_categories.items():
+            vendors = []
+            for category in categories:
+                vendors.extend(detailed_matrix.get(category, []))
+            vendor_map[solution] = list(dict.fromkeys(vendors))
+        return vendor_map, solution_aliases
+
     solution_vendor_keywords = {
         "DLP": ("symantec", "forcepoint", "zecurion", "ibatyr", "гарда"),
         "Шифрование и маскирование данных": ("symantec", "thales", "imperva", "гарда"),
@@ -4793,6 +4877,12 @@ def manufacturers_for_report_item(item):
 
     manufacturers = []
     matched_solution = False
+
+    detailed_matrix = load_detailed_solution_vendor_map()
+    for category, vendors in detailed_matrix.items():
+        if normalize_vendor_key(category) in solution_text:
+            manufacturers.extend(vendors)
+            matched_solution = True
 
     for solution, aliases in solution_aliases.items():
         if any(normalize_vendor_key(alias) in solution_text for alias in aliases):
