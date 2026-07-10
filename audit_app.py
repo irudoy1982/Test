@@ -4688,6 +4688,105 @@ def pick_catalog_vendors(catalog, keywords, fallback):
     return list(dict.fromkeys(selected))[:4]
 
 
+def normalize_vendor_key(value):
+    return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").lower()).strip()
+
+
+def load_solution_vendor_map():
+    solution_aliases = {
+        "DLP": ("dlp", "утеч", "защита данных"),
+        "Шифрование и маскирование данных": ("шифр", "маскир"),
+        "Системы контроля доступа и управления привилегиями": (
+            "pam", "iam", "privileged", "привилег", "учетн", "доступ", "access"
+        ),
+        "Архивирование и резервное копирование": (
+            "backup", "резерв", "архив", "восстановлен", "rto", "rpo"
+        ),
+        "Защита баз данных и аудит": ("database", "баз дан", "db audit"),
+        "NGFW": ("ngfw", "firewall", "межсет", "периметр"),
+        "IDS/IPS": ("ids", "ips", "сетев"),
+        "WAF": ("waf", "web application security", "веб прилож", "owasp"),
+        "AntiDDos": ("antiddos", "anti ddos", "anti-ddos", "ddos"),
+        "Защита облаков": ("cloud", "облак", "casb"),
+        "Cyber Risk Management": ("vulnerability", "уязв", "cve", "risk", "scanner", "сканер"),
+        "Мониторинг и логирование": ("siem", "soar", "soc", "мониторинг", "лог", "инцидент"),
+        "Защита почты": ("mail security", "почт", "email", "фишинг"),
+        "CASB, разработка и защита контейнеров": (
+            "casb", "container", "контейнер", "sast", "dast", "appsec", "разработ"
+        ),
+        "MDM": ("mdm",),
+        "Antiransomeware/EDR": ("edr", "xdr", "mdr", "epp", "endpoint", "конечн"),
+        "Мультифаторная аутификация": ("mfa", "2fa", "многофактор"),
+    }
+    header_by_key = {
+        normalize_vendor_key(header): header
+        for header in solution_aliases
+    }
+    vendor_map = {header: [] for header in solution_aliases}
+
+    try:
+        df = pd.read_excel("Портфель для отчета.xlsx", sheet_name="Лист2", header=None)
+    except Exception:
+        return vendor_map, solution_aliases
+
+    current_solution = None
+    for _, row in df.iterrows():
+        section_value = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+        item_value = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
+        if section_value:
+            current_solution = None
+        if not item_value:
+            continue
+
+        normalized_item = normalize_vendor_key(item_value)
+        if normalized_item in header_by_key:
+            current_solution = header_by_key[normalized_item]
+            continue
+
+        if current_solution:
+            vendor_map.setdefault(current_solution, []).append(item_value)
+
+    for solution, vendors in list(vendor_map.items()):
+        vendor_map[solution] = list(dict.fromkeys(vendors))
+
+    return vendor_map, solution_aliases
+
+
+def manufacturers_for_report_item(item):
+    vendor_map, solution_aliases = load_solution_vendor_map()
+    existing_values = item.get("vendors", [])
+    if not isinstance(existing_values, list):
+        existing_values = [existing_values] if existing_values else []
+
+    combined_text = normalize_vendor_key(" ".join([
+        str(item.get("risk", "")),
+        str(item.get("description", "")),
+        str(item.get("recommendation", "")),
+        " ".join(str(value) for value in existing_values),
+    ]))
+
+    manufacturers = []
+
+    for solution, aliases in solution_aliases.items():
+        if any(normalize_vendor_key(alias) in combined_text for alias in aliases):
+            manufacturers.extend(vendor_map.get(solution, []))
+
+    all_known_vendors = []
+    for vendors in vendor_map.values():
+        all_known_vendors.extend(vendors)
+
+    for value in existing_values:
+        normalized_value = normalize_vendor_key(value)
+        for known_vendor in all_known_vendors:
+            if normalize_vendor_key(known_vendor) == normalized_value:
+                manufacturers.append(known_vendor)
+
+    if not manufacturers:
+        manufacturers.extend(str(value).strip() for value in existing_values if str(value).strip())
+
+    return ", ".join(list(dict.fromkeys(manufacturers))[:8]) or "-"
+
+
 def build_sales_opportunities(results, context, roadmap_items):
     catalog = load_vendor_names()
     opportunities = []
@@ -6070,6 +6169,10 @@ def make_expert_excel(c_info, results, final_score):
                     ", ".join(item.get('vendors', []))
                     if isinstance(item.get('vendors'), list)
                     else "-"
+                ),
+                (
+                    "Производители",
+                    manufacturers_for_report_item(item)
                 )
             ]
 
