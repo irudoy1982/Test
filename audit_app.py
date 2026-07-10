@@ -474,6 +474,80 @@ def ai_quality_gate(items, min_items=6):
     return prepared, ""
 
 
+def security_control_snapshot(results):
+    controls = [
+        "MFA",
+        "EPP",
+        "EDR",
+        "XDR",
+        "MDR",
+        "DLP",
+        "Mail Security",
+        "WAF",
+        "Anti-DDoS",
+        "IDS/IPS",
+        "NAC",
+        "ZTNA",
+        "IAM",
+        "PAM",
+        "SIEM",
+        "SOAR",
+        "NAD",
+        "Patch Management",
+        "SAST",
+        "DAST",
+    ]
+    enabled = []
+    missing = []
+    for control in controls:
+        value = results.get(control)
+        if is_enabled(value):
+            enabled.append(f"{control}: {value}")
+        else:
+            missing.append(control)
+    return enabled, missing
+
+
+def risk_conflicts_with_answers(item, results):
+    key = risk_semantic_key(item)
+
+    if key == "mfa" and is_enabled(results.get("MFA")):
+        return "MFA already enabled"
+    if key == "pam" and is_enabled(results.get("PAM")):
+        return "PAM already enabled"
+    if key == "siem_soc" and is_enabled(results.get("SIEM")):
+        return "SIEM already enabled"
+    if key == "patch" and is_enabled(results.get("Patch Management")):
+        return "Patch Management already enabled"
+    if key == "web_waf" and is_enabled(results.get("WAF")):
+        return "WAF already enabled"
+    if key == "mail" and is_enabled(results.get("Mail Security")):
+        return "Mail Security already enabled"
+    if key == "dlp" and is_enabled(results.get("DLP")):
+        return "DLP already enabled"
+    if key == "backup" and is_enabled(results.get("Резервное копирование")):
+        return "Backup already enabled"
+    if key == "endpoint_detection" and any(
+        is_enabled(results.get(control))
+        for control in ("EDR", "XDR", "MDR")
+    ):
+        return "Endpoint detection/response already enabled"
+
+    return ""
+
+
+def filter_ai_risks_by_answers(items, results):
+    filtered = []
+    skipped = []
+    for item in items:
+        conflict = risk_conflicts_with_answers(item, results)
+        if conflict:
+            skipped.append(f"{risk_semantic_key(item)}: {conflict}")
+            continue
+        filtered.append(item)
+    return filtered, skipped
+
+
 def normalize_site_domain(site):
     value = str(site or "").strip().lower()
     value = re.sub(r"^https?://", "", value)
@@ -989,6 +1063,9 @@ def ai_generate_risks_and_recs(c_info, results):
             c_info,
             results
         )
+        enabled_controls, missing_controls = security_control_snapshot(results)
+        enabled_controls_text = "\n".join(enabled_controls) if enabled_controls else "Не указаны"
+        missing_controls_text = ", ".join(missing_controls) if missing_controls else "Нет явных пробелов"
 
         vendor_context = ""
 
@@ -1152,6 +1229,16 @@ LOW
 24. Не создавай несколько отдельных пунктов про EDR/XDR/MDR. Если тема одна,
 объедини ее в один зрелый риск по защите рабочих мест и реагированию.
 
+25. Не рекомендуй внедрение контроля, если он уже указан в блоке "УЖЕ ВНЕДРЕНО".
+Если контроль есть, можно рекомендовать только улучшение покрытия, регламент,
+контроль исключений или проверку эффективности, но нельзя писать, что контроль отсутствует.
+
+УЖЕ ВНЕДРЕНО:
+{enabled_controls_text}
+
+НЕ УКАЗАНО В АНКЕТЕ:
+{missing_controls_text}
+
 ДАННЫЕ АУДИТА:
 
 {safe_results}
@@ -1228,10 +1315,18 @@ regulators: массив 0-3 стандартов
 - не перечисляй все отсутствующие продукты как риски;
 - не путай категории: MFA не закрывается PAM, уязвимости не закрываются SIEM, устаревшие ОС не закрываются EDR.
 - не используй Microsoft как ИБ-вендора; Microsoft допустим только для ОС/миграции Windows/Windows Server.
+- строго не пиши "отсутствует", "не внедрено" или "не указано" про контроль из списка "Уже внедрено";
+- если MFA есть в списке "Уже внедрено", не создавай риск по отсутствию MFA.
 
 Компания:
 Отрасль: {c_info.get("Сфера деятельности", "-")}
 Город: {c_info.get("Город", "-")}
+
+Уже внедрено:
+{enabled_controls_text}
+
+Не указано:
+{missing_controls_text}
 
 Ключевые данные анкеты:
 {ai_summary}
@@ -1274,6 +1369,13 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
 Не используй символ | внутри полей.
 Каждое поле в одну строку.
 Не используй Microsoft как ИБ-вендора. Не дублируй EDR/XDR/MDR отдельными строками.
+Не пиши, что отсутствует контроль из списка "Уже внедрено".
+
+Уже внедрено:
+{enabled_controls_text}
+
+Не указано:
+{missing_controls_text}
 
 Данные:
 {ai_summary}
@@ -1551,6 +1653,15 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                         continue
 
                     normalized_payload = normalize_ai_risks_payload(parsed_payload)
+                    normalized_payload, skipped_ai_items = filter_ai_risks_by_answers(
+                        normalized_payload,
+                        results
+                    )
+                    if skipped_ai_items:
+                        ai_errors.append(
+                            f"{active_model}: отброшены противоречивые пункты: "
+                            + "; ".join(skipped_ai_items[:5])
+                        )
                     prepared_payload, quality_error = ai_quality_gate(normalized_payload)
                     if prepared_payload:
                         st.session_state.ai_last_error = ""
@@ -5188,13 +5299,22 @@ def build_report_risk_set(c_info, results, context):
     priority_order = {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4}
     unique_risks = []
     seen_risks = set()
+    skipped_conflicting_risks = []
     for item in combined_risks:
+        conflict = risk_conflicts_with_answers(item, results)
+        if conflict:
+            skipped_conflicting_risks.append(
+                f"{risk_semantic_key(item)}: {conflict}"
+            )
+            continue
         item = professionalize_risk_item(item, results, context)
         semantic_key = risk_semantic_key(item)
         if not semantic_key or semantic_key in seen_risks:
             continue
         unique_risks.append(item)
         seen_risks.add(semantic_key)
+
+    st.session_state.last_report_skipped_conflicts = skipped_conflicting_risks
 
     report_risks = sorted(
         unique_risks,
