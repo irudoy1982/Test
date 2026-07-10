@@ -3088,9 +3088,100 @@ st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 TOKEN = get_app_secret("TELEGRAM_TOKEN")
 CHAT_ID = get_app_secret("TELEGRAM_CHAT_ID")
 
+
+def mask_diagnostic_secret(value):
+    value = str(value or "")
+    if not value:
+        return "нет"
+    if len(value) <= 8:
+        return f"есть, длина {len(value)}"
+    return f"{value[:4]}...{value[-4:]} (длина {len(value)})"
+
+
+def is_debug_mode_enabled():
+    try:
+        return str(st.query_params.get("debug", "")).lower() in {"1", "true", "yes"}
+    except Exception:
+        return False
+
+
+def render_server_diagnostics():
+    if not is_debug_mode_enabled():
+        return
+
+    st.warning("Технический режим диагностики включен. Не показывайте этот экран клиенту.")
+    with st.expander("Диагностика Telegram и Gemini", expanded=True):
+        gemini_key = get_app_secret("GEMINI_API_KEY")
+        gemini_model = get_app_secret("GEMINI_MODEL", "gemini-2.5-flash")
+        st.markdown(
+            "\n".join([
+                f"- TELEGRAM_TOKEN: `{mask_diagnostic_secret(TOKEN)}`",
+                f"- TELEGRAM_CHAT_ID: `{mask_diagnostic_secret(CHAT_ID)}`",
+                f"- GEMINI_API_KEY: `{mask_diagnostic_secret(gemini_key)}`",
+                f"- GEMINI_MODEL: `{gemini_model}`",
+                f"- REQUEST_VERIFY: `{REQUEST_VERIFY}`",
+            ])
+        )
+
+        col_tg, col_ai = st.columns(2)
+        with col_tg:
+            if st.button("Отправить тест в Telegram", key="debug_send_telegram"):
+                if not TOKEN or not CHAT_ID:
+                    st.error("Нет TELEGRAM_TOKEN или TELEGRAM_CHAT_ID в secrets.")
+                else:
+                    try:
+                        result = telegram_send_node(
+                            TOKEN,
+                            "sendMessage",
+                            {
+                                "chat_id": CHAT_ID,
+                                "text": "Тест Streamlit Cloud: Telegram из диагностического режима Test."
+                            },
+                            timeout_seconds=15
+                        )
+                        st.success("Telegram ответил успешно.")
+                        st.json(result)
+                    except Exception as exc:
+                        st.error(redact_secret(exc, TOKEN, gemini_key))
+
+        with col_ai:
+            if st.button("Проверить Gemini", key="debug_check_gemini"):
+                if not gemini_key:
+                    st.error("Нет GEMINI_API_KEY в secrets.")
+                else:
+                    try:
+                        import requests
+
+                        response = requests.post(
+                            f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent",
+                            params={"key": gemini_key},
+                            json={
+                                "contents": [{
+                                    "parts": [{
+                                        "text": "Ответь одним словом: OK"
+                                    }]
+                                }],
+                                "generationConfig": {
+                                    "temperature": 0.1,
+                                    "maxOutputTokens": 16,
+                                }
+                            },
+                            timeout=20,
+                            verify=REQUEST_VERIFY,
+                        )
+                        st.write(f"HTTP status: `{response.status_code}`")
+                        payload = response.json()
+                        st.json(payload)
+                        response.raise_for_status()
+                        st.success("Gemini ответил.")
+                    except Exception as exc:
+                        st.error(redact_secret(exc, TOKEN, gemini_key))
+
+
 restore_draft_from_query()
 clear_forbidden_widget_state()
 
+render_server_diagnostics()
 render_app_header()
 render_floating_draft_save()
 
