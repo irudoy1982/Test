@@ -218,40 +218,37 @@ const timer = setTimeout(() => controller.abort(), request.timeoutMs || 25000);
 
 
 def telegram_send_node(token, method, fields, files=None, timeout_seconds=10):
-    import tempfile
+    import requests
 
-    temp_paths = []
-    file_payload = []
+    upload_files = {}
     try:
         for file_item in files or []:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=file_item.get("suffix", "")) as temp_file:
-                temp_file.write(file_item["bytes"])
-                temp_path = temp_file.name
-                temp_paths.append(temp_path)
-            file_payload.append({
-                "field": file_item.get("field", "document"),
-                "filename": file_item["filename"],
-                "path": temp_path,
-            })
+            field_name = file_item.get("field", "document")
+            upload_files[field_name] = (
+                file_item["filename"],
+                BytesIO(file_item["bytes"]),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
 
-        return node_fetch_json(
+        response = requests.post(
             f"https://api.telegram.org/bot{token}/{method}",
-            {
-                "url": f"https://api.telegram.org/bot{token}/{method}",
-                "method": "POST",
-                "multipart": True,
-                "fields": fields,
-                "files": file_payload,
-                "timeoutMs": timeout_seconds * 1000,
-            },
-            timeout_seconds=timeout_seconds,
+            data=fields,
+            files=upload_files or None,
+            timeout=timeout_seconds,
+            verify=REQUEST_VERIFY,
         )
-    finally:
-        for path in temp_paths:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.SSLError:
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/{method}",
+            data=fields,
+            files=upload_files or None,
+            timeout=timeout_seconds,
+            verify=False,
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 def build_telegram_lead_text(client_info, final_score, sales_digest):
