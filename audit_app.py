@@ -884,11 +884,11 @@ def ai_generate_risks_and_recs(c_info, results):
         return []
 
     try:
-        model_name = get_app_secret("GEMINI_MODEL", "gemini-2.5-flash")
+        model_name = get_app_secret("GEMINI_MODEL", "gemini-2.5-flash-lite")
         ai_timeout = int(get_app_secret("GEMINI_TIMEOUT_SECONDS", 45))
         fallback_models = str(get_app_secret(
             "GEMINI_FALLBACK_MODELS",
-            "gemini-2.5-flash-lite"
+            ""
         ))
         model_candidates = []
         for candidate in [model_name, *fallback_models.split(",")]:
@@ -1257,30 +1257,37 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             ),
         )
 
+        def extract_gemini_error(response):
+            try:
+                payload = response.json()
+                message = payload.get("error", {}).get("message", response.text)
+                status = payload.get("error", {}).get("status", "")
+                return f"HTTP {response.status_code} {status}: {message}"
+            except Exception:
+                return f"HTTP {response.status_code}: {response.text[:1200]}"
+
         def call_gemini(request_payload, active_model):
             active_url = gemini_url(active_model)
             response_payload = None
-            try:
-                if os.name != "nt":
-                    import requests
+            if os.name != "nt":
+                import requests
 
-                    def gemini_post(verify):
-                        return requests.post(
-                            active_url,
-                            params={"key": api_key},
-                            json=request_payload,
-                            timeout=ai_timeout,
-                            verify=verify,
-                        )
+                def gemini_post(verify):
+                    return requests.post(
+                        active_url,
+                        params={"key": api_key},
+                        json=request_payload,
+                        timeout=ai_timeout,
+                        verify=verify,
+                    )
 
-                    try:
-                        response = gemini_post(REQUEST_VERIFY)
-                    except requests.exceptions.SSLError:
-                        response = gemini_post(False)
-                    response.raise_for_status()
-                    response_payload = response.json()
-            except Exception:
-                response_payload = None
+                try:
+                    response = gemini_post(REQUEST_VERIFY)
+                except requests.exceptions.SSLError:
+                    response = gemini_post(False)
+                if not response.ok:
+                    raise RuntimeError(extract_gemini_error(response))
+                return response.json()
 
             if response_payload is None:
                 response_payload = node_fetch_json(
@@ -1314,7 +1321,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             prompt_feedback = response_payload.get("promptFeedback", {})
             return f"пустой ответ Gemini; finishReason={finish_reason}; promptFeedback={prompt_feedback}"
 
-        gemini_retry_count = int(get_app_secret("GEMINI_RETRY_COUNT", 2))
+        gemini_retry_count = int(get_app_secret("GEMINI_RETRY_COUNT", 0))
         gemini_retry_delay = float(get_app_secret("GEMINI_RETRY_DELAY_SECONDS", 2.0))
 
         def should_retry_gemini_error(error_text):
@@ -1327,8 +1334,6 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                     "high demand",
                     "пустой ответ gemini",
                     "finishreason=unknown",
-                    "resource_exhausted",
-                    "429",
                 )
             )
 
@@ -1432,33 +1437,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             return rows
 
         ai_errors = []
-        focused_items = []
-        for response_format, request_payload in focused_payloads:
-            for active_model in model_candidates:
-                try:
-                    response_payload, response_text = call_gemini_with_retries(
-                        request_payload,
-                        active_model
-                    )
-
-                    parsed_payload = parse_line_response(response_text)
-                    normalized_payload = normalize_ai_risks_payload(parsed_payload)
-                    focused_items.extend(normalized_payload)
-                    break
-                except Exception as exc:
-                    ai_errors.append(f"{active_model}: focused {redact_secret(exc, api_key)}")
-
-        prepared_focused = prepare_ai_risks_for_report(focused_items)
-        if prepared_focused:
-            st.session_state.ai_last_error = ""
-            st.session_state.ai_model_used = "focused Gemini analysis"
-            return prepared_focused
-
-        payload_attempts = (
-            ("json", fallback_payload),
-            ("json", minimal_payload),
-            ("line", line_payload),
-        )
+        payload_attempts = (("json", fallback_payload),)
 
         for response_format, request_payload in payload_attempts:
             for active_model in model_candidates:
@@ -3112,7 +3091,7 @@ def render_server_diagnostics():
     st.warning("Технический режим диагностики включен. Не показывайте этот экран клиенту.")
     with st.expander("Диагностика Telegram и Gemini", expanded=True):
         gemini_key = get_app_secret("GEMINI_API_KEY")
-        gemini_model = get_app_secret("GEMINI_MODEL", "gemini-2.5-flash")
+        gemini_model = get_app_secret("GEMINI_MODEL", "gemini-2.5-flash-lite")
         st.markdown(
             "\n".join([
                 f"- TELEGRAM_TOKEN: `{mask_diagnostic_secret(TOKEN)}`",
