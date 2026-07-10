@@ -4708,19 +4708,20 @@ def load_solution_vendor_map():
         "DLP": ("dlp", "утеч", "защита данных"),
         "Шифрование и маскирование данных": ("шифр", "маскир"),
         "Системы контроля доступа и управления привилегиями": (
-            "pam", "iam", "privileged", "привилег", "учетн", "доступ", "access"
+            "pam", "iam", "privileged", "привилег", "учетн"
         ),
         "Архивирование и резервное копирование": (
             "backup", "резерв", "архив", "восстановлен", "rto", "rpo"
         ),
         "Защита баз данных и аудит": ("database", "баз дан", "db audit"),
         "NGFW": ("ngfw", "firewall", "межсет", "периметр"),
-        "IDS/IPS": ("ids", "ips", "сетев"),
+        "Сетевое оборудование": ("сетевое оборудование", "vlan", "маршрут", "коммутатор", "switch", "wifi", "wi fi"),
+        "IDS/IPS": ("ids", "ips"),
         "WAF": ("waf", "web application security", "веб прилож", "owasp"),
         "AntiDDos": ("antiddos", "anti ddos", "anti-ddos", "ddos"),
         "Защита облаков": ("cloud", "облак", "casb"),
-        "Cyber Risk Management": ("vulnerability", "уязв", "cve", "risk", "scanner", "сканер"),
-        "Мониторинг и логирование": ("siem", "soar", "soc", "мониторинг", "лог", "инцидент"),
+        "Cyber Risk Management": ("vulnerability", "уязв", "cve", "scanner", "сканер"),
+        "Мониторинг и логирование": ("siem", "soar", "soc", "логирование", "журнал"),
         "Защита почты": ("mail security", "почт", "email", "фишинг"),
         "CASB, разработка и защита контейнеров": (
             "casb", "container", "контейнер", "sast", "dast", "appsec", "разработ"
@@ -4728,6 +4729,8 @@ def load_solution_vendor_map():
         "MDM": ("mdm",),
         "Antiransomeware/EDR": ("edr", "xdr", "mdr", "epp", "endpoint", "конечн"),
         "Мультифаторная аутификация": ("mfa", "2fa", "многофактор"),
+        "ITSM/CMDB": ("itsm", "cmdb", "change management", "configuration management", "управление изменениями", "управление конфигурациями"),
+        "Миграция и виртуализация": ("миграция ос", "виртуализация", "virtualization", "migration project"),
     }
     solution_vendor_keywords = {
         "DLP": ("symantec", "forcepoint", "zecurion", "ibatyr", "гарда"),
@@ -4738,6 +4741,7 @@ def load_solution_vendor_map():
         "Архивирование и резервное копирование": ("veeam", "commvault", "veritas"),
         "Защита баз данных и аудит": ("imperva", "гарда"),
         "NGFW": ("check point", "palo alto", "fortinet", "cisco", "huawei"),
+        "Сетевое оборудование": ("cisco", "huawei", "juniper", "h3c", "hp", "dell"),
         "IDS/IPS": ("trend micro", "forcepoint", "check point", "fortinet"),
         "WAF": ("imperva", "f5", "cloudflare", "radware", "a10", "check point"),
         "AntiDDos": ("f5", "radware", "check point", "barracuda"),
@@ -4753,6 +4757,8 @@ def load_solution_vendor_map():
             "trend micro", "kaspersky", "check point", "symantec", "bitdefender", "fortinet", "eset", "crowdstrike"
         ),
         "Мультифаторная аутификация": ("eset", "axidian", "thales"),
+        "ITSM/CMDB": (),
+        "Миграция и виртуализация": (),
     }
 
     catalog = [
@@ -4779,18 +4785,24 @@ def manufacturers_for_report_item(item):
     if not isinstance(existing_values, list):
         existing_values = [existing_values] if existing_values else []
 
-    combined_text = normalize_vendor_key(" ".join([
+    solution_text = normalize_vendor_key(" ".join(str(value) for value in existing_values))
+    fallback_text = normalize_vendor_key(" ".join([
         str(item.get("risk", "")),
         str(item.get("description", "")),
-        str(item.get("recommendation", "")),
-        " ".join(str(value) for value in existing_values),
     ]))
 
     manufacturers = []
+    matched_solution = False
 
     for solution, aliases in solution_aliases.items():
-        if any(normalize_vendor_key(alias) in combined_text for alias in aliases):
+        if any(normalize_vendor_key(alias) in solution_text for alias in aliases):
             manufacturers.extend(vendor_map.get(solution, []))
+            matched_solution = True
+
+    if not matched_solution:
+        for solution, aliases in solution_aliases.items():
+            if any(normalize_vendor_key(alias) in fallback_text for alias in aliases):
+                manufacturers.extend(vendor_map.get(solution, []))
 
     all_known_vendors = []
     for vendors in vendor_map.values():
@@ -4801,9 +4813,6 @@ def manufacturers_for_report_item(item):
         for known_vendor in all_known_vendors:
             if normalize_vendor_key(known_vendor) == normalized_value:
                 manufacturers.append(known_vendor)
-
-    if not manufacturers:
-        manufacturers.extend(str(value).strip() for value in existing_values if str(value).strip())
 
     return ", ".join(list(dict.fromkeys(manufacturers))[:8]) or "-"
 
@@ -5086,18 +5095,39 @@ def build_sales_conversation_pack(c_info, results, context, roadmap_items, oppor
         },
     ]
 
-    questions = [
-        ("Бизнес-критичность", "Какие 3 сервиса нельзя потерять даже на несколько часов?"),
-        ("Восстановление", "Какой реальный RTO/RPO приемлем для ключевых систем?"),
-        ("Доступы", "Где сейчас администраторские и удаленные доступы защищены сильнее всего, а где слабее?"),
-        ("Обновления", "Кто принимает решение о срочных патчах и как быстро они доходят до АРМ/серверов?"),
-        ("Мониторинг", "Какие события ИБ и ИТ команда видит ежедневно, а какие обнаруживаются только после жалоб?"),
-        ("Бюджетирование", "Что проще согласовать первым: пилот, assessment, продление/замена продукта или сервисная модель?"),
-    ]
+    questions = []
+    seen_questions = set()
+
+    def add_question(topic, question):
+        normalized = question.strip().lower()
+        if normalized in seen_questions:
+            return
+        questions.append((topic, question))
+        seen_questions.add(normalized)
+
+    for pain in pains[:4]:
+        add_question(pain["priority"] + " / " + pain["commercial_angle"].split(",")[0][:28], pain["discovery_question"])
+
+    add_question("Приоритет бизнеса", "Какой риск из отчета для вас самый болезненный: простой сервиса, утечка данных, компрометация учеток или ручная эксплуатация?")
+    add_question("Текущий бюджет", "На что уже заложен бюджет: продление текущих продуктов, новый пилот, аудит/assessment или сервисная модель?")
+    add_question("Критичные сервисы", "Какие 3 системы нужно защищать и восстанавливать первыми, если случится инцидент?")
+
+    if results.get("Patch Management") == "Нет":
+        add_question("Patch / CVE", "Есть ли сейчас отчет, какие критичные CVE открыты на АРМ и серверах дольше допустимого срока?")
+    if results.get("EDR") == "Нет":
+        add_question("Endpoint", "Если на АРМ сработает подозрительный процесс, сможете ли вы восстановить цепочку: пользователь, файл, процесс, сеть, сервер?")
+    if results.get("SIEM") == "Нет" and not context.get("small_company"):
+        add_question("Логи / SOC", "Какие источники логов вы готовы подключить первыми: NGFW, AD/учетки, серверы, EPP, backup или почту?")
+    if results.get("MFA") == "Нет":
+        add_question("MFA / IAM", "Где MFA можно включить быстрее всего без ломки процессов: VPN, почта, администраторы, облака или бизнес-системы?")
+    if results.get("Резервное копирование") != "Нет":
+        add_question("Backup", "Когда последний раз делали тестовое восстановление и какой результат можно показать руководству?")
     if context.get("has_public_web"):
-        questions.append(("Web", "Какие публичные приложения критичны для выручки или клиентского сервиса?"))
+        add_question("Web", "Какие публичные приложения критичны для выручки или клиентского сервиса, и кто владелец их доступности?")
     if context.get("has_development"):
-        questions.append(("Разработка", "Есть ли сейчас security gate перед релизом: SAST, DAST, dependency check?"))
+        add_question("Разработка", "Где в процессе релиза можно поставить security gate: зависимости, SAST, DAST или ручной review?")
+
+    questions = questions[:10]
 
     objections = [
         (
@@ -5790,7 +5820,7 @@ def make_expert_excel(c_info, results, final_score):
         domain_scores,
         top_risks
     )
-    expert_conclusion = ai_narrative.get("executive_summary") or build_expert_conclusion(
+    expert_conclusion = build_expert_conclusion(
         results,
         context,
         final_score,
@@ -6200,6 +6230,7 @@ def make_expert_excel(c_info, results, final_score):
             for f_label, f_val in fields:
 
                 ws.cell(row=curr_row, column=1, value=f_label).font = Font(italic=True)
+                ws.merge_cells(start_row=curr_row, start_column=2, end_row=curr_row, end_column=4)
 
                 ws.cell(
                     row=curr_row,
@@ -6207,8 +6238,8 @@ def make_expert_excel(c_info, results, final_score):
                     value=f_val
                 ).alignment = Alignment(wrap_text=True)
 
-                ws.cell(row=curr_row, column=1).border = border
-                ws.cell(row=curr_row, column=2).border = border
+                for col in range(1, 5):
+                    ws.cell(row=curr_row, column=col).border = border
 
                 curr_row += 1
 
