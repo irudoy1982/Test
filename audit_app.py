@@ -4692,6 +4692,17 @@ def normalize_vendor_key(value):
     return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").lower()).strip()
 
 
+def clean_vendor_display_name(value):
+    vendor = str(value or "").strip()
+    fixes = {
+        "imperva": "Imperva",
+        "huawei": "Huawei",
+        "splunc": "Splunk",
+        "mccafee": "McAfee",
+    }
+    return fixes.get(vendor.lower(), vendor)
+
+
 def load_solution_vendor_map():
     solution_aliases = {
         "DLP": ("dlp", "утеч", "защита данных"),
@@ -4718,36 +4729,46 @@ def load_solution_vendor_map():
         "Antiransomeware/EDR": ("edr", "xdr", "mdr", "epp", "endpoint", "конечн"),
         "Мультифаторная аутификация": ("mfa", "2fa", "многофактор"),
     }
-    header_by_key = {
-        normalize_vendor_key(header): header
-        for header in solution_aliases
+    solution_vendor_keywords = {
+        "DLP": ("symantec", "forcepoint", "zecurion", "ibatyr", "гарда"),
+        "Шифрование и маскирование данных": ("symantec", "thales", "imperva", "гарда"),
+        "Системы контроля доступа и управления привилегиями": (
+            "cyberark", "axidian", "netwrix", "fudo"
+        ),
+        "Архивирование и резервное копирование": ("veeam", "commvault", "veritas"),
+        "Защита баз данных и аудит": ("imperva", "гарда"),
+        "NGFW": ("check point", "palo alto", "fortinet", "cisco", "huawei"),
+        "IDS/IPS": ("trend micro", "forcepoint", "check point", "fortinet"),
+        "WAF": ("imperva", "f5", "cloudflare", "radware", "a10", "check point"),
+        "AntiDDos": ("f5", "radware", "check point", "barracuda"),
+        "Защита облаков": ("check point", "palo alto", "fortinet", "crowdstrike", "trend micro"),
+        "Cyber Risk Management": ("tenable", "qualys", "positive", "harmony"),
+        "Мониторинг и логирование": ("positive", "касперского", "netwrix", "splunc", "r vision", "qazsiem", "mccafee"),
+        "Защита почты": ("trend micro", "barracuda", "forcepoint", "fortinet"),
+        "CASB, разработка и защита контейнеров": (
+            "check point", "palo alto", "fortinet", "forcepoint", "qualys", "hcl", "symantec", "trend micro"
+        ),
+        "MDM": ("kaspersky", "bitdefender", "eset"),
+        "Antiransomeware/EDR": (
+            "trend micro", "kaspersky", "check point", "symantec", "bitdefender", "fortinet", "eset", "crowdstrike"
+        ),
+        "Мультифаторная аутификация": ("eset", "axidian", "thales"),
     }
-    vendor_map = {header: [] for header in solution_aliases}
 
-    try:
-        df = pd.read_excel("Портфель для отчета.xlsx", sheet_name="Лист2", header=None)
-    except Exception:
-        return vendor_map, solution_aliases
+    catalog = [
+        clean_vendor_display_name(vendor)
+        for vendor in load_vendor_names()
+        if str(vendor).strip()
+    ]
+    vendor_map = {}
 
-    current_solution = None
-    for _, row in df.iterrows():
-        section_value = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
-        item_value = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
-        if section_value:
-            current_solution = None
-        if not item_value:
-            continue
-
-        normalized_item = normalize_vendor_key(item_value)
-        if normalized_item in header_by_key:
-            current_solution = header_by_key[normalized_item]
-            continue
-
-        if current_solution:
-            vendor_map.setdefault(current_solution, []).append(item_value)
-
-    for solution, vendors in list(vendor_map.items()):
-        vendor_map[solution] = list(dict.fromkeys(vendors))
+    for solution, keywords in solution_vendor_keywords.items():
+        matched = []
+        for vendor in catalog:
+            normalized_vendor = normalize_vendor_key(vendor)
+            if any(normalize_vendor_key(keyword) in normalized_vendor for keyword in keywords):
+                matched.append(vendor)
+        vendor_map[solution] = list(dict.fromkeys(matched))
 
     return vendor_map, solution_aliases
 
