@@ -43,9 +43,19 @@ def sanitize_for_ai(c_info, results):
         "Email",
         "ФИО контактного лица",
         "Должность",
-        "Контактный телефон"
+        "Контактный телефон",
+        "Город",
+        "Компания",
+        "Контакт",
+        "Телефон",
+        "client_",
+        "name_",
+        "email",
+        "phone",
     ]
-    safe_client = {k: v for k, v in c_info.items() if k not in forbidden}
+    safe_client = {
+        "Сфера деятельности": c_info.get("Сфера деятельности", "")
+    }
     safe_results = {
         k: v for k, v in results.items()
         if not any(f.lower() in str(k).lower() for f in forbidden)
@@ -377,14 +387,38 @@ def normalize_ai_risks_payload(payload):
             "regulators": [repair_mojibake(value).strip() for value in regulators if repair_mojibake(value).strip()][:3],
         }
 
+    def collect_from_list(value, source_area="ИИ"):
+        normalized_items = []
+        if not isinstance(value, list):
+            return normalized_items
+        for item in value:
+            normalized = normalize_risk_item(item)
+            if normalized:
+                normalized["_ai_area"] = source_area
+                normalized_items.append(normalized)
+        return normalized_items
+
     if isinstance(payload, list):
         return [
             normalized
-            for normalized in (normalize_risk_item(item) for item in payload)
+            for normalized in collect_from_list(payload)
             if normalized
         ]
 
     if isinstance(payload, dict):
+        combined = []
+        for key, source_area in (
+            ("it_recommendations", "ИТ"),
+            ("security_recommendations", "ИБ"),
+            ("risks", "ИИ"),
+            ("recommendations", "ИИ"),
+            ("items", "ИИ"),
+            ("data", "ИИ"),
+        ):
+            combined.extend(collect_from_list(payload.get(key), source_area))
+        if combined:
+            return combined
+
         for key in ("risks", "recommendations", "items", "data"):
             value = payload.get(key)
             if isinstance(value, list):
@@ -395,6 +429,86 @@ def normalize_ai_risks_payload(payload):
                 ]
 
     return []
+
+
+def normalize_ai_audit_narrative(payload):
+    if not isinstance(payload, dict):
+        return {}
+
+    def clean_text(value):
+        text = str(value or "").strip()
+        suspicious = sum(text.count(marker) for marker in ("Р", "С", "Ð", "Ñ"))
+        if suspicious >= 3:
+            try:
+                repaired = text.encode("cp1251").decode("utf-8")
+                if repaired.count("Р") + repaired.count("С") < text.count("Р") + text.count("С"):
+                    text = repaired
+            except UnicodeError:
+                pass
+        return re.sub(r"\s+", " ", text).strip()
+
+    def clean_list(values, limit=8):
+        if not isinstance(values, list):
+            return []
+        cleaned = []
+        for value in values:
+            if isinstance(value, dict):
+                text = clean_text(value.get("text") or value.get("summary") or value.get("recommendation"))
+            else:
+                text = clean_text(value)
+            if text:
+                cleaned.append(text)
+            if len(cleaned) >= limit:
+                break
+        return cleaned
+
+    def clean_observations(values, limit=6):
+        if not isinstance(values, list):
+            return []
+        cleaned = []
+        for value in values:
+            if isinstance(value, dict):
+                title = clean_text(value.get("title") or value.get("domain") or value.get("risk"))
+                text = clean_text(value.get("text") or value.get("description") or value.get("recommendation"))
+            else:
+                title = "Наблюдение"
+                text = clean_text(value)
+            if title and text:
+                cleaned.append((title[:80], text))
+            if len(cleaned) >= limit:
+                break
+        return cleaned
+
+    def clean_roadmap(values, limit=8):
+        if not isinstance(values, list):
+            return []
+        rows = []
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            action = clean_text(value.get("action") or value.get("recommendation"))
+            rationale = clean_text(value.get("rationale") or value.get("why") or value.get("impact"))
+            if not action:
+                continue
+            rows.append({
+                "phase": clean_text(value.get("phase") or "0-90 дней"),
+                "priority": clean_text(value.get("priority") or "P2"),
+                "domain": clean_text(value.get("domain") or "ИТ/ИБ"),
+                "action": action,
+                "rationale": rationale or "Мера снижает выявленный риск и повышает управляемость.",
+                "owner": clean_text(value.get("owner") or "ИТ/ИБ"),
+                "effort": clean_text(value.get("effort") or "Средняя"),
+            })
+            if len(rows) >= limit:
+                break
+        return rows
+
+    return {
+        "executive_summary": clean_list(payload.get("executive_summary"), limit=7),
+        "audit_observations": clean_observations(payload.get("audit_observations"), limit=6),
+        "management_decisions": clean_list(payload.get("management_decisions"), limit=6),
+        "roadmap": clean_roadmap(payload.get("roadmap"), limit=8),
+    }
 
 
 def is_truncated_ai_text(value):
@@ -1285,23 +1399,54 @@ LOW
             )
 
         compact_prompt = f"""
-Ты CISO/CTO-аудитор. По краткой анкете верни только JSON-массив из 10-12 пунктов аудита ИТ и ИБ.
-Без markdown, без пояснений вне JSON. Первый символ ответа должен быть [.
+Ты CISO/CTO-аудитор. По обезличенной анкете верни только JSON-объект для экспертного отчета ИТ и ИБ.
+Без markdown, без пояснений вне JSON. Первый символ ответа должен быть {{.
 JSON должен быть валидным: все строковые значения в одну строку, без переносов внутри кавычек.
 Если нужно разделить мысль, используй точку с пробелом, а не перевод строки.
 
-Поля объекта:
-level: CRITICAL|HIGH|MEDIUM|LOW
-risk: короткое название риска
-description: 1 предложение
-impact: 1 предложение про бизнес-последствие
-recommendation: 2-3 конкретных действия, связанных с масштабом инфраструктуры
-vendors: массив 0-3 релевантных категорий/решений
-regulators: массив 0-3 стандартов
+Строгий формат ответа:
+{{
+  "executive_summary": [
+    "5-7 содержательных выводов для руководства без коммерческого тона"
+  ],
+  "audit_observations": [
+    {{"title": "Короткий домен", "text": "Наблюдение аудитора, связанное с фактами анкеты"}}
+  ],
+  "it_recommendations": [
+    {{
+      "level": "HIGH",
+      "risk": "Риск или зона незрелости ИТ",
+      "description": "1-2 предложения с фактами анкеты",
+      "impact": "Бизнес-последствие",
+      "recommendation": "3 конкретных шага: быстрый шаг, проектный шаг, контроль результата",
+      "vendors": ["категория или решение"],
+      "regulators": ["ITIL"]
+    }}
+  ],
+  "security_recommendations": [
+    {{
+      "level": "HIGH",
+      "risk": "Риск или зона незрелости ИБ",
+      "description": "1-2 предложения с фактами анкеты",
+      "impact": "Бизнес-последствие",
+      "recommendation": "3 конкретных шага: быстрый шаг, проектный шаг, контроль результата",
+      "vendors": ["категория или решение"],
+      "regulators": ["ISO 27001"]
+    }}
+  ],
+  "management_decisions": [
+    "4-6 решений, которые руководитель может утвердить сразу"
+  ],
+  "roadmap": [
+    {{"phase": "0-30 дней", "priority": "P1", "domain": "ИТ/ИБ", "action": "Что сделать", "rationale": "Почему это важно", "owner": "ИТ/ИБ", "effort": "Низкая|Средняя|Высокая"}}
+  ]
+}}
 
 Правила:
 - учитывай масштаб инфраструктуры;
-- включи рекомендации по ИТ и ИБ: минимум 3 пункта про ИТ-инфраструктуру/эксплуатацию, если в анкете есть сеть, серверы, СХД, backup, бизнес-системы или разработка;
+- верни 4-6 it_recommendations и 5-7 security_recommendations;
+- ИТ-рекомендации должны быть про сеть, каналы, серверы, виртуализацию, СХД, backup/DR, мониторинг, patch/change/capacity management, бизнес-системы и разработку;
+- ИБ-рекомендации должны учитывать уже внедренные контроли и не повторять отсутствующий контроль, если он есть;
 - каждое наблюдение должно связывать минимум два факта анкеты, если это возможно;
 - избегай примитивных фраз уровня "внедрить продукт"; сначала опиши управленческую/техническую меру, затем только категорию решения;
 - не повторяй один и тот же домен разными словами: MFA, удаленный доступ и учетные записи объединяй в один сильный риск, если нет отдельного факта;
@@ -1318,9 +1463,7 @@ regulators: массив 0-3 стандартов
 - строго не пиши "отсутствует", "не внедрено" или "не указано" про контроль из списка "Уже внедрено";
 - если MFA есть в списке "Уже внедрено", не создавай риск по отсутствию MFA.
 
-Компания:
 Отрасль: {c_info.get("Сфера деятельности", "-")}
-Город: {c_info.get("Город", "-")}
 
 Уже внедрено:
 {enabled_controls_text}
@@ -1409,9 +1552,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
 Раздел: {title}
 Фокус анализа: {focus}
 
-Компания:
 Отрасль: {c_info.get("Сфера деятельности", "-")}
-Город: {c_info.get("Город", "-")}
 
 Ключевые данные анкеты:
 {ai_summary}
@@ -1567,8 +1708,14 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                     in_string = not in_string
 
             repaired = "".join(cleaned).strip()
-            start = repaired.find("[")
-            end = repaired.rfind("]")
+            array_start = repaired.find("[")
+            object_start = repaired.find("{")
+            if object_start >= 0 and (array_start < 0 or object_start < array_start):
+                start = object_start
+                end = repaired.rfind("}")
+            else:
+                start = array_start
+                end = repaired.rfind("]")
             if start >= 0:
                 repaired = repaired[start:end + 1] if end > start else repaired[start:]
 
@@ -1594,6 +1741,10 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             end = response_text.rfind("]")
             if start >= 0 and end > start:
                 variants.append(response_text[start:end + 1])
+            object_start = response_text.find("{")
+            object_end = response_text.rfind("}")
+            if object_start >= 0 and object_end > object_start:
+                variants.append(response_text[object_start:object_end + 1])
             variants.append(repair_json_text(response_text))
 
             last_error = None
@@ -1652,6 +1803,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                         ai_errors.append(f"{active_model}: JSON parse error: {exc}")
                         continue
 
+                    ai_narrative = normalize_ai_audit_narrative(parsed_payload)
                     normalized_payload = normalize_ai_risks_payload(parsed_payload)
                     normalized_payload, skipped_ai_items = filter_ai_risks_by_answers(
                         normalized_payload,
@@ -1666,6 +1818,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                     if prepared_payload:
                         st.session_state.ai_last_error = ""
                         st.session_state.ai_model_used = active_model
+                        st.session_state.ai_audit_narrative = ai_narrative
                         return prepared_payload
 
                     ai_errors.append(f"{active_model}: {quality_error or 'нет пригодных законченных рекомендаций'}")
@@ -1676,6 +1829,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
 
     except Exception as e:
         st.session_state.ai_last_error = redact_secret(e, api_key)
+        st.session_state.ai_audit_narrative = {}
         return []
 
 
@@ -5139,6 +5293,19 @@ def professionalize_risk_item(item, results, context):
     legacy_arm = results.get("ОС АРМ (Windows XP/Vista/7/8)", 0)
     legacy_srv = results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0)
 
+    if risk_source_label(source) == "ИИ":
+        normalized = dict(item)
+        normalized["_source"] = source
+        normalized.setdefault("level", "MEDIUM")
+        normalized.setdefault("description", normalized.get("risk", "Риск требует дополнительного уточнения."))
+        normalized.setdefault("impact", "Риск может повлиять на устойчивость ИТ/ИБ процессов.")
+        normalized.setdefault("recommendation", "Уточнить текущий процесс, назначить ответственного и определить измеримый план улучшений.")
+        if not normalized.get("vendors"):
+            normalized["vendors"] = []
+        if not normalized.get("regulators"):
+            normalized["regulators"] = ["ISO 27001"]
+        return normalized
+
     profiles = {
         "legacy_os": {
             "level": "CRITICAL",
@@ -5386,9 +5553,19 @@ def build_audit_observations(results, context, domain_scores, report_risks):
 def build_target_operating_model(results, context):
     users = context.get("users", 0)
     servers = context.get("servers", 0)
+    access_text = (
+        "Контроль покрытия MFA для администраторов, почты, удаленного доступа и критичных систем; регулярный пересмотр исключений и привилегий."
+        if is_enabled(results.get("MFA"))
+        else "MFA для администраторов, почты, удаленного доступа и критичных систем; регулярный пересмотр исключений и привилегий."
+    )
+    endpoint_text = (
+        f"Единое покрытие EPP/EDR для {users} АРМ с контролем статуса агентов, инцидентов и реакции на ransomware-сценарии."
+        if not any(is_enabled(results.get(control)) for control in ("EDR", "XDR", "MDR"))
+        else f"Контроль покрытия endpoint-защиты для {users} АРМ: статус агентов, качество телеметрии, сценарии реагирования и метрики MTTD/MTTR."
+    )
     return [
-        ("Доступы", "MFA для администраторов, почты, удаленного доступа и критичных систем; регулярный пересмотр исключений и привилегий."),
-        ("Рабочие места", f"Единое покрытие EPP/EDR для {users} АРМ с контролем статуса агентов, инцидентов и реакции на ransomware-сценарии."),
+        ("Доступы", access_text),
+        ("Рабочие места", endpoint_text),
         ("Инфраструктура", f"Мониторинг серверов, виртуализации, СХД и каналов связи для {servers} серверов с порогами, владельцами и отчетом по доступности."),
         ("Восстановление", "Проверенные RTO/RPO, immutable/offline backup и регулярный тест восстановления критичных бизнес-систем."),
         ("Публичные сервисы", "WAF/CDN, журналирование web-событий, разбор блокировок и связка с процессом реагирования."),
@@ -5399,11 +5576,20 @@ def build_target_operating_model(results, context):
 def build_management_decisions(results, context):
     decisions = [
         "Утвердить владельцев направлений: доступы, рабочие места, инфраструктура, backup/DR, web-периметр.",
-        "Запустить 30-дневный план: MFA для критичных доступов, реестр устаревших ОС, patch management и проверка backup-восстановления.",
         "Провести пилот EDR/MDR на критичных группах пользователей и серверах, затем принять решение о масштабировании.",
         "Определить минимальный SOC/MSSP-scope: NGFW, AD/учетки, серверы, endpoint, backup, почта и web.",
         "Согласовать регулярный отчет для руководства: остаточные риски, выполненные меры, исключения, SLA закрытия критичных уязвимостей.",
     ]
+    if is_enabled(results.get("MFA")):
+        decisions.insert(
+            1,
+            "Запустить 30-дневный план: проверить покрытие MFA по критичным доступам, закрыть устаревшие ОС, формализовать patch management и проверить backup-восстановление."
+        )
+    else:
+        decisions.insert(
+            1,
+            "Запустить 30-дневный план: включить MFA для критичных доступов, закрыть устаревшие ОС, формализовать patch management и проверить backup-восстановление."
+        )
     if context.get("has_development"):
         decisions.append("Добавить требования AppSec в процесс релизов: SAST/DAST, проверка зависимостей и критерии допуска в продуктив.")
     return decisions[:6]
@@ -5443,17 +5629,19 @@ def make_expert_excel(c_info, results, final_score):
     domain_scores = calculate_domain_scores(results)
     context = build_context(results, c_info)
     profile_title, profile_text = infrastructure_profile(context)
+    report_risks, ai_used = build_report_risk_set(c_info, results, context)
+    ai_narrative = st.session_state.get("ai_audit_narrative", {}) if ai_used else {}
     top_risks = generate_rule_based_risks(
         results,
         context
     )
-    roadmap_items = build_contextual_roadmap(
+    roadmap_items = ai_narrative.get("roadmap") or build_contextual_roadmap(
         results,
         context,
         domain_scores,
         top_risks
     )
-    expert_conclusion = build_expert_conclusion(
+    expert_conclusion = ai_narrative.get("executive_summary") or build_expert_conclusion(
         results,
         context,
         final_score,
@@ -5502,32 +5690,38 @@ def make_expert_excel(c_info, results, final_score):
     ws['A11'].alignment = Alignment(horizontal='center')
 
     summary_text = []
-
-    summary_text.append(f"• Профиль инфраструктуры: {profile_text}")
-    summary_text.append("• Общий вывод: текущий уровень зрелости требует не точечных закупок, а короткой программы стабилизации ИТ и ИБ с владельцами, сроками и метриками контроля.")
-
-    if results.get("NGFW") != "Нет":
-        summary_text.append("• Сильная сторона: используется NGFW, его нужно включить в единый контур мониторинга, журналирования и реагирования.")
-
-    if results.get("MFA") == "Нет":
-        summary_text.append("• Критичный разрыв: MFA не указана для критичных доступов, поэтому компрометация пароля остается одним из наиболее вероятных сценариев инцидента.")
-
-    if results.get("SIEM") == "Нет":
-        if context.get("small_company"):
-            summary_text.append("• Для текущего масштаба приоритетнее сбор критичных журналов и регламент реакции, чем тяжелый SIEM-проект")
-        else:
-            summary_text.append("• Требуется централизованный мониторинг событий по минимальному scope: NGFW, учетные записи, серверы, endpoint, backup, почта и web.")
-
-    if results.get("Резервное копирование") == "Нет":
-        summary_text.append("• Не обнаружено централизованное резервное копирование")
+    if ai_narrative.get("executive_summary"):
+        summary_text = [
+            f"• {item}"
+            for item in ai_narrative.get("executive_summary", [])[:7]
+            if str(item).strip()
+        ]
     else:
-        summary_text.append("• Backup заявлен, но управленчески важно подтвердить RTO/RPO, immutable/offline-копии и результаты тестового восстановления.")
+        summary_text.append(f"• Профиль инфраструктуры: {profile_text}")
+        summary_text.append("• Общий вывод: текущий уровень зрелости требует не точечных закупок, а короткой программы стабилизации ИТ и ИБ с владельцами, сроками и метриками контроля.")
 
-    if results.get("_user_count", 0) > 100:
-        summary_text.append("• Масштаб 100+ АРМ требует формализации patch management, endpoint response, мониторинга инфраструктуры и регулярного отчета по остаточным рискам.")
+        if results.get("NGFW") != "Нет":
+            summary_text.append("• Сильная сторона: используется NGFW, его нужно включить в единый контур мониторинга, журналирования и реагирования.")
 
-    if not summary_text:
-        summary_text.append("• Базовые меры информационной безопасности реализованы")
+        if results.get("MFA") == "Нет":
+            summary_text.append("• Критичный разрыв: MFA не указана для критичных доступов, поэтому компрометация пароля остается одним из наиболее вероятных сценариев инцидента.")
+
+        if results.get("SIEM") == "Нет":
+            if context.get("small_company"):
+                summary_text.append("• Для текущего масштаба приоритетнее сбор критичных журналов и регламент реакции, чем тяжелый SIEM-проект")
+            else:
+                summary_text.append("• Требуется централизованный мониторинг событий по минимальному scope: NGFW, учетные записи, серверы, endpoint, backup, почта и web.")
+
+        if results.get("Резервное копирование") == "Нет":
+            summary_text.append("• Не обнаружено централизованное резервное копирование")
+        else:
+            summary_text.append("• Backup заявлен, но управленчески важно подтвердить RTO/RPO, immutable/offline-копии и результаты тестового восстановления.")
+
+        if results.get("_user_count", 0) > 100:
+            summary_text.append("• Масштаб 100+ АРМ требует формализации patch management, endpoint response, мониторинга инфраструктуры и регулярного отчета по остаточным рискам.")
+
+        if not summary_text:
+            summary_text.append("• Базовые меры информационной безопасности реализованы")
 
     ws.merge_cells('A12:D19')
     ws['A12'] = "\n".join(summary_text)
@@ -5564,10 +5758,9 @@ def make_expert_excel(c_info, results, final_score):
             ws.cell(row=row, column=col).fill = gray_fill
             ws.cell(row=row, column=col).border = border
 
-    report_risks, ai_used = build_report_risk_set(c_info, results, context)
-    observations = build_audit_observations(results, context, domain_scores, report_risks)
+    observations = ai_narrative.get("audit_observations") or build_audit_observations(results, context, domain_scores, report_risks)
     target_model = build_target_operating_model(results, context)
-    management_decisions = build_management_decisions(results, context)
+    management_decisions = ai_narrative.get("management_decisions") or build_management_decisions(results, context)
 
     current_row = conclusion_end_row + 2
 
@@ -6984,6 +7177,7 @@ if st.session_state.generation_state == "heavy_ai":
             st.session_state.ai_last_error = ""
             st.session_state.ai_model_used = ""
             st.session_state.ai_used_in_last_report = False
+            st.session_state.ai_audit_narrative = {}
 
             # Запуск экспертного анализа и сборки клиентского XLSX.
             report_bytes = make_expert_excel(client_info, results, f_score)
