@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import ast
+import os
+import re
 from pathlib import Path
+
+import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,9 +32,35 @@ def load_ai_first_helper():
     source = extract_function_source(module_text, "build_ai_first_sales_opportunities")
     namespace = {
         "manufacturers_for_report_item": lambda item: "FallbackVendor",
+        "portfolio_vendors_for_report_item": lambda item: "Imperva, F5" if "WAF" in str(item.get("vendors")) else ", ".join(item.get("vendors", [])),
     }
     exec(source, namespace)
     return namespace["build_ai_first_sales_opportunities"]
+
+
+def load_portfolio_helpers():
+    module_text = APP.read_text(encoding="utf-8")
+    names = [
+        "normalize_vendor_key",
+        "clean_vendor_display_name",
+        "load_detailed_solution_vendor_map",
+        "normalize_portfolio_header",
+        "split_portfolio_list",
+        "load_verified_distributor_map",
+        "load_solution_vendor_map",
+        "manufacturers_for_report_item",
+        "verified_distributors_for_vendors",
+        "portfolio_vendors_for_report_item",
+    ]
+    namespace = {
+        "DETAILED_VENDOR_MATRIX_FILE": str(ROOT / "vendor_matrix_detailed.xlsx"),
+        "os": os,
+        "pd": pd,
+        "re": re,
+    }
+    for name in names:
+        exec(extract_function_source(module_text, name), namespace)
+    return namespace
 
 
 def test_ai_first_sales_behavior() -> None:
@@ -42,7 +72,7 @@ def test_ai_first_sales_behavior() -> None:
             "description": "Есть личный кабинет и интернет-магазин.",
             "impact": "Риск атак на приложение и простоя клиентских сервисов.",
             "recommendation": "Провести экспресс-оценку web-периметра; включить WAF/CDN; настроить контроль блокировок.",
-            "vendors": ["Imperva", "F5"],
+            "vendors": ["WAF"],
             "area": "ИБ",
             "source": "ИИ",
         },
@@ -59,6 +89,14 @@ def test_ai_first_sales_behavior() -> None:
     assert_true(rows[0]["source"] == "ИИ", "AI opportunity source must stay visible in playbook")
     assert_true(rows[0]["vendors"] == "Imperva, F5", "Vendors should be preserved from AI risk")
     assert_true("web" in rows[0]["problem"].lower(), "Risk title should be preserved")
+
+
+def test_portfolio_category_to_verified_distributor() -> None:
+    helpers = load_portfolio_helpers()
+    vendors = helpers["portfolio_vendors_for_report_item"]({"vendors": ["WAF"], "risk": "WAF"})
+    distributors = helpers["verified_distributors_for_vendors"]("WAF")
+    assert_true("Check Point" in vendors, f"WAF should resolve to portfolio vendor, got: {vendors}")
+    assert_true("MONT TECH" in distributors or "MUK" in distributors, f"WAF distributor should be verified, got: {distributors}")
 
 
 def test_sales_fallback_hook_order() -> None:
@@ -79,11 +117,23 @@ def test_customer_report_context() -> None:
     assert_true("Фокус эксплуатации" in report_source, "Report passport does not display operational focus")
 
 
+def test_sales_sheet_navigation_layout() -> None:
+    text = APP.read_text(encoding="utf-8")
+    internal = extract_function_source(text, "make_internal_sales_excel")
+    assert_true("A1:H1" in internal, "Sales sheet title should span all 8 columns")
+    assert_true("A3:H3" in internal, "Sales sheet company strip should span all 8 columns")
+    assert_true("A5:H5" in internal, "Sales sheet company header should span all 8 columns")
+    assert_true("Навигация:" in internal, "Sales sheet navigation hint is missing")
+    assert_true("ws.column_dimensions['H'].width = 16" in internal, "Source column should remain visible")
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
+        test_portfolio_category_to_verified_distributor,
         test_sales_fallback_hook_order,
         test_customer_report_context,
+        test_sales_sheet_navigation_layout,
     ]
     for test in tests:
         test()

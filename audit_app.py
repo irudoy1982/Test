@@ -4863,14 +4863,50 @@ def verified_distributors_for_vendors(vendors_text):
     distributor_map = load_verified_distributor_map()
     if not distributor_map:
         return "-"
+
+    def collect_distributors(vendor_values):
+        values = []
+        for vendor in vendor_values:
+            normalized_vendor = normalize_vendor_key(vendor)
+            for known_vendor, distributors in distributor_map.items():
+                if normalize_vendor_key(known_vendor) == normalized_vendor:
+                    values.append(f"{known_vendor}: {', '.join(distributors)}")
+        return values
+
     vendors = split_portfolio_list(vendors_text)
-    values = []
-    for vendor in vendors:
-        normalized_vendor = normalize_vendor_key(vendor)
-        for known_vendor, distributors in distributor_map.items():
-            if normalize_vendor_key(known_vendor) == normalized_vendor:
-                values.append(f"{known_vendor}: {', '.join(distributors)}")
+    values = collect_distributors(vendors)
+    if not values and vendors:
+        inferred_vendors = manufacturers_for_report_item({
+            "vendors": vendors,
+            "risk": str(vendors_text),
+            "description": str(vendors_text),
+        })
+        values = collect_distributors(split_portfolio_list(inferred_vendors))
+
     return "\n".join(list(dict.fromkeys(values))) or "-"
+
+
+def portfolio_vendors_for_report_item(item):
+    inferred = manufacturers_for_report_item(item)
+    if inferred and inferred != "-":
+        return inferred
+
+    existing_values = item.get("vendors", [])
+    if not isinstance(existing_values, list):
+        existing_values = [existing_values] if existing_values else []
+
+    distributor_map = load_verified_distributor_map()
+    direct_matches = []
+    for value in existing_values:
+        normalized_value = normalize_vendor_key(value)
+        for known_vendor, distributors in distributor_map.items():
+            if normalize_vendor_key(known_vendor) == normalized_value:
+                direct_matches.append(known_vendor)
+
+    if direct_matches:
+        return ", ".join(list(dict.fromkeys(direct_matches))[:8])
+
+    return ", ".join(str(value).strip() for value in existing_values if str(value).strip()) or "-"
 
 
 def load_solution_vendor_map():
@@ -4899,8 +4935,15 @@ def load_solution_vendor_map():
         "MDM": ("mdm",),
         "Antiransomeware/EDR": ("edr", "xdr", "mdr", "epp", "endpoint", "конечн"),
         "Мультифаторная аутификация": ("mfa", "2fa", "многофактор"),
-        "ITSM/CMDB": ("itsm", "cmdb", "change management", "configuration management", "управление изменениями", "управление конфигурациями"),
-        "Миграция и виртуализация": ("миграция ос", "виртуализация", "virtualization", "migration project"),
+        "ITSM/CMDB": (
+            "itsm", "cmdb", "change management", "configuration management",
+            "управление изменениями", "управление конфигурациями",
+            "учет конфигураций", "учета конфигураций", "система учета конфигураций"
+        ),
+        "Миграция и виртуализация": (
+            "миграция ос", "миграция", "замена оборудования",
+            "виртуализация", "virtualization", "migration project"
+        ),
     }
     detailed_matrix = load_detailed_solution_vendor_map()
     if detailed_matrix:
@@ -4924,7 +4967,7 @@ def load_solution_vendor_map():
             solutions[15]: ("MDM", "MDM/UEM"),
             solutions[16]: ("EDR", "XDR", "AV"),
             solutions[17]: ("MFA",),
-            solutions[18]: (),
+            solutions[18]: ("ITSM", "ITAM"),
             solutions[19]: ("Servers", "Storage", "Operating Systems", "Virtualization"),
         }
         vendor_map = {}
@@ -5198,14 +5241,7 @@ def build_ai_first_sales_opportunities(risk_sources):
         if item.get("source") != "ИИ":
             continue
 
-        vendors = item.get("vendors", [])
-        if isinstance(vendors, list):
-            vendors_text = ", ".join(str(value).strip() for value in vendors if str(value).strip())
-        else:
-            vendors_text = str(vendors or "").strip()
-
-        if not vendors_text:
-            vendors_text = manufacturers_for_report_item(item)
+        vendors_text = portfolio_vendors_for_report_item(item)
 
         risk = str(item.get("risk", "")).strip()
         recommendation = str(item.get("recommendation", "")).strip()
@@ -6734,13 +6770,13 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         sheet.auto_filter.ref = f"A{start_row}:{chr(64 + len(headers))}{max(row_idx - 1, start_row)}"
         return row_idx
 
-    ws.merge_cells('A1:G1')
+    ws.merge_cells('A1:H1')
     ws['A1'] = "ВНУТРЕННИЙ SALES PLAYBOOK ПО ИТОГАМ АУДИТА"
     ws['A1'].font = Font(bold=True, size=18, color="FFFFFF")
     ws['A1'].fill = dark_fill
     ws['A1'].alignment = Alignment(horizontal='center')
 
-    ws.merge_cells('A3:G3')
+    ws.merge_cells('A3:H3')
     ws['A3'] = (
         f"Компания: {c_info.get('Наименование компании', '-')} | "
         f"Город: {c_info.get('Город', '-')} | "
@@ -6763,7 +6799,7 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         ("Зрелость ИБ", f"{final_score}%"),
     ]
 
-    ws.merge_cells('A5:G5')
+    ws.merge_cells('A5:H5')
     ws['A5'] = "ИНФОРМАЦИЯ О КОМПАНИИ"
     ws['A5'].font = Font(bold=True, color="FFFFFF")
     ws['A5'].fill = dark_fill
@@ -6774,11 +6810,11 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         ws.cell(row=info_row, column=1, value=label).font = Font(bold=True)
         ws.cell(row=info_row, column=1).fill = gray_fill
         ws.cell(row=info_row, column=1).border = border
-        ws.merge_cells(start_row=info_row, start_column=2, end_row=info_row, end_column=7)
+        ws.merge_cells(start_row=info_row, start_column=2, end_row=info_row, end_column=8)
         value_cell = ws.cell(row=info_row, column=2, value=value)
         value_cell.border = border
         value_cell.alignment = Alignment(wrap_text=True, vertical='top')
-        for col_num in range(3, 8):
+        for col_num in range(3, 9):
             ws.cell(row=info_row, column=col_num).border = border
         info_row += 1
 
@@ -6792,7 +6828,21 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         "Источник",
     ]
     headers.insert(5, "Дистрибьюторы")
-    header_row = info_row + 1
+    nav_row = info_row + 1
+    ws.merge_cells(start_row=nav_row, start_column=1, end_row=nav_row, end_column=8)
+    nav_cell = ws.cell(
+        row=nav_row,
+        column=1,
+        value=(
+            "Навигация: основная таблица ниже отфильтровывается по приоритету, источнику и решениям; "
+            "детальные источники рисков размещены под таблицей."
+        )
+    )
+    nav_cell.fill = light_blue_fill
+    nav_cell.border = border
+    nav_cell.alignment = Alignment(wrap_text=True, vertical='top')
+
+    header_row = nav_row + 1
     row = header_row
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=row, column=col_num, value=header)
@@ -6845,7 +6895,7 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
     ws.column_dimensions['E'].width = 36
     ws.column_dimensions['F'].width = 34
     ws.column_dimensions['G'].width = 48
-    ws.column_dimensions['H'].width = 20
+    ws.column_dimensions['H'].width = 16
 
     source_row = row + 2
     ws.merge_cells(start_row=source_row, start_column=1, end_row=source_row, end_column=8)
@@ -6888,7 +6938,7 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         cell.border = border
         cell.alignment = Alignment(wrap_text=True)
 
-    ws.column_dimensions['H'].width = 1
+    ws.sheet_view.showGridLines = False
 
     pains_ws = wb.create_sheet("04 Боли и гипотезы")
     style_sales_header(pains_ws, "БОЛИ КЛИЕНТА И ГИПОТЕЗЫ ПРОДАЖ", 5)
