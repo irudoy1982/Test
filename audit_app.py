@@ -4754,6 +4754,83 @@ def load_detailed_solution_vendor_map():
         return {}
 
 
+def normalize_portfolio_header(value):
+    return normalize_vendor_key(value)
+
+
+def split_portfolio_list(value):
+    if value is None:
+        return []
+    parts = re.split(r"[,;|\n]+", str(value))
+    return [part.strip() for part in parts if part and part.strip()]
+
+
+def load_verified_distributor_map():
+    try:
+        if not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
+            return {}
+        df = pd.read_excel(DETAILED_VENDOR_MATRIX_FILE)
+        if df.empty or "Vendor" not in df.columns:
+            return {}
+
+        normalized_columns = {
+            normalize_portfolio_header(column): column
+            for column in df.columns
+        }
+        distributor_column = None
+        status_column = None
+        for key, column in normalized_columns.items():
+            if key in {
+                "distributor", "distributors", "distributor name",
+                "дистрибьютор", "дистрибьюторы", "поставщик"
+            }:
+                distributor_column = column
+            if key in {
+                "distributor status", "status distributor",
+                "статус дистрибьютора", "статус"
+            }:
+                status_column = column
+
+        if not distributor_column or not status_column:
+            return {}
+
+        verified_statuses = {
+            "verified", "approved", "trusted", "checked",
+            "проверенный", "проверено", "подтвержденный", "подтверждено",
+        }
+        distributor_map = {}
+        for _, row in df.iterrows():
+            status = normalize_portfolio_header(row.get(status_column))
+            if status not in verified_statuses:
+                continue
+            vendor = clean_vendor_display_name(row.get("Vendor"))
+            distributors = split_portfolio_list(row.get(distributor_column))
+            if vendor and distributors:
+                distributor_map.setdefault(vendor, [])
+                distributor_map[vendor].extend(distributors)
+
+        return {
+            vendor: list(dict.fromkeys(distributors))
+            for vendor, distributors in distributor_map.items()
+        }
+    except Exception:
+        return {}
+
+
+def verified_distributors_for_vendors(vendors_text):
+    distributor_map = load_verified_distributor_map()
+    if not distributor_map:
+        return "-"
+    vendors = split_portfolio_list(vendors_text)
+    values = []
+    for vendor in vendors:
+        normalized_vendor = normalize_vendor_key(vendor)
+        for known_vendor, distributors in distributor_map.items():
+            if normalize_vendor_key(known_vendor) == normalized_vendor:
+                values.append(f"{known_vendor}: {', '.join(distributors)}")
+    return "\n".join(list(dict.fromkeys(values))) or "-"
+
+
 def load_solution_vendor_map():
     solution_aliases = {
         "DLP": ("dlp", "утеч", "защита данных"),
@@ -4791,22 +4868,22 @@ def load_solution_vendor_map():
             solutions[1]: ("Encryption",),
             solutions[2]: ("PAM", "IGA"),
             solutions[3]: ("Backup", "Archiving"),
-            solutions[4]: ("DAM/DB Security", "Data Discovery"),
+            solutions[4]: ("DAM/DB Security", "DB Security", "Data Discovery", "Data Classification"),
             solutions[5]: ("NGFW",),
             solutions[6]: ("Network Equipment",),
             solutions[7]: ("IDS/IPS",),
             solutions[8]: ("WAF",),
             solutions[9]: ("Anti-DDoS",),
             solutions[10]: ("Cloud Security", "CASB", "CNAPP", "CWPP"),
-            solutions[11]: ("VM", "Cyber Risk"),
+            solutions[11]: ("VM", "ASM", "Cyber Risk"),
             solutions[12]: ("SIEM", "SOAR", "UEBA"),
-            solutions[13]: ("Email Security",),
+            solutions[13]: ("Email Security", "Email", "Corporate Email"),
             solutions[14]: ("CASB", "CWPP", "CNAPP"),
-            solutions[15]: ("MDM",),
+            solutions[15]: ("MDM", "MDM/UEM"),
             solutions[16]: ("EDR", "XDR", "AV"),
             solutions[17]: ("MFA",),
             solutions[18]: (),
-            solutions[19]: (),
+            solutions[19]: ("Servers", "Storage", "Operating Systems", "Virtualization"),
         }
         vendor_map = {}
         for solution, categories in solution_categories.items():
@@ -6605,6 +6682,7 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         "Следующий шаг сейла",
         "Источник",
     ]
+    headers.insert(5, "Дистрибьюторы")
     header_row = info_row + 1
     row = header_row
     for col_num, header in enumerate(headers, 1):
@@ -6624,6 +6702,7 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
             item["offer"],
             item["trigger"],
             item["vendors"],
+            verified_distributors_for_vendors(item["vendors"]),
             item["next_step"],
             item.get("source", "Базовые правила"),
         ]
@@ -6637,7 +6716,7 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         row += 1
 
     if not sales_opportunities:
-        ws.merge_cells(start_row=first_data_row, start_column=1, end_row=first_data_row, end_column=7)
+        ws.merge_cells(start_row=first_data_row, start_column=1, end_row=first_data_row, end_column=8)
         cell = ws.cell(
             row=first_data_row,
             column=1,
@@ -6649,17 +6728,18 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         row = first_data_row + 1
 
     ws.freeze_panes = f"A{first_data_row}"
-    ws.auto_filter.ref = f"A{header_row}:G{max(row - 1, header_row)}"
+    ws.auto_filter.ref = f"A{header_row}:H{max(row - 1, header_row)}"
     ws.column_dimensions['A'].width = 14
     ws.column_dimensions['B'].width = 34
     ws.column_dimensions['C'].width = 44
     ws.column_dimensions['D'].width = 54
     ws.column_dimensions['E'].width = 36
-    ws.column_dimensions['F'].width = 48
-    ws.column_dimensions['G'].width = 20
+    ws.column_dimensions['F'].width = 34
+    ws.column_dimensions['G'].width = 48
+    ws.column_dimensions['H'].width = 20
 
     source_row = row + 2
-    ws.merge_cells(start_row=source_row, start_column=1, end_row=source_row, end_column=7)
+    ws.merge_cells(start_row=source_row, start_column=1, end_row=source_row, end_column=8)
     ws.cell(row=source_row, column=1, value="ИСТОЧНИКИ РИСКОВ И РЕКОМЕНДАЦИЙ").font = white_font
     ws.cell(row=source_row, column=1).fill = dark_fill
     ws.cell(row=source_row, column=1).alignment = Alignment(horizontal='center')
