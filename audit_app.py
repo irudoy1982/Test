@@ -104,6 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
+APP_VERSION = "12.0-dev"
 
 
 def get_app_instance_label():
@@ -2573,7 +2574,7 @@ def render_app_header():
         </div>
         <div class="audit-logo-lockup">
             {logo_html}
-            <div class="brand-name">Khalil Audit System v11.01</div>
+            <div class="brand-name">Khalil Audit System {APP_VERSION}</div>
             <div class="brand-signature">by Ivan Rudoy</div>
         </div>
     </div>
@@ -7475,7 +7476,7 @@ if st.session_state.generation_state == "preparing":
     render_generation_live_panel("Подготовка экспертного анализа", active_step=1)
 
     # Имитируем лог-систему, как вы просили
-    st.info("⚙️ `[СИСТЕМА]`: Инициализация аналитического ядра Khalil Consulting v11.01...")
+    st.info(f"⚙️ `[СИСТЕМА]`: Инициализация аналитического ядра Khalil Consulting {APP_VERSION}...")
     st.success("⚙️ `[МАТРИЦА]`: Агрегация параметров ИТ-инфраструктуры успешно завершена.")
     
     st.markdown("---")
@@ -7659,4 +7660,4 @@ if st.session_state.generation_state == "finalized":
         st.session_state.telegram_generation_started_sent = False
         st.rerun()
 
-st.info("Khalil Audit System v11.01 | by Ivan Rudoy | Алматы 2026")
+st.info(f"Khalil Audit System {APP_VERSION} | by Ivan Rudoy | Алматы 2026")
