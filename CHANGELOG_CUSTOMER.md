@@ -1,7 +1,7 @@
 # Customer-facing changelog
 
 This changelog is intended for production release notes that can be shown to customers.
-Do not include internal delivery details, sales-only playbook changes, Telegram, AI-provider diagnostics, prompts, secrets, or implementation notes.
+Keep this file focused only on customer-visible questionnaire and report changes.
 
 ## v12.0-dev
 
@@ -13,6 +13,10 @@ Planned customer-visible improvements:
 - Better separation between IT maturity and information security maturity.
 - Improved roadmap wording and prioritization.
 - Cleaner generation flow so users can see that report creation has started.
+
+Implemented in Test:
+- Added IT context to the audit workbook passport: endpoints, servers, virtualization, storage, public services, business systems, and operational focus.
+- Improved recommendation flow so audit outputs stay aligned with the same findings.
 
 ## v11.01-prod
 

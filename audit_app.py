@@ -4494,6 +4494,40 @@ def infrastructure_profile(context):
     )
 
 
+def it_context_summary(results, context):
+    assets = []
+    if context.get("users", 0):
+        assets.append(f"{context.get('users', 0)} АРМ")
+    if context.get("servers", 0):
+        assets.append(f"{context.get('servers', 0)} серверов")
+    if is_enabled(results.get("Виртуализация")):
+        assets.append("виртуализация")
+    if is_enabled(results.get("СХД")):
+        assets.append("СХД")
+    if context.get("has_public_web"):
+        assets.append("публичные web-сервисы")
+    if context.get("has_critical_systems"):
+        assets.append("критичные бизнес-системы")
+    if context.get("has_development"):
+        assets.append("разработка")
+
+    process_focus = []
+    if not is_enabled(results.get("Мониторинг")):
+        process_focus.append("эксплуатационный мониторинг")
+    if not is_enabled(results.get("Patch Management")):
+        process_focus.append("управление обновлениями")
+    if context.get("servers", 0) and not is_enabled(results.get("DR")):
+        process_focus.append("DR/RTO/RPO")
+    if is_enabled(results.get("Резервное копирование")):
+        process_focus.append("проверка восстановления")
+    elif context.get("servers", 0):
+        process_focus.append("резервное копирование")
+
+    assets_text = ", ".join(assets) if assets else "масштаб ИТ не раскрыт"
+    focus_text = ", ".join(dict.fromkeys(process_focus)) if process_focus else "поддержание текущей модели эксплуатации"
+    return assets_text, focus_text
+
+
 def build_contextual_roadmap(results, context, domain_scores, risks):
     roadmap = []
 
@@ -5138,6 +5172,63 @@ def build_sales_opportunities(results, context, roadmap_items):
         )
 
     priority_order = {"P1": 1, "P2": 2, "P3": 3}
+    return sorted(opportunities, key=lambda item: priority_order.get(item["priority"], 99))[:10]
+
+
+def build_ai_first_sales_opportunities(risk_sources):
+    if not isinstance(risk_sources, list):
+        return []
+
+    opportunities = []
+    priority_order = {"P1": 1, "P2": 2, "P3": 3}
+    level_priority = {
+        "Критический": "P1",
+        "Высокий": "P1",
+        "Средний": "P2",
+        "Низкий": "P3",
+        "CRITICAL": "P1",
+        "HIGH": "P1",
+        "MEDIUM": "P2",
+        "LOW": "P3",
+    }
+
+    for item in risk_sources:
+        if not isinstance(item, dict):
+            continue
+        if item.get("source") != "ИИ":
+            continue
+
+        vendors = item.get("vendors", [])
+        if isinstance(vendors, list):
+            vendors_text = ", ".join(str(value).strip() for value in vendors if str(value).strip())
+        else:
+            vendors_text = str(vendors or "").strip()
+
+        if not vendors_text:
+            vendors_text = manufacturers_for_report_item(item)
+
+        risk = str(item.get("risk", "")).strip()
+        recommendation = str(item.get("recommendation", "")).strip()
+        if not risk or not recommendation:
+            continue
+
+        impact = str(item.get("impact") or item.get("description") or "").strip()
+        area = str(item.get("area") or "ИТ/ИБ").strip()
+        priority = level_priority.get(str(item.get("level", "")).strip(), "P2")
+
+        opportunities.append({
+            "priority": priority,
+            "problem": risk,
+            "offer": recommendation,
+            "trigger": impact or "Вывод сформирован по данным анкеты и экспертному анализу.",
+            "vendors": vendors_text or "-",
+            "next_step": (
+                f"Согласовать с заказчиком факты по домену {area}, подтвердить владельца риска, "
+                "оценить текущие ограничения и подготовить короткий план внедрения с бюджетным диапазоном."
+            ),
+            "source": "ИИ",
+        })
+
     return sorted(opportunities, key=lambda item: priority_order.get(item["priority"], 99))[:10]
 
 
@@ -5846,7 +5937,11 @@ def build_report_risk_set(c_info, results, context):
         {
             "level": risk_level_label(item.get("level", "MEDIUM")),
             "risk": item.get("risk", "Риск"),
+            "description": item.get("description", "-"),
+            "impact": item.get("impact", "-"),
             "recommendation": item.get("recommendation", "-"),
+            "vendors": item.get("vendors", []),
+            "area": item.get("_ai_area", "ИТ/ИБ"),
             "source": risk_source_label(item.get("_source")),
         }
         for item in report_risks
@@ -5983,6 +6078,7 @@ def make_expert_excel(c_info, results, final_score):
     domain_scores = calculate_domain_scores(results)
     context = build_context(results, c_info)
     profile_title, profile_text = infrastructure_profile(context)
+    it_assets_text, it_focus_text = it_context_summary(results, context)
     report_risks, ai_used = build_report_risk_set(c_info, results, context)
     ai_narrative = st.session_state.get("ai_audit_narrative", {}) if ai_used else {}
     top_risks = generate_rule_based_risks(
@@ -6023,6 +6119,7 @@ def make_expert_excel(c_info, results, final_score):
         ("Сайт", c_info.get('Сайт компании', '-'), "Контакт", c_info.get('ФИО контактного лица', '-')),
         ("Зрелость ИБ", f"{maturity_icon} {maturity} / {final_score}%", "Профиль инфраструктуры", profile_title),
         ("Масштаб", profile_text, "Формат", "Автоматический экспертный аудит"),
+        ("ИТ-контекст", it_assets_text, "Фокус эксплуатации", it_focus_text),
     ]
 
     for row_idx, row_values in enumerate(company_rows, start=4):
@@ -6595,7 +6692,11 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
     domain_scores = calculate_domain_scores(results)
     rule_risks = generate_rule_based_risks(results, context)
     roadmap_items = build_contextual_roadmap(results, context, domain_scores, rule_risks)
-    sales_opportunities = build_sales_opportunities(results, context, roadmap_items)
+    risk_sources = st.session_state.get("last_report_risk_sources", [])
+    sales_opportunities = (
+        build_ai_first_sales_opportunities(risk_sources)
+        or build_sales_opportunities(results, context, roadmap_items)
+    )
     sales_pack = build_sales_conversation_pack(
         c_info,
         results,
