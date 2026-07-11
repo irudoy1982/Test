@@ -4780,10 +4780,17 @@ def load_verified_distributor_map():
         distributor_column = None
         status_column = None
         for key, column in normalized_columns.items():
-            if key in {
+            if (
+                key in {
                 "distributor", "distributors", "distributor name",
                 "дистрибьютор", "дистрибьюторы", "поставщик"
-            }:
+                }
+                or (
+                    key.startswith("distributor ")
+                    and "source" not in key
+                    and "status" not in key
+                )
+            ):
                 distributor_column = column
             if key in {
                 "distributor status", "status distributor",
