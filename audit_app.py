@@ -7401,6 +7401,8 @@ st.markdown("""
 if st.session_state.generation_state == "idle":
     if st.button("Сформировать экспертный отчет", disabled=len(validation_errors) > 0, type="primary"):
         st.session_state.telegram_generation_started_sent = False
+        st.session_state.generation_state = "preparing"
+        st.rerun()
         render_generation_guard(True)
         alert_placeholder = st.empty()
         console_placeholder = st.empty()
