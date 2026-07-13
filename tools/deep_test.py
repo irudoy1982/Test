@@ -66,9 +66,14 @@ def load_portfolio_helpers():
         "split_portfolio_list",
         "load_verified_distributor_map",
         "load_solution_vendor_map",
+        "risk_semantic_key",
+        "normalize_report_vendor_values",
+        "solution_categories_for_report_item",
+        "portfolio_manufacturers_for_report_item",
         "manufacturers_for_report_item",
         "verified_distributors_for_vendors",
         "portfolio_vendors_for_report_item",
+        "portfolio_vendors_by_categories",
     ]
     namespace = {
         "DETAILED_VENDOR_MATRIX_FILE": str(ROOT / "vendor_matrix_detailed.xlsx"),
@@ -191,6 +196,25 @@ def test_customer_report_context() -> None:
     assert_true("Фокус эксплуатации" in report_source, "Report passport does not display operational focus")
 
 
+def test_customer_report_separates_solutions_from_manufacturers() -> None:
+    text = APP.read_text(encoding="utf-8")
+    report_source = extract_function_source(text, "make_expert_excel")
+    assert_true("solution_categories_for_report_item(item)" in report_source, "Report solutions row should show solution classes, not vendors")
+    assert_true("portfolio_manufacturers_for_report_item(item)" in report_source, "Report manufacturers row should use portfolio matrix")
+
+    helpers = load_portfolio_helpers()
+    waf_item = {
+        "risk": "Публичные web-сервисы требуют WAF",
+        "description": "Есть интернет-магазин и личный кабинет.",
+        "recommendation": "Включить WAF/CDN.",
+        "vendors": ["F5", "Imperva"],
+    }
+    solution = helpers["solution_categories_for_report_item"](waf_item)
+    manufacturers = helpers["portfolio_manufacturers_for_report_item"](waf_item)
+    assert_true("WAF" in solution and "F5" not in solution and "Imperva" not in solution, f"Solutions should be classes, got: {solution}")
+    assert_true("Check Point" in manufacturers, f"WAF manufacturer should be resolved from matrix, got: {manufacturers}")
+
+
 def test_sales_sheet_navigation_layout() -> None:
     text = APP.read_text(encoding="utf-8")
     internal = extract_function_source(text, "make_internal_sales_excel")
@@ -198,6 +222,8 @@ def test_sales_sheet_navigation_layout() -> None:
     assert_true("A3:H3" in internal, "Sales sheet company strip should span all 8 columns")
     assert_true("A5:H5" in internal, "Sales sheet company header should span all 8 columns")
     assert_true("Навигация:" in internal, "Sales sheet navigation hint is missing")
+    assert_true("Производители из портфеля" in internal, "Sales vendors column should be named as manufacturers")
+    assert_true("Решения из портфеля" not in internal, "Sales vendors column should not be mislabeled as solutions")
     assert_true("ws.column_dimensions['H'].width = 16" in internal, "Source column should remain visible")
 
 
@@ -209,6 +235,7 @@ def main() -> None:
         test_portfolio_category_to_verified_distributor,
         test_sales_fallback_hook_order,
         test_customer_report_context,
+        test_customer_report_separates_solutions_from_manufacturers,
         test_sales_sheet_navigation_layout,
     ]
     for test in tests:

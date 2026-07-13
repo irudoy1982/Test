@@ -4939,6 +4939,94 @@ def portfolio_vendors_by_categories(categories, preferred=None, exclude=None, ga
     return gap_text or "Нет подходящего производителя в матрице"
 
 
+def normalize_report_vendor_values(item):
+    values = item.get("vendors", [])
+    if not isinstance(values, list):
+        values = [values] if values else []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def solution_categories_for_report_item(item):
+    key = risk_semantic_key(item)
+    text = normalize_vendor_key(" ".join([
+        str(item.get("risk", "")),
+        str(item.get("description", "")),
+        str(item.get("recommendation", "")),
+        " ".join(normalize_report_vendor_values(item)),
+    ]))
+
+    if "ids" in text or "ips" in text or "intrusion" in text:
+        return "IDS/IPS; NGFW IPS-профили; мониторинг сетевых атак"
+
+    categories_by_key = {
+        "mfa": "MFA / Conditional Access",
+        "legacy_os": "Миграция ОС; изоляция legacy-сегмента; vulnerability assessment",
+        "siem_soc": "SOC / MSSP; SIEM; централизованный сбор логов",
+        "patch": "Vulnerability Management; Patch Management",
+        "endpoint_detection": "EDR / XDR / MDR",
+        "backup": "Backup; immutable-копии; восстановление после ransomware",
+        "web_waf": "WAF / CDN / Web Application Security",
+        "pam": "PAM; vault; контроль привилегированных сессий",
+        "dlp": "DLP / Data Security",
+        "mail": "Mail Security / Anti-Phishing",
+        "segmentation": "Сегментация сети; VLAN / ACL; NGFW policies",
+        "it_monitoring": "IT-мониторинг; capacity management",
+        "virtualization": "Виртуализация; lifecycle management",
+        "storage": "СХД health-check; capacity management",
+        "dr": "Disaster Recovery; RTO/RPO-планирование",
+        "appsec": "SAST / DAST / SCA",
+        "business_systems": "Обследование бизнес-систем; интеграционный аудит",
+    }
+    return categories_by_key.get(key, "Уточнить класс решения по результатам пресейла")
+
+
+def portfolio_manufacturers_for_report_item(item):
+    key = risk_semantic_key(item)
+    text = normalize_vendor_key(" ".join([
+        str(item.get("risk", "")),
+        str(item.get("description", "")),
+        str(item.get("recommendation", "")),
+        " ".join(normalize_report_vendor_values(item)),
+    ]))
+
+    if "ids" in text or "ips" in text or "intrusion" in text:
+        return portfolio_vendors_by_categories(
+            ["IDS/IPS", "NGFW"],
+            preferred=["Fortinet", "Check Point", "Palo Alto", "Forcepoint"],
+            gap_text="Нет отдельной категории IDS/IPS в матрице; проверить NGFW-портфель",
+        )
+
+    category_map = {
+        "mfa": (["MFA", "IAM"], [], ["ManageEngine"]),
+        "legacy_os": (["Operating Systems", "VM"], ["Microsoft", "Qualys", "Tenable", "Rapid7"], []),
+        "siem_soc": (["SOC", "SIEM"], ["Splunk", "IBM", "Rapid7", "Palo Alto", "Fortinet"], []),
+        "patch": (["VM", "Patch Management"], ["Qualys", "Tenable", "Rapid7", "Ivanti"], []),
+        "endpoint_detection": (["EDR", "XDR"], ["Fortinet", "Check Point", "CrowdStrike", "Trend Micro"], []),
+        "backup": (["Backup"], [], []),
+        "web_waf": (["WAF"], ["Check Point", "Fortinet", "F5", "Imperva", "Cloudflare"], []),
+        "pam": (["PAM"], ["Wallix", "CyberArk", "BeyondTrust"], ["ManageEngine"]),
+        "dlp": (["DLP"], [], []),
+        "mail": (["Email", "Mail Security"], ["Check Point", "Fortinet", "Trend Micro", "Forcepoint"], []),
+        "segmentation": (["NAC", "NGFW", "Network Equipment"], ["Fortinet", "Cisco", "Huawei", "Check Point"], []),
+        "it_monitoring": (["ITSM", "Monitoring", "NMS"], [], []),
+        "virtualization": (["Virtualization"], [], []),
+        "storage": (["Storage", "Backup"], [], []),
+        "dr": (["Backup", "DR"], [], []),
+        "appsec": (["SAST", "DAST", "SCA", "VM"], ["Qualys", "Checkmarx", "HCL AppScan"], []),
+    }
+
+    if key in category_map:
+        categories, preferred, exclude = category_map[key]
+        return portfolio_vendors_by_categories(
+            categories,
+            preferred=preferred,
+            exclude=exclude,
+            gap_text="Нет подходящего производителя в матрице",
+        )
+
+    return manufacturers_for_report_item(item)
+
+
 def load_solution_vendor_map():
     solution_aliases = {
         "DLP": ("dlp", "утеч", "защита данных"),
@@ -6931,13 +7019,11 @@ def make_expert_excel(c_info, results, final_score):
                 ),
                 (
                     "Решения",
-                    ", ".join(item.get('vendors', []))
-                    if isinstance(item.get('vendors'), list)
-                    else "-"
+                    solution_categories_for_report_item(item)
                 ),
                 (
                     "Производители",
-                    manufacturers_for_report_item(item)
+                    portfolio_manufacturers_for_report_item(item)
                 )
             ]
 
@@ -7234,7 +7320,7 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
         "Проблема клиента",
         "Что предложить",
         "Почему это релевантно",
-        "Решения из портфеля",
+        "Производители из портфеля",
         "Следующий шаг сейла",
         "Источник",
     ]
