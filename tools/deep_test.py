@@ -34,6 +34,18 @@ def load_ai_first_helper():
         "manufacturers_for_report_item": lambda item: "FallbackVendor",
         "portfolio_vendors_for_report_item": lambda item: "Imperva, F5" if "WAF" in str(item.get("vendors")) else ", ".join(item.get("vendors", [])),
     }
+    def fake_portfolio_vendors_by_categories(categories, preferred=None, exclude=None, gap_text=None, limit=6):
+        if "WAF" in categories:
+            return "Check Point"
+        if "IDS/IPS" in categories:
+            return gap_text or "Нет категории IDS/IPS в матрице"
+        if "MFA" in categories:
+            return gap_text or "Нет корректного MFA-вендора в матрице"
+        if "Operating Systems" in categories:
+            return "Microsoft, Qualys, Tenable, Rapid7"
+        return ", ".join(preferred or []) or (gap_text or "-")
+
+    namespace["portfolio_vendors_by_categories"] = fake_portfolio_vendors_by_categories
     for name in (
         "normalize_vendor_key",
         "result_contains_any",
@@ -97,7 +109,7 @@ def test_ai_first_sales_behavior() -> None:
     assert_true(len(rows) == 1, f"Expected exactly one AI opportunity, got {len(rows)}")
     assert_true(rows[0]["priority"] == "P2", "WAF should be P2 for this sales playbook")
     assert_true(rows[0]["source"] == "ИИ", "AI opportunity source must stay visible in playbook")
-    assert_true(rows[0]["vendors"] == "Cloudflare, Fortinet, F5, Imperva", "WAF should prefer existing Cloudflare/Fortinet stack")
+    assert_true(rows[0]["vendors"] == "Check Point", "WAF should be selected from portfolio matrix")
     assert_true("web" in rows[0]["problem"].lower(), "Risk title should be preserved")
 
 
@@ -127,8 +139,28 @@ def test_sales_overrides_for_mfa_and_legacy_os() -> None:
     mfa = next(row for row in rows if row["problem"].startswith("MFA"))
     assert_true("Microsoft" in legacy["vendors"], "Legacy OS should point to Microsoft migration")
     assert_true("CrowdStrike" not in legacy["vendors"] and "Trend Micro" not in legacy["vendors"], "Legacy OS should not be sold as EDR")
-    assert_true("Fortinet" in mfa["vendors"] and "Microsoft" in mfa["vendors"], "MFA should use Fortinet/Microsoft path")
+    assert_true("Нет корректного MFA-вендора в матрице" in mfa["vendors"], "MFA should expose portfolio gap instead of wrong vendor")
     assert_true("CyberArk" not in mfa["vendors"] and "Wallix" not in mfa["vendors"], "MFA should not be mapped to PAM vendors")
+
+
+def test_ids_ips_exposes_matrix_gap() -> None:
+    build = load_ai_first_helper()
+    rows = build(
+        [
+            {
+                "level": "Высокий",
+                "risk": "Недостаточная защита от сетевых атак IDS/IPS",
+                "recommendation": "Внедрить IDS/IPS",
+                "vendors": ["IDS/IPS"],
+                "source": "ИИ",
+            },
+        ],
+        {"NGFW": "FortiGate"},
+        {"users": 120, "servers": 22},
+    )
+    assert_true(len(rows) == 1, f"Expected one IDS/IPS row, got {len(rows)}")
+    assert_true(rows[0]["priority"] == "P3", "IDS/IPS should be an уточнение, not P1/P2")
+    assert_true("Нет категории IDS/IPS в матрице" in rows[0]["vendors"], "IDS/IPS should expose matrix gap")
 
 
 def test_portfolio_category_to_verified_distributor() -> None:
@@ -173,6 +205,7 @@ def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
         test_sales_overrides_for_mfa_and_legacy_os,
+        test_ids_ips_exposes_matrix_gap,
         test_portfolio_category_to_verified_distributor,
         test_sales_fallback_hook_order,
         test_customer_report_context,

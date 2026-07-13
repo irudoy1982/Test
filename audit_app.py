@@ -4909,6 +4909,36 @@ def portfolio_vendors_for_report_item(item):
     return ", ".join(str(value).strip() for value in existing_values if str(value).strip()) or "-"
 
 
+def portfolio_vendors_by_categories(categories, preferred=None, exclude=None, gap_text=None, limit=6):
+    detailed_matrix = load_detailed_solution_vendor_map()
+    preferred = preferred or []
+    exclude_keys = {
+        normalize_vendor_key(value)
+        for value in (exclude or [])
+    }
+    values = []
+    for category in categories:
+        values.extend(detailed_matrix.get(category, []))
+
+    filtered = []
+    for vendor in values:
+        if normalize_vendor_key(vendor) in exclude_keys:
+            continue
+        filtered.append(vendor)
+
+    preferred_keys = [normalize_vendor_key(value) for value in preferred]
+
+    def sort_key(vendor):
+        key = normalize_vendor_key(vendor)
+        return preferred_keys.index(key) if key in preferred_keys else len(preferred_keys)
+
+    filtered = sorted(list(dict.fromkeys(filtered)), key=sort_key)
+    if filtered:
+        return ", ".join(filtered[:limit])
+
+    return gap_text or "Нет подходящего производителя в матрице"
+
+
 def load_solution_vendor_map():
     solution_aliases = {
         "DLP": ("dlp", "утеч", "защита данных"),
@@ -5251,21 +5281,25 @@ def sales_override_for_item(item, results, context):
                 "изоляцию сегмента и контроль исключений до даты миграции."
             ),
             "trigger": item.get("impact") or "Устаревшие ОС не получают полноценные исправления и не должны закрываться покупкой EDR/DLP вместо миграции.",
-            "vendors": "Microsoft, Qualys, Tenable, Rapid7",
+            "vendors": portfolio_vendors_by_categories(
+                ["Operating Systems", "VM"],
+                preferred=["Microsoft", "Qualys", "Tenable", "Rapid7"],
+            ),
             "next_step": "Уточнить количество legacy-хостов, зависимые приложения, ограничения миграции и предложить план: обновление, изоляция, сканирование уязвимостей, контроль срока вывода.",
             "source": item.get("source", "ИИ"),
         }
 
     if has("mfa", "многофактор", "2fa"):
-        vendors = ["Fortinet", "Microsoft", "Cisco"]
-        if not has_fortinet:
-            vendors.append("Thales")
         return {
             "priority": "P1",
             "problem": "MFA для критичных доступов",
             "offer": "Запустить MFA-проект для Microsoft 365, администраторов, VPN/удаленного доступа и критичных бизнес-систем; PAM рассматривать следующим этапом, а не вместо MFA.",
             "trigger": item.get("impact") or "Microsoft 365 и критичные доступы без MFA дают высокий риск компрометации учетных записей.",
-            "vendors": ", ".join(vendors),
+            "vendors": portfolio_vendors_by_categories(
+                ["MFA"],
+                exclude=["ManageEngine"],
+                gap_text="Нет корректного MFA-вендора в матрице: добавьте FortiAuthenticator / Microsoft Entra ID / Cisco Duo",
+            ),
             "next_step": "Сначала проверить Microsoft 365/Entra ID, FortiGate SSL VPN, администраторские учетные записи и исключения; затем предложить быстрый MFA-пилот.",
             "source": item.get("source", "ИИ"),
         }
@@ -5276,66 +5310,80 @@ def sales_override_for_item(item, results, context):
             "problem": "Нужен управляемый цикл уязвимостей и обновлений",
             "offer": "Vulnerability Management: инвентаризация активов, регулярное сканирование, SLA на критичные CVE и отчет по исключениям.",
             "trigger": item.get("impact") or "Для парка 100+ АРМ и серверов ручной контроль CVE быстро теряет управляемость.",
-            "vendors": "Qualys, Tenable, Rapid7",
+            "vendors": portfolio_vendors_by_categories(
+                ["VM"],
+                preferred=["Qualys", "Tenable", "Rapid7"],
+            ),
             "next_step": "Предложить быстрый assessment на внешнем периметре, серверах и рабочих местах, затем показать топ критичных CVE и план закрытия.",
             "source": item.get("source", "ИИ"),
         }
 
     if has("mail security", "почт", "email", "фишинг", "phishing"):
-        vendors = ["Check Point", "Fortinet", "Trend Micro", "Forcepoint"]
         return {
             "priority": "P1" if has_m365 else "P2",
             "problem": "Защита облачной почты и anti-phishing",
             "offer": "Усилить Microsoft 365 почту отдельным mail security/anti-phishing контуром: URL/attachment sandboxing, impersonation protection, DMARC-контроль и обучение пользователей.",
             "trigger": item.get("impact") or "Microsoft 365 часто становится первой точкой атаки через фишинг и компрометацию учетных записей.",
-            "vendors": ", ".join(vendors),
+            "vendors": portfolio_vendors_by_categories(
+                ["Email"],
+                preferred=["Check Point", "Fortinet", "Trend Micro", "Forcepoint"],
+            ),
             "next_step": "Проверить текущие политики M365, SPF/DKIM/DMARC, статистику фишинга и предложить пилот защиты почты.",
             "source": item.get("source", "ИИ"),
         }
 
     if has("waf", "web application", "веб прилож", "owasp"):
-        vendors = []
-        if has_cloudflare:
-            vendors.append("Cloudflare")
-        if has_fortinet:
-            vendors.append("Fortinet")
-        vendors.extend(["F5", "Imperva"])
         return {
             "priority": "P2",
             "problem": item.get("risk") or "Публичные веб-сервисы требуют WAF",
-            "offer": "Провести экспресс-оценку web-периметра и усилить WAF/CDN: использовать текущий Cloudflare при наличии, либо рассмотреть FortiWeb/F5/Imperva для прикладной защиты.",
+            "offer": "Провести экспресс-оценку web-периметра и усилить WAF/CDN. Если нужен FortiWeb/F5/Imperva/Cloudflare как продуктовая гипотеза, добавьте их в WAF-колонку матрицы.",
             "trigger": item.get("impact") or "Интернет-магазин и личный кабинет формируют публичную поверхность атаки.",
-            "vendors": ", ".join(list(dict.fromkeys(vendors))),
+            "vendors": portfolio_vendors_by_categories(
+                ["WAF"],
+                preferred=["Fortinet", "Check Point", "Cloudflare", "F5", "Imperva"],
+            ),
             "next_step": "Снять список публичных доменов, текущие Cloudflare-политики, критичные URL и предложить WAF health-check.",
             "source": item.get("source", "ИИ"),
         }
 
+    if has("ids", "ips", "сетевых атак", "сетевыми атаками"):
+        return {
+            "priority": "P3",
+            "problem": item.get("risk") or "IDS/IPS требует уточнения в рамках текущего NGFW",
+            "offer": "Проверить, используются ли IPS-профили на FortiGate/NGFW и есть ли потребность в отдельном IDS/IPS-контуре.",
+            "trigger": item.get("impact") or "В матрице портфеля нет отдельной категории IDS/IPS, поэтому нельзя подставлять произвольных производителей.",
+            "vendors": portfolio_vendors_by_categories(
+                ["IDS/IPS"],
+                gap_text="Нет категории IDS/IPS в матрице: добавьте производителей или используйте NGFW/IPS текущего стека",
+            ),
+            "next_step": "Уточнить модели NGFW, включенные IPS-профили, сегменты инспекции и текущие события блокировок.",
+            "source": item.get("source", "ИИ"),
+        }
+
     if has("edr", "xdr", "endpoint", "конечн"):
-        vendors = []
-        if has_fortinet:
-            vendors.append("Fortinet")
-        vendors.extend(["Check Point", "CrowdStrike", "Trend Micro"])
         return {
             "priority": "P2",
             "problem": item.get("risk") or "Endpoint-защита требует обнаружения и реагирования",
             "offer": "EDR/XDR-пилот на критичных группах пользователей и серверах с регламентом реагирования и метриками MTTD/MTTR.",
             "trigger": item.get("impact") or "EPP снижает базовый malware-риск, но не закрывает расследование сложных атак.",
-            "vendors": ", ".join(list(dict.fromkeys(vendors))),
+            "vendors": portfolio_vendors_by_categories(
+                ["EDR", "XDR"],
+                preferred=["Fortinet", "Check Point", "CrowdStrike", "Trend Micro"],
+            ),
             "next_step": "Сравнить текущий EPP, определить пилотную группу и показать сценарии ransomware/lateral movement.",
             "source": item.get("source", "ИИ"),
         }
 
     if has("siem", "soc", "mssp", "мониторинг событий"):
-        vendors = []
-        if has_fortinet:
-            vendors.append("Fortinet")
-        vendors.extend(["IBM", "Splunk"])
         return {
             "priority": "P2",
             "problem": item.get("risk") or "Нужен управляемый мониторинг событий ИБ",
             "offer": "Начать с MSSP/SOC или легкого SIEM-scope: FortiGate, Windows Server/AD, Microsoft 365, EPP/EDR, backup и web.",
             "trigger": item.get("impact") or "Для 120 АРМ и 22 серверов реалистичнее начать с управляемого мониторинга, а не тяжелого enterprise-проекта.",
-            "vendors": ", ".join(list(dict.fromkeys(vendors))),
+            "vendors": portfolio_vendors_by_categories(
+                ["SIEM", "SOAR", "UEBA"],
+                preferred=["Fortinet", "IBM", "Splunk"],
+            ),
             "next_step": "Согласовать минимальный scope источников логов и показать формат ежемесячного отчета по инцидентам.",
             "source": item.get("source", "ИИ"),
         }
@@ -5346,7 +5394,11 @@ def sales_override_for_item(item, results, context):
             "problem": item.get("risk") or "Безопасность разработки требует уточнения",
             "offer": "AppSec assessment: определить реальные языки, CI/CD, публичные приложения и только после этого выбирать SAST/DAST/SCA.",
             "trigger": item.get("impact") or "Без фактов о процессе разработки нельзя подбирать общих ИБ-вендоров вместо AppSec-инструментов.",
-            "vendors": "Checkmarx, HCL AppScan, Positive Technologies, Qualys",
+            "vendors": portfolio_vendors_by_categories(
+                ["SAST", "DAST", "SCA", "Application Security"],
+                preferred=["Checkmarx", "HCL AppScan", "Positive Technologies", "Qualys"],
+                gap_text="Нет AppSec-вендоров в матрице: добавьте SAST/DAST/SCA производителей",
+            ),
             "next_step": "Уточнить наличие разработки, репозитории, CI/CD и критичные приложения; затем предложить пилот SAST/DAST.",
             "source": item.get("source", "ИИ"),
         }
@@ -5357,7 +5409,10 @@ def sales_override_for_item(item, results, context):
             "problem": "СХД: требуется проверка capacity/performance, без вывода о проблеме надежности",
             "offer": "Не продавать замену СХД без фактов. Предложить health-check: утилизация, latency/IOPS, состояние RAID, snapshot-политики, backup integration.",
             "trigger": "В анкете есть RAID, диски, Veeam/Snapshots; доказательств отказов или нехватки производительности нет.",
-            "vendors": "Veeam",
+            "vendors": portfolio_vendors_by_categories(
+                ["Backup", "Storage"],
+                preferred=["Veeam"],
+            ),
             "next_step": "Запросить модель СХД, текущую утилизацию, метрики latency/IOPS, расписание snapshot и результаты тестов восстановления.",
             "source": item.get("source", "ИИ"),
         }
@@ -5368,7 +5423,10 @@ def sales_override_for_item(item, results, context):
             "problem": "Требуется уточнить архитектуру сегментации сети и Wi-Fi",
             "offer": "Не трактовать отсутствие NAC как отсутствие сегментации. Проверить VLAN/ACL/FortiGate policies, guest Wi-Fi, доступ AP и правила между сегментами.",
             "trigger": "В анкете есть UniFi/Wi-Fi 6/FortiGate/Cisco/Huawei, но нет фактов о VLAN/ACL и межсегментных политиках.",
-            "vendors": "Fortinet, Cisco, Huawei",
+            "vendors": portfolio_vendors_by_categories(
+                ["NGFW", "Network Equipment", "NAC"],
+                preferred=["Fortinet", "Cisco", "Huawei"],
+            ),
             "next_step": "Попросить схему VLAN, правила FortiGate, SSID/guest Wi-Fi и список критичных сегментов.",
             "source": item.get("source", "ИИ"),
         }
@@ -5379,7 +5437,11 @@ def sales_override_for_item(item, results, context):
             "problem": item.get("risk") or "PAM для привилегированных учетных записей",
             "offer": "PAM рассматривать после MFA: инвентаризация админов, vault, session recording и регулярный пересмотр прав.",
             "trigger": item.get("impact") or "PAM важен для серверов и критичных систем, но коммерчески должен идти после закрытия MFA.",
-            "vendors": "Wallix, CyberArk, BeyondTrust",
+            "vendors": portfolio_vendors_by_categories(
+                ["PAM"],
+                preferred=["Wallix", "CyberArk", "BeyondTrust"],
+                exclude=["ManageEngine"],
+            ),
             "next_step": "Сначала закрыть MFA, затем собрать список привилегированных учетных записей и предложить PAM-пилот.",
             "source": item.get("source", "ИИ"),
         }
@@ -5390,7 +5452,11 @@ def sales_override_for_item(item, results, context):
             "problem": item.get("risk") or "Управление изменениями требует формализации",
             "offer": "Проводить как процессный ITSM/CMDB воркшоп, а не как первоочередную продуктовую продажу.",
             "trigger": item.get("impact") or "Без интервью нельзя утверждать, что процесс отсутствует; можно только проверить зрелость.",
-            "vendors": "ManageEngine",
+            "vendors": portfolio_vendors_by_categories(
+                ["ITSM", "ITAM"],
+                preferred=["ManageEngine"],
+                gap_text="Нет ITSM/CMDB-вендора в матрице",
+            ),
             "next_step": "Уточнить, где ведутся заявки/изменения/активы, и предложить короткий ITSM maturity workshop.",
             "source": item.get("source", "ИИ"),
         }
