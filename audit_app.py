@@ -922,13 +922,13 @@ def generate_rule_based_risks(results, context):
     if users > 100 and results.get("Сегментация сети") == "Нет":
 
         risks.append({
-            "level": "HIGH",
-            "risk": "Отсутствует сегментация сети",
-            "description": "Крупная инфраструктура эксплуатируется без сетевой сегментации.",
-            "impact": "Высокий риск lateral movement и распространения malware между сегментами.",
-            "recommendation": "Реализовать VLAN/ACL/Zero Trust сегментацию.",
+            "level": "MEDIUM",
+            "risk": "Требуется уточнить архитектуру сегментации сети",
+            "description": "В анкете не описаны VLAN, ACL, политики FortiGate/NGFW и правила доступа между пользовательскими, серверными и гостевыми сегментами.",
+            "impact": "Без подтвержденной схемы сегментации невозможно корректно оценить риск lateral movement; отсутствие NAC само по себе не доказывает отсутствие сегментации.",
+            "recommendation": "Проверить текущие VLAN/ACL, политики NGFW, guest Wi-Fi и доступ к серверным сегментам; по результатам подготовить точечные меры усиления.",
             "regulators": ["ISO 27001", "NIST"],
-            "vendors": ["Cisco", "Aruba", "Fortinet"]
+            "vendors": ["Fortinet", "Cisco", "Huawei"]
         })
 
     # =========================
@@ -993,13 +993,13 @@ def generate_rule_based_risks(results, context):
 
     if results.get("СХД") != "Нет" and results.get("Мониторинг СХД") == "Нет":
         risks.append({
-            "level": "MEDIUM",
-            "risk": "Не описан контроль емкости и производительности СХД",
-            "description": "В анкете указана СХД, но не указаны процессы контроля емкости, производительности, snapshot-политик и предупреждения деградации.",
-            "impact": "Рост данных, деградация RAID-групп или нехватка производительности могут привести к снижению доступности ERP, CRM и файловых сервисов.",
-            "recommendation": "Ввести регулярный capacity management для СХД: пороги заполнения, контроль latency/IOPS, проверку snapshot-политик и план расширения емкости.",
+            "level": "LOW",
+            "risk": "СХД: требуется проверить capacity/performance, без признаков аварийного риска",
+            "description": "В анкете указаны RAID, диски, backup/snapshot-практики, но не раскрыты метрики утилизации, latency/IOPS и правила контроля емкости.",
+            "impact": "Без метрик нельзя утверждать о проблемах надежности или производительности; корректнее провести health-check и подтвердить запас емкости.",
+            "recommendation": "Проверить утилизацию, latency/IOPS, состояние RAID, snapshot-политики и связку с backup; по результатам дать рекомендации по capacity management.",
             "regulators": ["ITIL", "ISO 20000"],
-            "vendors": ["Zabbix", "PRTG", "ManageEngine"]
+            "vendors": ["Veeam"]
         })
 
     if has_public_web and results.get("WAF") == "Нет":
@@ -5218,10 +5218,192 @@ def build_sales_opportunities(results, context, roadmap_items):
     return sorted(opportunities, key=lambda item: priority_order.get(item["priority"], 99))[:10]
 
 
-def build_ai_first_sales_opportunities(risk_sources):
+def result_contains_any(results, markers):
+    text = normalize_vendor_key(" ".join(str(value) for value in results.values()))
+    return any(normalize_vendor_key(marker) in text for marker in markers)
+
+
+def sales_override_for_item(item, results, context):
+    combined = normalize_vendor_key(" ".join([
+        str(item.get("risk", "")),
+        str(item.get("description", "")),
+        str(item.get("impact", "")),
+        str(item.get("recommendation", "")),
+        " ".join(str(value) for value in item.get("vendors", []) if value)
+        if isinstance(item.get("vendors"), list)
+        else str(item.get("vendors", "")),
+    ]))
+
+    has_fortinet = result_contains_any(results, ["fortinet", "fortigate", "forti"])
+    has_cloudflare = result_contains_any(results, ["cloudflare"])
+    has_m365 = result_contains_any(results, ["microsoft 365", "office 365", "m365", "exchange online"])
+
+    def has(*markers):
+        return any(normalize_vendor_key(marker) in combined for marker in markers)
+
+    if has("устаревш", "legacy", "windows xp", "windows 7", "windows 8", "windows server 2008", "2012 r2"):
+        return {
+            "priority": "P1",
+            "problem": "Устаревшие ОС требуют миграции, а не компенсации ИБ-продуктами",
+            "offer": (
+                "Основной проект - обновление или вывод устаревших Windows/Windows Server. "
+                "Если часть систем нельзя быстро обновить, параллельно провести vulnerability assessment, "
+                "изоляцию сегмента и контроль исключений до даты миграции."
+            ),
+            "trigger": item.get("impact") or "Устаревшие ОС не получают полноценные исправления и не должны закрываться покупкой EDR/DLP вместо миграции.",
+            "vendors": "Microsoft, Qualys, Tenable, Rapid7",
+            "next_step": "Уточнить количество legacy-хостов, зависимые приложения, ограничения миграции и предложить план: обновление, изоляция, сканирование уязвимостей, контроль срока вывода.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("mfa", "многофактор", "2fa"):
+        vendors = ["Fortinet", "Microsoft", "Cisco"]
+        if not has_fortinet:
+            vendors.append("Thales")
+        return {
+            "priority": "P1",
+            "problem": "MFA для критичных доступов",
+            "offer": "Запустить MFA-проект для Microsoft 365, администраторов, VPN/удаленного доступа и критичных бизнес-систем; PAM рассматривать следующим этапом, а не вместо MFA.",
+            "trigger": item.get("impact") or "Microsoft 365 и критичные доступы без MFA дают высокий риск компрометации учетных записей.",
+            "vendors": ", ".join(vendors),
+            "next_step": "Сначала проверить Microsoft 365/Entra ID, FortiGate SSL VPN, администраторские учетные записи и исключения; затем предложить быстрый MFA-пилот.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("vulnerability", "уязв", "cve", "scanner", "сканер", "patch management"):
+        return {
+            "priority": "P1" if context.get("users", 0) >= 100 else "P2",
+            "problem": "Нужен управляемый цикл уязвимостей и обновлений",
+            "offer": "Vulnerability Management: инвентаризация активов, регулярное сканирование, SLA на критичные CVE и отчет по исключениям.",
+            "trigger": item.get("impact") or "Для парка 100+ АРМ и серверов ручной контроль CVE быстро теряет управляемость.",
+            "vendors": "Qualys, Tenable, Rapid7",
+            "next_step": "Предложить быстрый assessment на внешнем периметре, серверах и рабочих местах, затем показать топ критичных CVE и план закрытия.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("mail security", "почт", "email", "фишинг", "phishing"):
+        vendors = ["Check Point", "Fortinet", "Trend Micro", "Forcepoint"]
+        return {
+            "priority": "P1" if has_m365 else "P2",
+            "problem": "Защита облачной почты и anti-phishing",
+            "offer": "Усилить Microsoft 365 почту отдельным mail security/anti-phishing контуром: URL/attachment sandboxing, impersonation protection, DMARC-контроль и обучение пользователей.",
+            "trigger": item.get("impact") or "Microsoft 365 часто становится первой точкой атаки через фишинг и компрометацию учетных записей.",
+            "vendors": ", ".join(vendors),
+            "next_step": "Проверить текущие политики M365, SPF/DKIM/DMARC, статистику фишинга и предложить пилот защиты почты.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("waf", "web application", "веб прилож", "owasp"):
+        vendors = []
+        if has_cloudflare:
+            vendors.append("Cloudflare")
+        if has_fortinet:
+            vendors.append("Fortinet")
+        vendors.extend(["F5", "Imperva"])
+        return {
+            "priority": "P2",
+            "problem": item.get("risk") or "Публичные веб-сервисы требуют WAF",
+            "offer": "Провести экспресс-оценку web-периметра и усилить WAF/CDN: использовать текущий Cloudflare при наличии, либо рассмотреть FortiWeb/F5/Imperva для прикладной защиты.",
+            "trigger": item.get("impact") or "Интернет-магазин и личный кабинет формируют публичную поверхность атаки.",
+            "vendors": ", ".join(list(dict.fromkeys(vendors))),
+            "next_step": "Снять список публичных доменов, текущие Cloudflare-политики, критичные URL и предложить WAF health-check.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("edr", "xdr", "endpoint", "конечн"):
+        vendors = []
+        if has_fortinet:
+            vendors.append("Fortinet")
+        vendors.extend(["Check Point", "CrowdStrike", "Trend Micro"])
+        return {
+            "priority": "P2",
+            "problem": item.get("risk") or "Endpoint-защита требует обнаружения и реагирования",
+            "offer": "EDR/XDR-пилот на критичных группах пользователей и серверах с регламентом реагирования и метриками MTTD/MTTR.",
+            "trigger": item.get("impact") or "EPP снижает базовый malware-риск, но не закрывает расследование сложных атак.",
+            "vendors": ", ".join(list(dict.fromkeys(vendors))),
+            "next_step": "Сравнить текущий EPP, определить пилотную группу и показать сценарии ransomware/lateral movement.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("siem", "soc", "mssp", "мониторинг событий"):
+        vendors = []
+        if has_fortinet:
+            vendors.append("Fortinet")
+        vendors.extend(["IBM", "Splunk"])
+        return {
+            "priority": "P2",
+            "problem": item.get("risk") or "Нужен управляемый мониторинг событий ИБ",
+            "offer": "Начать с MSSP/SOC или легкого SIEM-scope: FortiGate, Windows Server/AD, Microsoft 365, EPP/EDR, backup и web.",
+            "trigger": item.get("impact") or "Для 120 АРМ и 22 серверов реалистичнее начать с управляемого мониторинга, а не тяжелого enterprise-проекта.",
+            "vendors": ", ".join(list(dict.fromkeys(vendors))),
+            "next_step": "Согласовать минимальный scope источников логов и показать формат ежемесячного отчета по инцидентам.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("sast", "dast", "appsec", "разработ"):
+        return {
+            "priority": "P3",
+            "problem": item.get("risk") or "Безопасность разработки требует уточнения",
+            "offer": "AppSec assessment: определить реальные языки, CI/CD, публичные приложения и только после этого выбирать SAST/DAST/SCA.",
+            "trigger": item.get("impact") or "Без фактов о процессе разработки нельзя подбирать общих ИБ-вендоров вместо AppSec-инструментов.",
+            "vendors": "Checkmarx, HCL AppScan, Positive Technologies, Qualys",
+            "next_step": "Уточнить наличие разработки, репозитории, CI/CD и критичные приложения; затем предложить пилот SAST/DAST.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("схд", "storage", "raid", "snapshot", "iops", "latency"):
+        return {
+            "priority": "P3",
+            "problem": "СХД: требуется проверка capacity/performance, без вывода о проблеме надежности",
+            "offer": "Не продавать замену СХД без фактов. Предложить health-check: утилизация, latency/IOPS, состояние RAID, snapshot-политики, backup integration.",
+            "trigger": "В анкете есть RAID, диски, Veeam/Snapshots; доказательств отказов или нехватки производительности нет.",
+            "vendors": "Veeam",
+            "next_step": "Запросить модель СХД, текущую утилизацию, метрики latency/IOPS, расписание snapshot и результаты тестов восстановления.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("wifi", "wi fi", "wi-fi", "nac", "сегментац", "vlan", "acl"):
+        return {
+            "priority": "P3",
+            "problem": "Требуется уточнить архитектуру сегментации сети и Wi-Fi",
+            "offer": "Не трактовать отсутствие NAC как отсутствие сегментации. Проверить VLAN/ACL/FortiGate policies, guest Wi-Fi, доступ AP и правила между сегментами.",
+            "trigger": "В анкете есть UniFi/Wi-Fi 6/FortiGate/Cisco/Huawei, но нет фактов о VLAN/ACL и межсегментных политиках.",
+            "vendors": "Fortinet, Cisco, Huawei",
+            "next_step": "Попросить схему VLAN, правила FortiGate, SSID/guest Wi-Fi и список критичных сегментов.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("pam", "привилег"):
+        return {
+            "priority": "P3",
+            "problem": item.get("risk") or "PAM для привилегированных учетных записей",
+            "offer": "PAM рассматривать после MFA: инвентаризация админов, vault, session recording и регулярный пересмотр прав.",
+            "trigger": item.get("impact") or "PAM важен для серверов и критичных систем, но коммерчески должен идти после закрытия MFA.",
+            "vendors": "Wallix, CyberArk, BeyondTrust",
+            "next_step": "Сначала закрыть MFA, затем собрать список привилегированных учетных записей и предложить PAM-пилот.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("change management", "configuration management", "cmdb", "управление изменениями", "конфигурац"):
+        return {
+            "priority": "P3",
+            "problem": item.get("risk") or "Управление изменениями требует формализации",
+            "offer": "Проводить как процессный ITSM/CMDB воркшоп, а не как первоочередную продуктовую продажу.",
+            "trigger": item.get("impact") or "Без интервью нельзя утверждать, что процесс отсутствует; можно только проверить зрелость.",
+            "vendors": "ManageEngine",
+            "next_step": "Уточнить, где ведутся заявки/изменения/активы, и предложить короткий ITSM maturity workshop.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    return None
+
+
+def build_ai_first_sales_opportunities(risk_sources, results=None, context=None):
     if not isinstance(risk_sources, list):
         return []
 
+    results = results or {}
+    context = context or {}
     opportunities = []
     priority_order = {"P1": 1, "P2": 2, "P3": 3}
     level_priority = {
@@ -5239,6 +5421,11 @@ def build_ai_first_sales_opportunities(risk_sources):
         if not isinstance(item, dict):
             continue
         if item.get("source") != "ИИ":
+            continue
+
+        override = sales_override_for_item(item, results, context)
+        if override:
+            opportunities.append(override)
             continue
 
         vendors_text = portfolio_vendors_for_report_item(item)
@@ -5266,6 +5453,121 @@ def build_ai_first_sales_opportunities(risk_sources):
         })
 
     return sorted(opportunities, key=lambda item: priority_order.get(item["priority"], 99))[:10]
+
+
+def ensure_sales_playbook_priorities(opportunities, results, context):
+    opportunities = [item for item in opportunities if isinstance(item, dict)]
+
+    def existing_has(*markers):
+        text = normalize_vendor_key(" ".join(
+            " ".join(str(item.get(field, "")) for field in ("problem", "offer", "trigger", "vendors"))
+            for item in opportunities
+        ))
+        return any(normalize_vendor_key(marker) in text for marker in markers)
+
+    def add_if_missing(markers, pseudo_item):
+        if not existing_has(*markers):
+            item = sales_override_for_item(
+                {**pseudo_item, "source": "Экспертная приоритизация"},
+                results,
+                context
+            )
+            if item:
+                opportunities.append(item)
+
+    if results.get("MFA") == "Нет":
+        add_if_missing(
+            ("mfa", "многофактор"),
+            {
+                "risk": "MFA отсутствует для критичных доступов",
+                "impact": "Компрометация учетных записей остается одним из наиболее вероятных сценариев атаки.",
+                "recommendation": "Включить MFA для Microsoft 365, VPN, администраторов и критичных систем.",
+                "vendors": ["MFA"],
+            }
+        )
+
+    if results.get("Patch Management") == "Нет" or results.get("ОС АРМ (Windows XP/Vista/7/8)", 0) or results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0):
+        add_if_missing(
+            ("vulnerability", "уязв", "cve", "patch"),
+            {
+                "risk": "Vulnerability Management и контроль обновлений",
+                "impact": "Без регулярного сканирования и SLA критичные CVE могут оставаться открытыми.",
+                "recommendation": "Запустить vulnerability assessment и процесс устранения критичных уязвимостей.",
+                "vendors": ["Vulnerability Management"],
+            }
+        )
+
+    if results.get("Mail Security") == "Нет" and result_contains_any(results, ["Microsoft 365", "Office 365", "Exchange"]):
+        add_if_missing(
+            ("mail security", "почт", "фишинг"),
+            {
+                "risk": "Microsoft 365 требует усиления защиты почты",
+                "impact": "Фишинг и impersonation остаются основным входом в атаку.",
+                "recommendation": "Проверить SPF/DKIM/DMARC и запустить пилот защиты облачной почты.",
+                "vendors": ["Mail Security"],
+            }
+        )
+
+    if results.get("WAF") == "Нет" and context.get("has_public_web"):
+        add_if_missing(
+            ("waf", "web application", "веб"),
+            {
+                "risk": "Публичные web-сервисы требуют WAF",
+                "impact": "Интернет-магазин и личный кабинет увеличивают поверхность атаки.",
+                "recommendation": "Проверить текущий Cloudflare и рассмотреть WAF/FortiWeb/F5/Imperva.",
+                "vendors": ["WAF"],
+            }
+        )
+
+    if results.get("EDR") == "Нет":
+        add_if_missing(
+            ("edr", "xdr", "endpoint"),
+            {
+                "risk": "Endpoint-защита требует EDR/XDR",
+                "impact": "EPP не закрывает расследование сложных атак и lateral movement.",
+                "recommendation": "Провести EDR/XDR-пилот на критичных группах пользователей и серверов.",
+                "vendors": ["EDR/XDR"],
+            }
+        )
+
+    if results.get("SIEM") == "Нет" and not context.get("small_company"):
+        add_if_missing(
+            ("siem", "soc", "mssp"),
+            {
+                "risk": "SIEM/SOC/MSSP для критичных источников",
+                "impact": "Разрозненные журналы увеличивают время обнаружения и расследования.",
+                "recommendation": "Начать с MSSP/SOC или минимального SIEM-scope.",
+                "vendors": ["SIEM"],
+            }
+        )
+
+    if results.get("PAM") == "Нет" and (context.get("servers", 0) >= 10 or context.get("has_critical_systems")):
+        add_if_missing(
+            ("pam", "привилег"),
+            {
+                "risk": "PAM для привилегированных учетных записей",
+                "impact": "Администраторские доступы требуют отдельного контроля, но после MFA.",
+                "recommendation": "После MFA провести инвентаризацию админов и PAM-пилот.",
+                "vendors": ["PAM"],
+            }
+        )
+
+    priority_order = {"P1": 1, "P2": 2, "P3": 3}
+    seen = set()
+    cleaned = []
+    for item in sorted(opportunities, key=lambda row: priority_order.get(row.get("priority"), 99)):
+        key = risk_semantic_key({
+            "risk": item.get("problem", ""),
+            "description": item.get("trigger", ""),
+            "recommendation": item.get("offer", ""),
+        })
+        if key and key in seen:
+            continue
+        cleaned.append(item)
+        seen.add(key)
+        if len(cleaned) >= 10:
+            break
+    return cleaned
 
 
 def build_sales_conversation_pack(c_info, results, context, roadmap_items, opportunities):
@@ -5739,6 +6041,7 @@ def risk_semantic_key(item):
         ("virtualization", ("виртуализац", "гипервизор", "vm", "хост")),
         ("storage", ("схд", "storage", "raid", "snapshot", "iops")),
         ("dr", ("dr", "аварийн", "rto", "rpo", "восстановлен")),
+        ("appsec", ("sast", "dast", "appsec", "разработ", "безопасность прилож")),
         ("business_systems", ("erp", "crm", "бизнес-систем")),
     ]
 
@@ -5777,8 +6080,8 @@ def professionalize_risk_item(item, results, context):
             "risk": "Устаревшие операционные системы требуют миграции или изоляции",
             "description": f"В анкете указаны устаревшие ОС: АРМ - {legacy_arm}, серверы - {legacy_srv}. Такие системы не получают полноценные исправления безопасности и не должны рассматриваться как обычные рабочие места.",
             "impact": "Уязвимости устаревших ОС повышают риск компрометации, невозможности установки актуальных агентов защиты и остановки связанных бизнес-процессов.",
-            "recommendation": "Составить реестр устаревших ОС; временно изолировать их отдельным сетевым сегментом и ограничить доступ; подготовить план миграции на поддерживаемые версии ОС с контрольной датой вывода из эксплуатации.",
-            "vendors": ["Microsoft", "Red Hat", "VMware"],
+            "recommendation": "Составить реестр устаревших ОС; подготовить план миграции на поддерживаемые версии Microsoft Windows/Windows Server; если часть систем нельзя обновить быстро, временно изолировать их и контролировать уязвимости до вывода из эксплуатации.",
+            "vendors": ["Microsoft", "Qualys", "Tenable", "Rapid7"],
             "regulators": ["CIS Controls", "ISO 27001", "NIST CSF"],
         },
         "endpoint_detection": {
@@ -5813,8 +6116,8 @@ def professionalize_risk_item(item, results, context):
             "risk": "Публичные веб-сервисы требуют специализированной защиты приложений",
             "description": "В анкете указаны интернет-магазин и личный кабинет, но WAF-защита и прикладные правила контроля атак не описаны.",
             "impact": "Публичные приложения остаются под риском OWASP-атак, бот-активности, утечки данных и нарушения доступности клиентских сервисов.",
-            "recommendation": "Провести экспресс-оценку web-периметра; включить WAF/CDN для публичных ресурсов с профилем под приложение; настроить регулярный разбор блокировок и связать WAF-события с процессом реагирования.",
-            "vendors": ["Imperva", "F5", "Cloudflare"],
+            "recommendation": "Провести экспресс-оценку web-периметра; проверить текущие Cloudflare-политики; включить WAF/CDN или FortiWeb/F5/Imperva для публичных ресурсов с профилем под приложение.",
+            "vendors": ["Cloudflare", "Fortinet", "F5", "Imperva"],
             "regulators": ["OWASP ASVS", "PCI DSS", "ISO 27001"],
         },
         "pam": {
@@ -5831,8 +6134,8 @@ def professionalize_risk_item(item, results, context):
             "risk": "Почтовый контур требует отдельной anti-phishing защиты",
             "description": "В анкете указана корпоративная почта, но специализированная защита от фишинга, вредоносных вложений и подмены отправителя не описана.",
             "impact": "Фишинговая атака может стать первичной точкой компрометации учетных записей, рабочих мест и облачных сервисов.",
-            "recommendation": "Проверить SPF/DKIM/DMARC и текущие политики фильтрации; внедрить mail security для вложений, URL и impersonation; проводить регулярные фишинг-симуляции и разбор результатов.",
-            "vendors": ["Trend Micro", "Forcepoint", "Barracuda"],
+            "recommendation": "Проверить SPF/DKIM/DMARC и политики Microsoft 365; внедрить mail security для вложений, URL и impersonation; проводить регулярные фишинг-симуляции и разбор результатов.",
+            "vendors": ["Check Point", "Fortinet", "Trend Micro", "Forcepoint"],
             "regulators": ["CIS Controls", "NIST CSF"],
         },
         "patch": {
@@ -5872,12 +6175,12 @@ def professionalize_risk_item(item, results, context):
             "regulators": ["ITIL", "ISO 20000"],
         },
         "storage": {
-            "level": "MEDIUM",
-            "risk": "Контроль емкости и производительности СХД не описан как процесс",
-            "description": "В анкете указана гибридная СХД, но не описаны пороги заполнения, latency/IOPS, snapshot-политики и план расширения емкости.",
-            "impact": "Рост данных или деградация производительности может повлиять на ERP, CRM, файловые сервисы и виртуальные машины.",
-            "recommendation": "Ввести capacity management для СХД; контролировать заполнение, latency и состояние RAID-групп; ежеквартально обновлять план расширения емкости и snapshot-политики.",
-            "vendors": ["Zabbix", "PRTG", "ManageEngine"],
+            "level": "LOW",
+            "risk": "СХД требует health-check, а не вывода о проблеме надежности",
+            "description": "В анкете указаны RAID, диски и snapshot/backup-практики, но не раскрыты метрики утилизации, latency/IOPS и запас емкости.",
+            "impact": "Без фактических метрик нельзя утверждать о проблемах производительности или надежности; корректнее подтвердить запас и правила контроля.",
+            "recommendation": "Проверить утилизацию, latency/IOPS, состояние RAID, snapshot-политики и связку с backup; по результатам определить, нужен ли capacity management или расширение.",
+            "vendors": ["Veeam"],
             "regulators": ["ITIL", "ISO 20000"],
         },
     }
@@ -5898,6 +6201,42 @@ def professionalize_risk_item(item, results, context):
         normalized["vendors"] = []
     if not normalized.get("regulators"):
         normalized["regulators"] = ["ISO 27001"]
+    return normalized
+
+
+def align_report_vendors(item, results, context):
+    normalized = dict(item)
+    key = risk_semantic_key(normalized)
+    facts_text = normalize_vendor_key(" ".join(str(value) for value in results.values()))
+    has_fortinet = any(marker in facts_text for marker in ("fortinet", "fortigate", "forti"))
+    has_cloudflare = "cloudflare" in facts_text
+
+    vendor_profiles = {
+        "legacy_os": ["Microsoft", "Qualys", "Tenable", "Rapid7"],
+        "mfa": ["Fortinet", "Microsoft", "Cisco"],
+        "patch": ["Qualys", "Tenable", "Rapid7", "Ivanti"],
+        "mail": ["Check Point", "Fortinet", "Trend Micro", "Forcepoint"],
+        "endpoint_detection": ["Fortinet", "Check Point", "CrowdStrike", "Trend Micro"],
+        "siem_soc": ["Fortinet", "IBM", "Splunk"],
+        "pam": ["Wallix", "CyberArk", "BeyondTrust"],
+        "appsec": ["Checkmarx", "HCL AppScan", "Positive Technologies", "Qualys"],
+        "storage": ["Veeam"],
+        "segmentation": ["Fortinet", "Cisco", "Huawei"],
+    }
+
+    if key == "web_waf":
+        vendors = []
+        if has_cloudflare:
+            vendors.append("Cloudflare")
+        if has_fortinet:
+            vendors.append("Fortinet")
+        vendors.extend(["F5", "Imperva"])
+        normalized["vendors"] = list(dict.fromkeys(vendors))
+        return normalized
+
+    if key in vendor_profiles:
+        normalized["vendors"] = vendor_profiles[key]
+
     return normalized
 
 
@@ -5940,6 +6279,7 @@ def build_report_risk_set(c_info, results, context):
             )
             continue
         item = professionalize_risk_item(item, results, context)
+        item = align_report_vendors(item, results, context)
         semantic_key = risk_semantic_key(item)
         if not semantic_key or semantic_key in seen_risks:
             continue
@@ -6730,8 +7070,13 @@ def make_internal_sales_excel(c_info, results, final_score, client_report_bytes=
     roadmap_items = build_contextual_roadmap(results, context, domain_scores, rule_risks)
     risk_sources = st.session_state.get("last_report_risk_sources", [])
     sales_opportunities = (
-        build_ai_first_sales_opportunities(risk_sources)
+        build_ai_first_sales_opportunities(risk_sources, results, context)
         or build_sales_opportunities(results, context, roadmap_items)
+    )
+    sales_opportunities = ensure_sales_playbook_priorities(
+        sales_opportunities,
+        results,
+        context
     )
     sales_pack = build_sales_conversation_pack(
         c_info,

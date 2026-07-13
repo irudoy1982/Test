@@ -88,7 +88,8 @@ def check_static_hooks() -> None:
     assert_true("def build_ai_first_sales_opportunities" in text, "AI-first sales helper is missing")
     assert_true("last_report_risk_sources" in text and '"vendors": item.get("vendors", [])' in text, "Risk sources do not preserve vendors")
     assert_true('"area": item.get("_ai_area", "ИТ/ИБ")' in text, "Risk sources do not preserve IT/IB area")
-    assert_true("build_ai_first_sales_opportunities(risk_sources)" in text, "Sales playbook does not use AI-first opportunities")
+    assert_true("build_ai_first_sales_opportunities(risk_sources, results, context)" in text, "Sales playbook does not use AI-first opportunities")
+    assert_true("ensure_sales_playbook_priorities" in text, "Expert sales prioritization is missing")
     assert_true("def it_context_summary" in text and "ИТ-контекст" in text, "Client report IT context is missing")
 
 
