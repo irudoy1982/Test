@@ -176,6 +176,19 @@ def test_portfolio_category_to_verified_distributor() -> None:
     assert_true("MONT TECH" in distributors or "MUK" in distributors, f"WAF distributor should be verified, got: {distributors}")
 
 
+def test_database_security_vendors_and_distributors() -> None:
+    helpers = load_portfolio_helpers()
+    vendors = helpers["portfolio_vendors_by_categories"](
+        ["DB Security"],
+        preferred=["Garda Technologies (Гарда)", "Imperva"],
+    )
+    distributors = helpers["verified_distributors_for_vendors"](vendors)
+    assert_true("Garda Technologies" in vendors, f"Garda should resolve for DB Security, got: {vendors}")
+    assert_true("Imperva" in vendors, f"Imperva should resolve for DB Security, got: {vendors}")
+    assert_true("Axoft Kazakhstan" in distributors, f"Garda distributor should resolve to Axoft, got: {distributors}")
+    assert_true("Softprom" in distributors, f"Imperva distributor should resolve to Softprom, got: {distributors}")
+
+
 def test_sales_fallback_hook_order() -> None:
     text = APP.read_text(encoding="utf-8")
     internal = extract_function_source(text, "make_internal_sales_excel")
@@ -233,6 +246,7 @@ def main() -> None:
         test_sales_overrides_for_mfa_and_legacy_os,
         test_ids_ips_exposes_matrix_gap,
         test_portfolio_category_to_verified_distributor,
+        test_database_security_vendors_and_distributors,
         test_sales_fallback_hook_order,
         test_customer_report_context,
         test_customer_report_separates_solutions_from_manufacturers,
