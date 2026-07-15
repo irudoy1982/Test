@@ -2,10 +2,9 @@
 
 ## Release lanes
 
-- `v11.01-prod`: current stable production baseline in KhalilAudit and BTGAudit.
-- `v12.0-dev`: active development in Test only.
-- `v12.0-rcN`: release candidate after Test validation, bug fixes only.
-- `v12.0-prod`: promoted production release after explicit approval.
+- `v12.0.0`: current stable production release in KhalilAudit and BTGAudit.
+- `v12.1.0-dev`: next development lane in Test only.
+- `v12.1.0-rcN`: release candidate after Test validation, bug fixes only.
 
 ## Rules
 

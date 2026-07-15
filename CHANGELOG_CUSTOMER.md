@@ -3,18 +3,18 @@
 This changelog is intended for production release notes that can be shown to customers.
 Keep this file focused only on customer-visible questionnaire and report changes.
 
-## v12.0-dev
+## v12.0.0
 
-Status: in development in Test only.
+Status: stable production release.
 
-Planned customer-visible improvements:
+Customer-visible improvements:
 - Clearer report structure for the customer-facing audit workbook.
 - More practical recommendations tied to the scale of the customer's IT infrastructure.
 - Better separation between IT maturity and information security maturity.
 - Improved roadmap wording and prioritization.
 - Cleaner generation flow so users can see that report creation has started.
 
-Implemented in Test:
+Implemented:
 - Added IT context to the audit workbook passport: endpoints, servers, virtualization, storage, public services, business systems, and operational focus.
 - Improved recommendation flow so audit outputs stay aligned with the same findings.
 - Reworked network findings so routing protocols are not treated as proof of missing segmentation; unconfirmed architecture is now marked for validation.
