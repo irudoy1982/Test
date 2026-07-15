@@ -17,6 +17,9 @@ Planned customer-visible improvements:
 Implemented in Test:
 - Added IT context to the audit workbook passport: endpoints, servers, virtualization, storage, public services, business systems, and operational focus.
 - Improved recommendation flow so audit outputs stay aligned with the same findings.
+- Reworked network findings so routing protocols are not treated as proof of missing segmentation; unconfirmed architecture is now marked for validation.
+- Improved matching between identified risks and solution categories in the customer report.
+- Replaced subjective company-size labels with objective infrastructure facts from the questionnaire.
 
 ## v11.01-prod
 

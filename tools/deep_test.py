@@ -86,6 +86,25 @@ def load_portfolio_helpers():
     return namespace
 
 
+def load_report_logic_helpers():
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {"re": re}
+    for name in (
+        "risk_source_label",
+        "risk_semantic_key",
+        "network_segmentation_evidence",
+        "neutralize_company_scale_language",
+        "sanitize_ai_audit_narrative",
+        "professionalize_risk_item",
+        "russian_count",
+        "infrastructure_profile",
+        "sales_account_guidance",
+        "build_sales_conversation_pack",
+    ):
+        exec(extract_function_source(module_text, name), namespace)
+    return namespace
+
+
 def test_ai_first_sales_behavior() -> None:
     build = load_ai_first_helper()
     rows = build(
@@ -228,16 +247,94 @@ def test_customer_report_separates_solutions_from_manufacturers() -> None:
     assert_true("Check Point" in manufacturers, f"WAF manufacturer should be resolved from matrix, got: {manufacturers}")
 
 
+def test_segmentation_never_maps_to_dlp() -> None:
+    helpers = load_portfolio_helpers()
+    item = {
+        "risk": "Недостаточная сегментация сети и контроль доступа",
+        "description": "Архитектура VLAN и ACL не раскрыта.",
+        "impact": "Риск доступа к конфиденциальным данным.",
+        "recommendation": "Проверить межсегментные правила NGFW.",
+        "vendors": [],
+    }
+    key = helpers["risk_semantic_key"](item)
+    solution = helpers["solution_categories_for_report_item"](item)
+    manufacturers = helpers["portfolio_manufacturers_for_report_item"](item)
+    assert_true(key == "segmentation", f"Segmentation must win over generic confidentiality text, got: {key}")
+    assert_true("VLAN" in solution and "DLP" not in solution, f"Segmentation solution is incorrect: {solution}")
+    assert_true("Zecurion" not in manufacturers and "Forcepoint" not in manufacturers, f"DLP vendors leaked into segmentation: {manufacturers}")
+
+
+def test_ospf_is_not_segmentation_evidence() -> None:
+    helpers = load_report_logic_helpers()
+    results = {
+        "1.2.3. Маршрутизация": "Статическая, OSPF",
+        "NGFW": "Fortinet FortiGate",
+        "NAC": "Нет",
+        "ZTNA": "Нет",
+    }
+    item = {
+        "risk": "Недостаточная сегментация сети и контроль доступа",
+        "description": "Используется OSPF, NAC и ZTNA отсутствуют.",
+        "impact": "Возможно боковое перемещение.",
+        "recommendation": "Внедрить сегментацию.",
+        "vendors": ["DLP"],
+        "_source": "ИИ",
+    }
+    normalized = helpers["professionalize_risk_item"](item, results, {"users": 120, "servers": 22})
+    assert_true(helpers["network_segmentation_evidence"](results) == "unknown", "OSPF must not count as segmentation evidence")
+    assert_true(normalized["level"] == "LOW", "Unverified segmentation must be a validation item, not a high confirmed risk")
+    assert_true("требует подтверждения" in normalized["risk"].lower(), f"Unexpected title: {normalized['risk']}")
+    assert_true(normalized["vendors"] == [], "No product should be prescribed before segmentation is confirmed")
+
+
+def test_customer_and_sales_language_avoids_size_labels() -> None:
+    helpers = load_report_logic_helpers()
+    profile_title, profile_text = helpers["infrastructure_profile"]({
+        "users": 120,
+        "servers": 22,
+        "small_company": False,
+        "medium_company": True,
+        "large_company": False,
+        "enterprise_company": False,
+    })
+    combined = f"{profile_title} {profile_text}".lower()
+    assert_true("малая" not in combined and "средняя" not in combined and "крупная" not in combined, combined)
+
+    pack = helpers["build_sales_conversation_pack"](
+        {"Наименование компании": "Demo"},
+        {"MFA": "Нет", "Patch Management": "Нет", "EDR": "Нет", "SIEM": "Нет", "Резервное копирование": "Veeam"},
+        {"users": 120, "servers": 22, "small_company": False, "medium_company": True, "has_public_web": False, "has_development": False},
+        [],
+        [{
+            "priority": "P1",
+            "problem": "MFA для критичных доступов",
+            "offer": "MFA-пилот",
+            "trigger": "MFA не указана",
+            "vendors": "Fortinet",
+            "next_step": "Уточнить IdP",
+        }],
+    )
+    assert_true(len(pack["call_script"]) >= 8, "Senior call scenario should contain full discovery flow")
+    assert_true(all("goal" in item for item in pack["call_script"]), "Every call stage needs a goal")
+    assert_true(all(len(item) == 3 for item in pack["questions"]), "Discovery questions need an explicit purpose")
+    assert_true(all(len(item) == 3 for item in pack["objections"]), "Objections need a follow-up question")
+    sales_text = str(pack).lower()
+    assert_true("маленькая компания" not in sales_text and "средняя инфраструктура" not in sales_text, "Sales text contains harmful size labels")
+
+
 def test_sales_sheet_navigation_layout() -> None:
     text = APP.read_text(encoding="utf-8")
     internal = extract_function_source(text, "make_internal_sales_excel")
-    assert_true("A1:H1" in internal, "Sales sheet title should span all 8 columns")
-    assert_true("A3:H3" in internal, "Sales sheet company strip should span all 8 columns")
-    assert_true("A5:H5" in internal, "Sales sheet company header should span all 8 columns")
+    assert_true("A1:J1" in internal, "Sales sheet title should span all 10 columns")
+    assert_true("A3:J3" in internal, "Sales sheet company strip should span all 10 columns")
+    assert_true("A5:J5" in internal, "Sales sheet company header should span all 10 columns")
     assert_true("Навигация:" in internal, "Sales sheet navigation hint is missing")
     assert_true("Производители из портфеля" in internal, "Sales vendors column should be named as manufacturers")
     assert_true("Решения из портфеля" not in internal, "Sales vendors column should not be mislabeled as solutions")
-    assert_true("ws.column_dimensions['H'].width = 16" in internal, "Source column should remain visible")
+    assert_true("Факт / что подтвердить" in internal, "Sales sheet must distinguish facts from hypotheses")
+    assert_true("Ценность для клиента" in internal, "Sales sheet must explain client value")
+    assert_true("Кого подключить" in internal, "Sales sheet must include stakeholder guidance")
+    assert_true("ws.column_dimensions['J'].width = 16" in internal, "Source column should remain visible")
 
 
 def main() -> None:
@@ -250,6 +347,9 @@ def main() -> None:
         test_sales_fallback_hook_order,
         test_customer_report_context,
         test_customer_report_separates_solutions_from_manufacturers,
+        test_segmentation_never_maps_to_dlp,
+        test_ospf_is_not_segmentation_evidence,
+        test_customer_and_sales_language_avoids_size_labels,
         test_sales_sheet_navigation_layout,
     ]
     for test in tests:
