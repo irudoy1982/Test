@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 import os
 import re
+import zipfile
+from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
@@ -337,6 +339,35 @@ def test_sales_sheet_navigation_layout() -> None:
     assert_true("ws.column_dimensions['J'].width = 16" in internal, "Source column should remain visible")
 
 
+def test_presentation_template_rendering() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {"BytesIO": BytesIO, "re": re}
+    exec(extract_function_source(module_text, "render_audit_presentation_template"), namespace)
+    render = namespace["render_audit_presentation_template"]
+
+    for brand in ("khalil", "btg"):
+        template = ROOT / "static" / f"audit_presentation_{brand}.pptx"
+        with zipfile.ZipFile(template, "r") as archive:
+            source_xml = "\n".join(
+                archive.read(name).decode("utf-8")
+                for name in archive.namelist()
+                if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+            )
+        tokens = set(re.findall(r"\{\{([A-Z0-9_]+)\}\}", source_xml))
+        replacements = {token: f"Тест & проверка {token}" for token in tokens}
+        rendered = render(template, replacements)
+
+        with zipfile.ZipFile(BytesIO(rendered), "r") as archive:
+            slide_names = [
+                name for name in archive.namelist()
+                if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+            ]
+            rendered_xml = "\n".join(archive.read(name).decode("utf-8") for name in slide_names)
+        assert_true(len(slide_names) == 8, f"{brand}: expected 8 slides, got {len(slide_names)}")
+        assert_true("{{" not in rendered_xml, f"{brand}: unresolved presentation placeholders")
+        assert_true("Тест &amp; проверка" in rendered_xml, f"{brand}: XML escaping failed")
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
@@ -351,6 +382,7 @@ def main() -> None:
         test_ospf_is_not_segmentation_evidence,
         test_customer_and_sales_language_avoids_size_labels,
         test_sales_sheet_navigation_layout,
+        test_presentation_template_rendering,
     ]
     for test in tests:
         test()

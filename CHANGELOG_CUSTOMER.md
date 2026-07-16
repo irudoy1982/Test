@@ -3,6 +3,13 @@
 This changelog is intended for production release notes that can be shown to customers.
 Keep this file focused only on customer-visible questionnaire and report changes.
 
+## v12
+
+Status: in development in Test.
+
+Planned customer-visible improvement:
+- Added a concise branded PowerPoint presentation with the audit summary, infrastructure profile, key risks, IT and security recommendations, 90-day roadmap, and management decisions.
+
 ## v12.0.0
 
 Status: stable production release.

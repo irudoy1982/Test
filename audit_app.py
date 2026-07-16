@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.0.0"
+APP_VERSION = "12-dev"
 
 
 def get_app_instance_label():
@@ -6882,6 +6882,234 @@ def build_management_decisions(results, context):
     return decisions[:6]
 
 
+# --- Презентация по результатам аудита ---
+def presentation_text(value, limit=180):
+    text = repair_mojibake(value or "")
+    text = re.sub(r"\s+", " ", str(text)).strip(" .;-")
+    if not text:
+        return "Не указано"
+    if len(text) <= limit:
+        return text
+    shortened = text[: max(1, limit - 1)].rsplit(" ", 1)[0].rstrip(" ,;:")
+    return f"{shortened}…"
+
+
+def presentation_brand_key():
+    return "btg" if "btg" in get_app_instance_label().lower() else "khalil"
+
+
+def presentation_recommendation(item, limit=205):
+    risk = presentation_text(item.get("risk") or item.get("domain") or "Рекомендация", 82)
+    recommendation = presentation_text(
+        item.get("recommendation") or item.get("action") or item.get("description"),
+        limit,
+    )
+    return presentation_text(f"{risk}. {recommendation}", limit)
+
+
+def build_audit_presentation_replacements(c_info, results, final_score):
+    context = build_context(results, c_info)
+    domain_scores = calculate_domain_scores(results)
+    rule_risks = generate_rule_based_risks(results, context)
+    risk_sources = st.session_state.get("last_report_risk_sources") or rule_risks
+    ai_narrative = sanitize_ai_audit_narrative(
+        st.session_state.get("ai_audit_narrative", {}),
+        results,
+    )
+    roadmap_items = ai_narrative.get("roadmap") or build_contextual_roadmap(
+        results,
+        context,
+        domain_scores,
+        rule_risks,
+    )
+    conclusions = build_expert_conclusion(
+        results,
+        context,
+        final_score,
+        domain_scores,
+        roadmap_items,
+    )
+    summary_items = []
+    for item in [*ai_narrative.get("executive_summary", []), *conclusions]:
+        clean_item = presentation_text(item, 220)
+        if clean_item not in summary_items:
+            summary_items.append(clean_item)
+        if len(summary_items) >= 4:
+            break
+
+    if final_score < 35:
+        summary_title = "Ключевые процессы защиты пока зависят от отдельных средств и ручных действий"
+    elif final_score < 60:
+        summary_title = "Базовые меры работают, но контроль и реагирование требуют систематизации"
+    else:
+        summary_title = "Защитный контур сформирован; следующий резерв — устойчивость и измеримость"
+
+    profile_title, profile_text = infrastructure_profile(context)
+    it_assets_text, it_focus_text = it_context_summary(results, context)
+    business_systems = sum(
+        bool(context.get(key))
+        for key in ("has_erp", "has_crm", "has_accounting", "has_hrm", "has_document_flow", "has_mail")
+    )
+
+    normalized_risks = []
+    for item in risk_sources:
+        if not isinstance(item, dict):
+            continue
+        normalized_risks.append({
+            "level": risk_level_label(item.get("level", "MEDIUM")),
+            "risk": item.get("risk", "Риск"),
+            "impact": item.get("impact") or item.get("description") or "Требуется уточнение влияния",
+            "recommendation": item.get("recommendation") or item.get("action") or "Требуется план улучшений",
+            "area": item.get("area") or item.get("_ai_area") or "ИТ/ИБ",
+        })
+    normalized_risks = normalized_risks[:12]
+
+    it_items = []
+    security_items = []
+    for item in normalized_risks:
+        area = str(item.get("area", "")).upper()
+        target = it_items if "ИТ" in area and "ИБ" not in area else security_items
+        text = presentation_recommendation(item)
+        if text not in target:
+            target.append(text)
+
+    for item in roadmap_items:
+        domain = str(item.get("domain", "")).lower()
+        text = presentation_recommendation(item)
+        security_terms = ("безопас", "защит", "доступ", "уязв", "soc", "siem", "endpoint", "почт", "web")
+        target = security_items if any(term in domain for term in security_terms) else it_items
+        if text not in target:
+            target.append(text)
+
+    it_fallback = [
+        "Мониторинг инфраструктуры. Определить пороги, владельцев и регулярный обзор доступности и емкости.",
+        "Управление изменениями. Фиксировать изменения, окна обслуживания, результат и порядок отката.",
+        "Резервное копирование. Согласовать RTO/RPO и регулярно подтверждать восстановление критичных сервисов.",
+        "Управление активами. Поддерживать единый реестр оборудования, систем, владельцев и жизненного цикла.",
+    ]
+    security_fallback = [
+        "Контроль доступа. Проверить критичные учетные записи, MFA, исключения и привилегии.",
+        "Защита конечных точек. Контролировать покрытие агентов, телеметрию и сценарии реагирования.",
+        "Управление уязвимостями. Ввести регулярное сканирование, SLA устранения и контроль исключений.",
+        "Мониторинг событий. Определить минимальный набор источников и регламент разбора инцидентов.",
+    ]
+    for item in it_fallback:
+        if len(it_items) >= 4:
+            break
+        it_items.append(item)
+    for item in security_fallback:
+        if len(security_items) >= 4:
+            break
+        security_items.append(item)
+
+    roadmap_by_phase = {
+        "0-30": [],
+        "31-60": [],
+        "61-90": [],
+    }
+    for item in roadmap_items:
+        phase = str(item.get("phase", ""))
+        phase_key = next((key for key in roadmap_by_phase if key in phase), None)
+        if not phase_key:
+            continue
+        action = presentation_text(item.get("action") or item.get("recommendation"), 170)
+        if action not in roadmap_by_phase[phase_key]:
+            roadmap_by_phase[phase_key].append(action)
+
+    roadmap_fallback = {
+        "0-30": ["Назначить владельцев рисков и подтвердить приоритеты", "Запустить быстрые меры по критичным доступам и восстановлению"],
+        "31-60": ["Провести пилоты выбранных мер и зафиксировать критерии успеха", "Формализовать процессы контроля и отчетности"],
+        "61-90": ["Масштабировать подтвержденные решения", "Проверить остаточные риски и обновить план развития"],
+    }
+    for phase, defaults in roadmap_fallback.items():
+        for item in defaults:
+            if len(roadmap_by_phase[phase]) >= 2:
+                break
+            roadmap_by_phase[phase].append(item)
+
+    decisions = build_management_decisions(results, context)
+    while len(decisions) < 4:
+        decisions.append("Согласовать владельца, срок и измеримый критерий результата для следующего этапа.")
+
+    replacements = {
+        "COMPANY": presentation_text(c_info.get("Наименование компании", "Компания"), 54),
+        "INDUSTRY": presentation_text(c_info.get("Сфера деятельности", ""), 38),
+        "CITY": presentation_text(c_info.get("Город", ""), 28),
+        "SCORE": str(int(final_score)),
+        "DATE": datetime.now().strftime("%d.%m.%Y"),
+        "SUMMARY_TITLE": presentation_text(summary_title, 120),
+        "USERS": str(context.get("users", 0)),
+        "SERVERS": str(context.get("servers", 0)),
+        "PUBLIC": "Есть" if context.get("has_public_web") else "Нет",
+        "BUSINESS": str(business_systems),
+        "PROFILE": presentation_text(f"{profile_title}. {profile_text}", 240),
+        "PROFILE_IMPLICATION": presentation_text(f"{it_assets_text} {it_focus_text}", 330),
+    }
+    for index in range(4):
+        replacements[f"SUMMARY_{index + 1}"] = summary_items[index] if index < len(summary_items) else "Уточнить приоритеты и владельцев на рабочей сессии."
+        risk = normalized_risks[index] if index < len(normalized_risks) else {
+            "level": "Средний",
+            "risk": "Требуется дополнительная проверка",
+            "impact": "Для точной оценки необходимо подтвердить фактическую архитектуру и действующие процессы.",
+        }
+        replacements[f"RISK_{index + 1}_LEVEL"] = presentation_text(risk["level"], 16).upper()
+        replacements[f"RISK_{index + 1}_TITLE"] = presentation_text(risk["risk"], 72)
+        replacements[f"RISK_{index + 1}_IMPACT"] = presentation_text(risk["impact"], 190)
+        replacements[f"IT_{index + 1}"] = presentation_text(it_items[index], 205)
+        replacements[f"SEC_{index + 1}"] = presentation_text(security_items[index], 205)
+        replacements[f"DECISION_{index + 1}"] = presentation_text(decisions[index], 205)
+
+    for phase_index, phase in enumerate(("0-30", "31-60", "61-90"), start=1):
+        replacements[f"ROADMAP_{phase_index}_1"] = roadmap_by_phase[phase][0]
+        replacements[f"ROADMAP_{phase_index}_2"] = roadmap_by_phase[phase][1]
+    return replacements
+
+
+def render_audit_presentation_template(template_path, replacements):
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    output = BytesIO()
+    with zipfile.ZipFile(template_path, "r") as source, zipfile.ZipFile(
+        output,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+    ) as target:
+        for item in source.infolist():
+            content = source.read(item.filename)
+            if item.filename.endswith(".xml"):
+                xml_text = content.decode("utf-8")
+                for key, value in replacements.items():
+                    xml_text = xml_text.replace(f"{{{{{key}}}}}", escape(str(value)))
+                content = xml_text.encode("utf-8")
+            target.writestr(item, content)
+
+    presentation_bytes = output.getvalue()
+    with zipfile.ZipFile(BytesIO(presentation_bytes), "r") as check_zip:
+        unresolved = []
+        for name in check_zip.namelist():
+            if not name.startswith("ppt/slides/slide") or not name.endswith(".xml"):
+                continue
+            slide_xml = check_zip.read(name).decode("utf-8")
+            unresolved.extend(re.findall(r"\{\{[A-Z0-9_]+\}\}", slide_xml))
+        if unresolved:
+            raise ValueError(f"В презентации остались незаполненные поля: {sorted(set(unresolved))}")
+    return presentation_bytes
+
+
+def make_audit_presentation(c_info, results, final_score):
+    brand_key = presentation_brand_key()
+    template_path = os.path.join(
+        os.path.dirname(__file__),
+        "static",
+        f"audit_presentation_{brand_key}.pptx",
+    )
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f"Не найден шаблон презентации: {template_path}")
+    replacements = build_audit_presentation_replacements(c_info, results, final_score)
+    return render_audit_presentation_template(template_path, replacements)
+
+
 # --- Отчет ---
 def make_expert_excel(c_info, results, final_score):
     from io import BytesIO
@@ -8200,6 +8428,10 @@ if "cached_report_bytes" not in st.session_state:
     st.session_state.cached_report_bytes = None
 if "cached_sales_report_bytes" not in st.session_state:
     st.session_state.cached_sales_report_bytes = None
+if "cached_presentation_bytes" not in st.session_state:
+    st.session_state.cached_presentation_bytes = None
+if "presentation_status" not in st.session_state:
+    st.session_state.presentation_status = ""
 if "telegram_status" not in st.session_state:
     st.session_state.telegram_status = ""
 if "generation_attempt_started_at" not in st.session_state:
@@ -8542,6 +8774,20 @@ if st.session_state.generation_state == "heavy_ai":
             )
             st.session_state.cached_report_bytes = report_bytes
             st.session_state.cached_sales_report_bytes = sales_report_bytes
+            try:
+                st.session_state.cached_presentation_bytes = make_audit_presentation(
+                    client_info,
+                    results,
+                    f_score,
+                )
+                st.session_state.presentation_status = "ok"
+            except Exception as presentation_exc:
+                st.session_state.cached_presentation_bytes = None
+                st.session_state.presentation_status = "error"
+                send_internal_telegram_message(
+                    f"[{get_app_instance_label()}] Презентация не сформирована: "
+                    f"{redact_secret(presentation_exc, TOKEN)}"
+                )
         except Exception as exc:
             st.session_state.telegram_status = send_internal_telegram_message(
                 build_telegram_generation_error_text(
@@ -8615,19 +8861,36 @@ if st.session_state.generation_state == "finalized":
 
     st.success("🎉 Экспертный отчет успешно сформирован и проверен системой контроля качества Khalil Consulting!")
 
-    st.download_button(
-        label="Скачать готовый экспертный отчет (XLSX)",
-        data=st.session_state.cached_report_bytes,
-        file_name=f"Audit_Khalil_{client_info['Наименование компании']}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary"
-    )
+    brand_file_label = "BTG" if presentation_brand_key() == "btg" else "Khalil"
+    report_column, presentation_column = st.columns(2)
+    with report_column:
+        st.download_button(
+            label="Скачать экспертный отчет (XLSX)",
+            data=st.session_state.cached_report_bytes,
+            file_name=f"Audit_{brand_file_label}_{client_info['Наименование компании']}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True,
+        )
+    with presentation_column:
+        if st.session_state.cached_presentation_bytes:
+            st.download_button(
+                label="Скачать презентацию аудита (PPTX)",
+                data=st.session_state.cached_presentation_bytes,
+                file_name=f"Audit_Presentation_{brand_file_label}_{client_info['Наименование компании']}.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                use_container_width=True,
+            )
+        elif st.session_state.presentation_status == "error":
+            st.info("Презентация временно недоступна. Экспертный XLSX-отчет сформирован полностью.")
 
     # Кнопка для сброса состояния, если пользователь захочет перегенерировать отчет
     if st.button("Сформировать новый отчет"):
         st.session_state.generation_state = "idle"
         st.session_state.cached_report_bytes = None
         st.session_state.cached_sales_report_bytes = None
+        st.session_state.cached_presentation_bytes = None
+        st.session_state.presentation_status = ""
         st.session_state.telegram_status = ""
         st.session_state.ai_last_error = ""
         st.session_state.report_shortened_last = False

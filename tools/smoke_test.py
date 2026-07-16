@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import py_compile
 import re
+import zipfile
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -11,6 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "audit_app.py"
 CHANGELOG = ROOT / "CHANGELOG_CUSTOMER.md"
 PORTFOLIO = ROOT / "vendor_matrix_detailed.xlsx"
+PRESENTATION_TEMPLATES = [
+    ROOT / "static" / "audit_presentation_khalil.pptx",
+    ROOT / "static" / "audit_presentation_btg.pptx",
+]
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -30,7 +35,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.0.0", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -91,6 +96,30 @@ def check_static_hooks() -> None:
     assert_true("build_ai_first_sales_opportunities(risk_sources, results, context)" in text, "Sales playbook does not use AI-first opportunities")
     assert_true("ensure_sales_playbook_priorities" in text, "Expert sales prioritization is missing")
     assert_true("def it_context_summary" in text and "ИТ-контекст" in text, "Client report IT context is missing")
+    assert_true("def make_audit_presentation" in text, "Presentation generator is missing")
+    assert_true("cached_presentation_bytes" in text, "Presentation download state is missing")
+
+
+def check_presentation_templates() -> None:
+    required = {
+        "{{COMPANY}}",
+        "{{SUMMARY_1}}",
+        "{{RISK_1_TITLE}}",
+        "{{IT_1}}",
+        "{{SEC_1}}",
+        "{{ROADMAP_1_1}}",
+        "{{DECISION_1}}",
+    }
+    for template in PRESENTATION_TEMPLATES:
+        assert_true(template.exists(), f"Presentation template is missing: {template.name}")
+        with zipfile.ZipFile(template, "r") as archive:
+            slide_xml = "\n".join(
+                archive.read(name).decode("utf-8")
+                for name in archive.namelist()
+                if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+            )
+        missing = sorted(token for token in required if token not in slide_xml)
+        assert_true(not missing, f"{template.name} is missing placeholders: {missing}")
 
 
 def main() -> None:
@@ -100,6 +129,7 @@ def main() -> None:
         check_customer_changelog,
         check_portfolio,
         check_static_hooks,
+        check_presentation_templates,
     ]
     for check in checks:
         check()
