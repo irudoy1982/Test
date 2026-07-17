@@ -379,12 +379,49 @@ def normalize_ai_risks_payload(payload):
         repaired_badness = repaired.count("Р") + repaired.count("С") + repaired.count("Ð") + repaired.count("Ñ")
         return repaired if repaired_badness < original_badness else text
 
+    def value_as_text(value, preferred_keys=()):
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return repair_mojibake(value).strip()
+        if isinstance(value, (int, float, bool)):
+            return str(value).strip()
+        if isinstance(value, list):
+            parts = [value_as_text(part, preferred_keys) for part in value]
+            return "; ".join(part for part in parts if part)
+        if isinstance(value, dict):
+            for key in preferred_keys:
+                text = value_as_text(value.get(key), preferred_keys)
+                if text:
+                    return text
+            parts = [value_as_text(part, preferred_keys) for part in value.values()]
+            return "; ".join(part for part in parts if part)
+        return repair_mojibake(value).strip()
+
+    def first_text(item, keys, preferred_keys=()):
+        for key in keys:
+            text = value_as_text(item.get(key), preferred_keys)
+            if text:
+                return text
+        return ""
+
     def normalize_risk_item(item):
         if not isinstance(item, dict):
             return None
 
-        risk = repair_mojibake(item.get("risk", "")).strip()
-        recommendation = repair_mojibake(item.get("recommendation", "")).strip()
+        risk = first_text(
+            item,
+            ("risk", "title", "finding", "issue", "gap", "name"),
+            ("title", "risk", "text", "name"),
+        )
+        recommendation = first_text(
+            item,
+            (
+                "recommendation", "recommendations", "action", "actions",
+                "recommendation_steps", "remediation", "mitigation", "next_steps",
+            ),
+            ("action", "text", "step", "recommendation", "description"),
+        )
         if not risk or not recommendation:
             return None
 
@@ -408,18 +445,30 @@ def normalize_ai_risks_payload(payload):
         ][:3]
 
         return {
-            "level": repair_mojibake(item.get("level", "MEDIUM")).strip() or "MEDIUM",
-            "area": repair_mojibake(item.get("area", "")).strip(),
+            "level": first_text(item, ("level", "severity", "priority")) or "MEDIUM",
+            "area": first_text(item, ("area", "domain", "category")),
             "risk": risk,
-            "description": repair_mojibake(item.get("description", risk)).strip() or risk,
-            "impact": repair_mojibake(item.get("impact", "Риск может привести к снижению устойчивости ИТ/ИБ процессов.")).strip(),
+            "description": first_text(
+                item,
+                ("description", "observation", "finding_details", "details", "context"),
+                ("text", "description", "details"),
+            ) or risk,
+            "impact": first_text(
+                item,
+                ("impact", "business_impact", "consequence", "consequences"),
+                ("text", "impact", "description"),
+            ) or "Риск может привести к снижению устойчивости ИТ/ИБ процессов.",
             "recommendation": recommendation,
             "vendors": [repair_mojibake(value).strip() for value in vendors if repair_mojibake(value).strip()][:3],
             "legal_ids": normalized_legal_ids,
             "regulators": [REGULATORY_CATALOG[value]["short"] for value in normalized_legal_ids],
             "frameworks": [repair_mojibake(value).strip() for value in frameworks if repair_mojibake(value).strip()][:3],
             "evidence": [repair_mojibake(value).strip() for value in evidence if repair_mojibake(value).strip()][:3],
-            "success_metric": repair_mojibake(item.get("success_metric", "")).strip(),
+            "success_metric": first_text(
+                item,
+                ("success_metric", "metric", "target", "acceptance_criteria", "kpi"),
+                ("text", "metric", "target", "value"),
+            ),
         }
 
     def collect_from_list(value, source_area="ИИ"):
@@ -455,6 +504,13 @@ def normalize_ai_risks_payload(payload):
         if combined:
             return combined
 
+        for container_key in ("analysis", "audit", "report", "result", "findings"):
+            nested = payload.get(container_key)
+            if isinstance(nested, (dict, list)):
+                combined.extend(normalize_ai_risks_payload(nested))
+        if combined:
+            return combined
+
         for key in ("risks", "recommendations", "items", "data"):
             value = payload.get(key)
             if isinstance(value, list):
@@ -465,6 +521,27 @@ def normalize_ai_risks_payload(payload):
                 ]
 
     return []
+
+
+def count_ai_risk_candidates(payload):
+    if isinstance(payload, list):
+        return sum(isinstance(item, dict) for item in payload)
+    if not isinstance(payload, dict):
+        return 0
+
+    total = 0
+    for key in (
+        "it_recommendations", "security_recommendations", "risks",
+        "recommendations", "items", "data", "findings",
+    ):
+        value = payload.get(key)
+        if isinstance(value, list):
+            total += sum(isinstance(item, dict) for item in value)
+    for key in ("analysis", "audit", "report", "result"):
+        value = payload.get(key)
+        if isinstance(value, (dict, list)):
+            total += count_ai_risk_candidates(value)
+    return total
 
 
 def normalize_ai_audit_narrative(payload):
@@ -584,6 +661,27 @@ def prepare_ai_risks_for_report(items, min_items=1):
         seen.add(semantic_key)
 
     return prepared if len(prepared) >= min_items else []
+
+
+def explain_ai_risk_rejections(items):
+    reasons = {"not_object": 0, "short_risk": 0, "short_recommendation": 0, "duplicate": 0}
+    seen = set()
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            reasons["not_object"] += 1
+            continue
+        if is_truncated_ai_text(item.get("risk")):
+            reasons["short_risk"] += 1
+            continue
+        if is_truncated_ai_text(item.get("recommendation")):
+            reasons["short_recommendation"] += 1
+            continue
+        semantic_key = risk_semantic_key(item)
+        if not semantic_key or semantic_key in seen:
+            reasons["duplicate"] += 1
+            continue
+        seen.add(semantic_key)
+    return ", ".join(f"{key}={value}" for key, value in reasons.items() if value) or "нет"
 
 
 def recover_complete_risk_objects(response_text):
@@ -2217,7 +2315,9 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                     f"{provider_label}: неполный материал для презентации ({', '.join(missing_narrative)})"
                 )
                 return None
+            raw_candidate_count = count_ai_risk_candidates(parsed_payload)
             normalized_payload = normalize_ai_risks_payload(parsed_payload)
+            normalized_candidate_count = len(normalized_payload)
             recommendation_fields = ("risks", "it_recommendations", "security_recommendations")
             present_recommendation_fields = [
                 field
@@ -2238,6 +2338,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 normalized_payload,
                 results,
             )
+            fact_checked_count = len(normalized_payload)
             if skipped_ai_items:
                 errors.append(
                     f"{provider_label}: отброшены противоречивые пункты: "
@@ -2254,9 +2355,13 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             else:
                 prepared_payload, quality_error = ai_quality_gate(normalized_payload)
             if not prepared_payload:
+                rejection_details = explain_ai_risk_rejections(normalized_payload)
                 errors.append(
                     f"{provider_label}: "
-                    f"{quality_error or 'нет пригодных законченных рекомендаций'}"
+                    f"{quality_error or 'нет пригодных законченных рекомендаций'} "
+                    f"Диагностика приема: raw={raw_candidate_count}, "
+                    f"normalized={normalized_candidate_count}, fact_checked={fact_checked_count}; "
+                    f"rejected={rejection_details}."
                 )
                 return None
 

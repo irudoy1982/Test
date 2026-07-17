@@ -239,6 +239,47 @@ def check_partial_ai_json_recovery() -> None:
     assert_true(len(recovered["risks"]) == 2, "Valid AI recommendations around a broken item were lost")
 
 
+def check_groq_payload_alias_normalization() -> None:
+    app_tree = ast.parse(read_text(APP))
+    normalize_node = next(
+        node
+        for node in app_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "normalize_ai_risks_payload"
+    )
+    count_node = next(
+        node
+        for node in app_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "count_ai_risk_candidates"
+    )
+    namespace = {"REGULATORY_CATALOG": {}}
+    exec(
+        compile(ast.Module(body=[normalize_node, count_node], type_ignores=[]), str(APP), "exec"),
+        namespace,
+    )
+    payload = {
+        "analysis": {
+            "findings": [
+                {
+                    "title": "Недостаточный контроль привилегированных учетных записей",
+                    "severity": "HIGH",
+                    "domain": "ИБ",
+                    "business_impact": "Компрометация административной учетной записи расширяет масштаб инцидента.",
+                    "recommendation_steps": [
+                        {"step": "Определить охват привилегированных учетных записей"},
+                        {"step": "Провести пилот PAM и проверить сценарии доступа"},
+                    ],
+                    "metric": "100% критичных административных доступов заведены под контроль",
+                }
+            ]
+        }
+    }
+    normalized = namespace["normalize_ai_risks_payload"](payload)
+    assert_true(len(normalized) == 1, "Nested Groq finding aliases were not normalized")
+    assert_true("Провести пилот PAM" in normalized[0]["recommendation"], "Groq action steps were lost")
+    assert_true(normalized[0]["level"] == "HIGH", "Groq severity alias was lost")
+    assert_true(namespace["count_ai_risk_candidates"](payload) == 1, "Raw Groq candidate count is incorrect")
+
+
 def check_presentation_fact_guards() -> None:
     app_tree = ast.parse(read_text(APP))
     function_names = {
@@ -509,6 +550,7 @@ def main() -> None:
         check_portfolio,
         check_static_hooks,
         check_partial_ai_json_recovery,
+        check_groq_payload_alias_normalization,
         check_presentation_fact_guards,
         check_presentation_templates,
         check_customer_output_normalization,
