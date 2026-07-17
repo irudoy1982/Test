@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.15-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.16-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -332,6 +332,46 @@ def check_ai_narrative_risk_augmentation() -> None:
         namespace["risk_semantic_key"]({"risk": "PAM с передачей событий в SIEM"}) == "pam",
         "PAM must not be misclassified as SIEM when both technologies are mentioned",
     )
+
+
+def check_short_known_ai_risk_titles() -> None:
+    app_tree = ast.parse(read_text(APP))
+    wanted = {
+        "risk_semantic_key", "is_truncated_ai_text",
+        "canonical_ai_risk_title", "prepare_ai_risks_for_report",
+    }
+    nodes = {
+        node.name: node
+        for node in app_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in wanted
+    }
+    namespace = {"re": re}
+    exec(
+        compile(
+            ast.Module(
+                body=[
+                    nodes["risk_semantic_key"], nodes["is_truncated_ai_text"],
+                    nodes["canonical_ai_risk_title"], nodes["prepare_ai_risks_for_report"],
+                ],
+                type_ignores=[],
+            ),
+            str(APP),
+            "exec",
+        ),
+        namespace,
+    )
+    prepared = namespace["prepare_ai_risks_for_report"]([
+        {
+            "risk": "PAM",
+            "recommendation": "Инвентаризировать привилегированные доступы, провести пилот и распространить контроль на критичные системы.",
+        },
+        {
+            "risk": "NAC",
+            "recommendation": "Провести пилот контроля допуска устройств, настроить профилирование и изоляцию неизвестных подключений.",
+        },
+    ])
+    assert_true(len(prepared) == 2, "Known short PAM/NAC findings must survive the quality gate")
+    assert_true(all(len(item["risk"]) >= 20 for item in prepared), "Short AI risk titles were not expanded")
 
 
 def check_presentation_fact_guards() -> None:
@@ -661,6 +701,7 @@ def main() -> None:
         check_partial_ai_json_recovery,
         check_groq_payload_alias_normalization,
         check_ai_narrative_risk_augmentation,
+        check_short_known_ai_risk_titles,
         check_presentation_fact_guards,
         check_presentation_templates,
         check_customer_output_normalization,

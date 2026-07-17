@@ -42,6 +42,7 @@ Planned customer-visible improvement:
 - Removed internal regulatory identifiers and product names from customer-facing roadmap text.
 - Expanded privileged-access roadmap wording from individual server platforms to the complete critical-system scope.
 - Kept technical audit depth consistent across industries by recovering confirmed recommendations from the complete analysis and roadmap, not only one response section.
+- Expanded concise technology findings into clear customer-facing risk titles without weakening questionnaire fact checks.
 
 ## v12.0.0
 

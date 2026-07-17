@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.15-dev"
+APP_VERSION = "12.16-dev"
 
 
 def get_app_instance_label():
@@ -734,6 +734,29 @@ def is_truncated_ai_text(value):
     return text.endswith(unfinished_endings)
 
 
+def canonical_ai_risk_title(semantic_key):
+    titles = {
+        "mfa": "Критичные доступы требуют полного покрытия MFA",
+        "iam": "Жизненный цикл учетных записей требует централизованного управления",
+        "pam": "Привилегированные доступы требуют отдельного контроля",
+        "nac": "Допуск устройств к сети требует централизованного контроля",
+        "dlp": "Каналы передачи чувствительных данных требуют контроля",
+        "siem_soc": "Мониторинг событий и реагирование требуют развития",
+        "patch": "Уязвимости и обновления требуют управляемого цикла",
+        "endpoint_detection": "Защита конечных точек требует измеримого контроля",
+        "backup": "Восстановление из резервных копий требует подтверждения",
+        "web_waf": "Публичные приложения требуют прикладной защиты",
+        "mail": "Почтовый контур требует усиления защиты",
+        "legacy_os": "Операционные системы без поддержки требуют плана миграции",
+        "it_monitoring": "Мониторинг ИТ-сервисов требует централизации",
+        "change_management": "Изменения и конфигурации требуют формального процесса",
+        "network_performance": "Сетевая архитектура требует подтверждения измерениями",
+        "appsec": "Проверки безопасности необходимо встроить в релизы",
+        "dr": "Аварийное восстановление требует формализованного сценария",
+    }
+    return titles.get(str(semantic_key or ""), "")
+
+
 def prepare_ai_risks_for_report(items, min_items=1):
     if not isinstance(items, list):
         return []
@@ -743,15 +766,19 @@ def prepare_ai_risks_for_report(items, min_items=1):
     for item in items:
         if not isinstance(item, dict):
             continue
-        if is_truncated_ai_text(item.get("risk")):
-            continue
-        if is_truncated_ai_text(item.get("recommendation")):
+        normalized_item = dict(item)
+        semantic_key = risk_semantic_key(normalized_item)
+        if is_truncated_ai_text(normalized_item.get("risk")):
+            canonical_title = canonical_ai_risk_title(semantic_key)
+            if not canonical_title:
+                continue
+            normalized_item["risk"] = canonical_title
+        if is_truncated_ai_text(normalized_item.get("recommendation")):
             continue
 
-        semantic_key = risk_semantic_key(item)
         if not semantic_key or semantic_key in seen:
             continue
-        prepared.append(item)
+        prepared.append(normalized_item)
         seen.add(semantic_key)
 
     return prepared if len(prepared) >= min_items else []
@@ -764,13 +791,13 @@ def explain_ai_risk_rejections(items):
         if not isinstance(item, dict):
             reasons["not_object"] += 1
             continue
-        if is_truncated_ai_text(item.get("risk")):
+        semantic_key = risk_semantic_key(item)
+        if is_truncated_ai_text(item.get("risk")) and not canonical_ai_risk_title(semantic_key):
             reasons["short_risk"] += 1
             continue
         if is_truncated_ai_text(item.get("recommendation")):
             reasons["short_recommendation"] += 1
             continue
-        semantic_key = risk_semantic_key(item)
         if not semantic_key or semantic_key in seen:
             reasons["duplicate"] += 1
             continue
