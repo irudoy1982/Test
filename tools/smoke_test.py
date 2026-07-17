@@ -246,6 +246,8 @@ def check_presentation_fact_guards() -> None:
         "risk_semantic_key",
         "control_confirmed_in_results",
         "risk_conflicts_with_answers",
+        "network_segmentation_evidence",
+        "enforce_audit_fact_policy",
     }
     nodes_by_name = {
         node.name: node
@@ -258,6 +260,8 @@ def check_presentation_fact_guards() -> None:
         "risk_semantic_key",
         "control_confirmed_in_results",
         "risk_conflicts_with_answers",
+        "network_segmentation_evidence",
+        "enforce_audit_fact_policy",
     )]
     exec(compile(ast.Module(body=ordered_nodes, type_ignores=[]), str(APP), "exec"), namespace)
     conflicts = namespace["risk_conflicts_with_answers"]
@@ -280,6 +284,34 @@ def check_presentation_fact_guards() -> None:
         ),
         "A confirmed WAF in questionnaire notes must block a WAF recommendation",
     )
+    assert_true(
+        conflicts(
+            {"risk": "Отсутствие резервного копирования критичных конфигураций"},
+            {"Резервное копирование": "Veeam"},
+        ),
+        "Existing backup must block an absence-of-backup recommendation",
+    )
+
+    enforce = namespace["enforce_audit_fact_policy"]
+    nac_item = enforce(
+        {
+            "level": "LOW",
+            "risk": "Архитектура сетевой сегментации требует подтверждения",
+            "recommendation": "Проверить VLAN и ACL.",
+        },
+        {"NAC": "Нет", "Маршрутизация": "OSPF", "Wi-Fi Точки доступа": 48},
+        {"is_kvoiki": True, "has_personal_data": True},
+    )
+    assert_true(
+        namespace["risk_semantic_key"](nac_item) == "nac" and nac_item["level"] == "MEDIUM",
+        "Unknown segmentation must become a precise NAC admission-control recommendation",
+    )
+    dlp_item = enforce(
+        {"level": "LOW", "risk": "Отсутствие DLP", "recommendation": "Оценить DLP."},
+        {"DLP": "Нет"},
+        {"is_kvoiki": True, "has_personal_data": True},
+    )
+    assert_true(dlp_item["level"] == "HIGH", "KVOIKI DLP gap must be high priority")
 
 
 def check_presentation_templates() -> None:
@@ -290,9 +322,10 @@ def check_presentation_templates() -> None:
         "{{RISK_1_TITLE}}",
         "{{RISK_6_TITLE}}",
         "{{STRENGTH_1}}",
-        "{{OUTCOME_1_TITLE}}",
-        "{{OUTCOME_1_FROM}}",
-        "{{OUTCOME_1_TO}}",
+        "{{THREAT_1_LABEL}}",
+        "{{THREAT_1_VALUE}}",
+        "{{THREAT_6_LABEL}}",
+        "{{THREAT_6_VALUE}}",
         "{{REG_TITLE}}",
         "{{REG_APPLICABILITY}}",
         "{{REG_EXPECTATIONS}}",
@@ -379,8 +412,6 @@ def check_dynamic_presentation_range() -> None:
             assert_true("<ns0:Relationships" not in presentation_rels, "Presentation relationships use a non-standard namespace prefix")
             active_slide_count = presentation.count("<p:sldId ")
             expected_slide_count = 13 - 4 + ((recommendation_count + 1) // 2)
-            if recommendation_count == 0:
-                expected_slide_count -= 1
             assert_true(
                 active_slide_count == expected_slide_count,
                 f"Unexpected slide count for {recommendation_count} recommendations: "
