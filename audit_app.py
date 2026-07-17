@@ -2085,7 +2085,6 @@ vendors (массив строк), legal_ids (массив строк), framewor
                 "temperature": 0.05,
                 "max_completion_tokens": 4200,
                 "reasoning_effort": "low",
-                "response_format": {"type": "json_object"},
             }
             groq_url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {groq_api_key}"}
@@ -9583,6 +9582,22 @@ if "last_report_risk_sources" not in st.session_state:
 if "telegram_generation_started_sent" not in st.session_state:
     st.session_state.telegram_generation_started_sent = False
 
+
+def render_generation_failure_state():
+    render_generation_guard(False)
+    message = st.session_state.get("generation_error_message") or (
+        "ИИ-анализ временно недоступен. Презентация не сформирована. "
+        "Попробуйте повторить позже."
+    )
+    st.error(message)
+    if st.button("Повторить формирование", key="presentation_retry_after_error"):
+        st.session_state.generation_error_message = ""
+        st.session_state.telegram_generation_started_sent = False
+        st.session_state.generation_attempt_started_at = None
+        st.session_state.generation_state = "preparing"
+        st.rerun()
+    st.stop()
+
 render_generation_guard(
     st.session_state.generation_state in {"preparing", "heavy_ai"}
 )
@@ -9863,14 +9878,16 @@ if st.session_state.generation_state == "heavy_ai":
     if st.session_state.generation_attempt_started_at is None:
         st.session_state.generation_attempt_started_at = time.time()
     elif time.time() - st.session_state.generation_attempt_started_at > 300:
-        st.session_state.generation_state = "idle"
+        st.session_state.generation_state = "ai_failed"
         st.session_state.generation_attempt_started_at = None
         st.session_state.generation_error_message = (
             "Формирование презентации превысило допустимое время. Попробуйте повторить позже."
         )
-        st.rerun()
+        render_generation_failure_state()
 
-    render_generation_live_panel("Идет глубокий анализ и сборка презентации", active_step=4)
+    generation_panel = st.empty()
+    with generation_panel.container():
+        render_generation_live_panel("Идет глубокий анализ и сборка презентации", active_step=4)
 
     if not st.session_state.telegram_generation_started_sent:
         st.session_state.telegram_status = send_internal_telegram_message(
@@ -9962,13 +9979,14 @@ if st.session_state.generation_state == "heavy_ai":
                         redact_secret(exc, TOKEN)
                     )
                 )
-            st.session_state.generation_state = "idle"
+            st.session_state.generation_state = "ai_failed"
             st.session_state.generation_attempt_started_at = None
             st.session_state.generation_error_message = (
                 "ИИ-анализ временно недоступен. Презентация не сформирована. "
                 "Попробуйте повторить позже."
             )
-            st.rerun()
+            generation_panel.empty()
+            render_generation_failure_state()
 
     # Тихо отправляем в ТГ без создания задержек на экране
     st.session_state.telegram_status = ""
@@ -10039,9 +10057,7 @@ if st.session_state.generation_state == "heavy_ai":
 
 # --- СЦЕНАРИЙ 3: НЕУДАЧНАЯ СБОРКА БЕЗ КЛИЕНТСКОГО ОТЧЕТА ---
 if st.session_state.generation_state == "ai_failed":
-    st.session_state.generation_state = "idle"
-    st.session_state.generation_attempt_started_at = None
-    st.rerun()
+    render_generation_failure_state()
 
 # --- СЦЕНАРИЙ 4: ВЫВОД ГОТОВОГО РЕЗУЛЬТАТА ---
 if st.session_state.generation_state == "finalized":
