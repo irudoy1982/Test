@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.X3-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.14-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -353,6 +353,21 @@ def check_presentation_fact_guards() -> None:
         {"is_kvoiki": True, "has_personal_data": True},
     )
     assert_true(dlp_item["level"] == "HIGH", "KVOIKI DLP gap must be high priority")
+    backup_item = enforce(
+        {
+            "level": "HIGH",
+            "risk": "Недостаточная проверка восстановления резервных копий",
+            "impact": "Невозможность восстановления данных и нарушение требований PD_LAW.",
+            "recommendation": "Проверить восстановление.",
+        },
+        {"Резервное копирование": "Veeam Backup & Replication"},
+        {"has_backup": True},
+    )
+    assert_true(
+        "невозможность" not in backup_item["impact"].lower()
+        and "Veeam Backup & Replication" in backup_item["description"],
+        "Existing backup must be described as an unverified recovery capability, not as impossible recovery",
+    )
 
 
 def check_presentation_templates() -> None:
@@ -446,6 +461,21 @@ def check_customer_output_normalization() -> None:
         "[PD_LAW]" not in namespace["expand_regulatory_references"]("Штрафы по [PD_LAW]"),
         "Internal regulatory IDs leaked into customer text",
     )
+    bare_legal_text = namespace["expand_regulatory_references"](
+        "Нарушение требований PD_LAW и FINANCE_IS."
+    )
+    assert_true(
+        "PD_LAW" not in bare_legal_text and "FINANCE_IS" not in bare_legal_text,
+        "Bare internal regulatory IDs leaked into customer text",
+    )
+    for industry, identifiers in namespace["INDUSTRY_REGULATORY_IDS"].items():
+        expanded = namespace["expand_regulatory_references"](
+            f"Профиль {industry}: " + ", ".join(identifiers)
+        )
+        assert_true(
+            not any(re.search(rf"(?<![A-Za-z0-9_]){re.escape(identifier)}(?![A-Za-z0-9_])", expanded) for identifier in identifiers),
+            f"Internal regulatory ID leaked for industry: {industry}",
+        )
     assert_true(
         namespace["risk_semantic_key"]({
             "risk": "Привилегированные учетные записи требуют PAM",
@@ -457,6 +487,22 @@ def check_customer_output_normalization() -> None:
     assert_true(
         "закупить" not in roadmap.lower() and "пилот" in roadmap.lower() and "forcepoint" not in roadmap.lower(),
         "DLP roadmap must use pilot-before-procurement and remain vendor-neutral",
+    )
+    pam_roadmap = namespace["sanitize_customer_roadmap_text"](
+        "Развернуть пилотный PAM для администраторов Windows Server 2019/2022 (CyberArk)."
+    )
+    assert_true(
+        "windows" not in pam_roadmap.lower()
+        and "cyberark" not in pam_roadmap.lower()
+        and "критич" in pam_roadmap.lower(),
+        "PAM roadmap must cover the critical environment and remain vendor-neutral",
+    )
+    vm_roadmap = namespace["sanitize_customer_roadmap_text"](
+        "Запустить базовый скан уязвимостей серверов с помощью OpenVAS."
+    )
+    assert_true(
+        "openvas" not in vm_roadmap.lower() and "уязвим" in vm_roadmap.lower(),
+        "Vulnerability roadmap must remain vendor-neutral",
     )
     bank = namespace["industry_regulatory_profile"]("Финтех / Банки")
     kvoiki = namespace["industry_regulatory_profile"]("КВОИКИ / Критическая инфраструктура")

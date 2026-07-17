@@ -38,6 +38,9 @@ Planned customer-visible improvement:
 - Strengthened presentation quality checks: every shown recommendation is tied to a concrete questionnaire basis and a measurable result.
 - Added clearer conditional industry standards, including PCI DSS and GDPR where their applicability is confirmed.
 - Refined the 90-day roadmap to show the practical result of each stage.
+- Improved presentation fact checks for backup and recovery so an existing backup system is not described as absent or unusable without evidence.
+- Removed internal regulatory identifiers and product names from customer-facing roadmap text.
+- Expanded privileged-access roadmap wording from individual server platforms to the complete critical-system scope.
 
 ## v12.0.0
 

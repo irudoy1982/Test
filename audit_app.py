@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.X3-dev"
+APP_VERSION = "12.14-dev"
 
 
 def get_app_instance_label():
@@ -1091,7 +1091,38 @@ def expand_regulatory_references(value):
         item = REGULATORY_CATALOG.get(match.group(1))
         return item["short"] if item else match.group(0)
 
-    return re.sub(r"\[([A-Z0-9_]+)\]", replace_token, text)
+    text = re.sub(r"\[([A-Z0-9_]+)\]", replace_token, text)
+
+    def replace_requirement_group(match):
+        prefix = match.group(1)
+        identifiers = re.findall(r"[A-Z][A-Z0-9_]+", match.group(2))
+        titles = [
+            REGULATORY_CATALOG[identifier.upper()]["short"]
+            for identifier in identifiers
+            if identifier.upper() in REGULATORY_CATALOG
+        ]
+        return f"{prefix}: {'; '.join(titles)}" if titles else match.group(0)
+
+    identifier_pattern = "|".join(
+        re.escape(identifier)
+        for identifier in sorted(REGULATORY_CATALOG, key=len, reverse=True)
+    )
+    if identifier_pattern:
+        text = re.sub(
+            rf"((?:нарушение|несоответствие)\s+требовани(?:й|ям))\s+"
+            rf"((?:{identifier_pattern})(?:\s*(?:,|и)\s*(?:{identifier_pattern}))*)",
+            replace_requirement_group,
+            text,
+            flags=re.IGNORECASE,
+        )
+        for identifier in sorted(REGULATORY_CATALOG, key=len, reverse=True):
+            text = re.sub(
+                rf"(?<![A-Za-z0-9_]){re.escape(identifier)}(?![A-Za-z0-9_])",
+                REGULATORY_CATALOG[identifier]["short"],
+                text,
+                flags=re.IGNORECASE,
+            )
+    return text
 
 
 def sanitize_customer_roadmap_text(value):
@@ -1107,19 +1138,51 @@ def sanitize_customer_roadmap_text(value):
             )
         return "Определить каналы контроля, политики и измеримые критерии пилота DLP."
 
-    text = re.sub(r"\s*\([^)]*(?:Cisco|CyberArk|Veeam|Fortinet|Check Point|Huawei|IBM|Splunk|ManageEngine|Broadcom|Forcepoint)[^)]*\)", "", text, flags=re.IGNORECASE)
+    if "pam" in lowered or "привилегирован" in lowered:
+        if any(marker in lowered for marker in ("рабочую группу", "собрать требования", "выбрать пилот")):
+            return (
+                "Сформировать рабочую группу, инвентаризировать привилегированные доступы ко всем "
+                "критичным системам и выбрать пилотный сценарий PAM."
+            )
+        if "пилот" in lowered:
+            return (
+                "Провести пилот PAM на согласованном критичном контуре; проверить vault, контроль "
+                "сессий, аварийный доступ и передачу событий в SIEM."
+            )
+        if any(marker in lowered for marker in ("полноцен", "масштаб", "все сервер", "внедрить pam")):
+            return (
+                "Распространить PAM на критичные системы, сетевое оборудование, платформы "
+                "виртуализации, базы данных и административные консоли; подключить события к SIEM."
+            )
+
+    if "скан" in lowered and "уязв" in lowered:
+        return (
+            "Провести первичное сканирование уязвимостей согласованного ИТ-контура; "
+            "зафиксировать критичные находки, владельцев и сроки устранения."
+        )
+
+    text = re.sub(
+        r"\s*\((?:e\.?g\.?|например)[^)]*\)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\s*\([^)]*(?:Cisco|CyberArk|Veeam|Fortinet|Check Point|Huawei|IBM|Splunk|ManageEngine|Broadcom|Forcepoint|OpenVAS|R-?Vision)[^)]*\)", "", text, flags=re.IGNORECASE)
     vendor_names = {
         "Cisco ISE", "CyberArk", "Veeam Backup", "Veeam", "Fortinet", "Check Point",
         "Huawei", "IBM", "Splunk", "ManageEngine", "Broadcom", "Forcepoint",
+        "OpenVAS", "R-Vision", "R Vision", "Qualys", "Tenable", "Rapid7",
+        "Zabbix", "Prometheus", "Microsoft", "Windows Server",
     }
     try:
-        for values in load_detailed_solution_vendor_map().values():
-            vendor_names.update(str(value).strip() for value in values if str(value).strip())
+        vendor_names.update(load_detailed_vendor_names())
     except Exception:
         pass
     for vendor in sorted(vendor_names, key=len, reverse=True):
         text = re.sub(re.escape(vendor), "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bBackup\b", "резервных копий", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+с\s+помощью\s+(?:бесплатного\s+)?инструмента\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\(\s*\)", "", text)
     text = re.sub(r"\s{2,}", " ", text)
     text = re.sub(r"\s+([,.;:])", r"\1", text)
     return text.strip(" .,-") + ("." if text.strip(" .,-") else "")
@@ -7494,6 +7557,32 @@ def enforce_audit_fact_policy(item, results, context):
             "Определить категории данных, каналы контроля и критерии успеха; провести ограниченный "
             "пилот DLP; по результатам пилота выбрать архитектуру и масштабировать подтвержденные политики."
         )
+
+    if key == "backup" and context.get("has_backup"):
+        normalized.update({
+            "risk": "Восстановление из резервных копий не подтверждено регулярными тестами",
+            "description": (
+                f"В анкете указан действующий backup-контур: "
+                f"{results.get('Резервное копирование', 'не указано')}. "
+                "При этом целевые RTO/RPO и результаты контрольного восстановления не зафиксированы."
+            ),
+            "impact": (
+                "Без регулярной проверки нельзя подтвердить, что критичные сервисы будут восстановлены "
+                "в согласованные с бизнесом сроки и с допустимой потерей данных."
+            ),
+            "recommendation": (
+                "Согласовать RTO/RPO по критичным сервисам; утвердить сценарии контрольного "
+                "восстановления; регулярно проводить тесты и фиксировать фактическое время и полноту восстановления."
+            ),
+            "evidence": [
+                f"Резервное копирование: {results.get('Резервное копирование', 'указано')}",
+                "RTO/RPO и результаты тестового восстановления в анкете не зафиксированы",
+            ],
+            "success_metric": (
+                "Все критичные сервисы проходят тест восстановления в пределах утвержденных RTO/RPO"
+            ),
+            "vendors": ["Backup"],
+        })
 
     if key == "siem_soc" and not is_enabled(results.get("SOAR")):
         recommendation = str(normalized.get("recommendation", "")).strip()
