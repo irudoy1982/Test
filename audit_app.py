@@ -1402,6 +1402,7 @@ def ai_generate_risks_and_recs(c_info, results):
 
     api_key = get_app_secret("GEMINI_API_KEY")
     groq_api_key = get_app_secret("GROQ_API_KEY")
+    st.session_state.ai_analysis_succeeded = False
 
     if not api_key and not groq_api_key:
         return []
@@ -2074,6 +2075,18 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
         def accept_ai_payload(parsed_payload, provider_label, model_label, errors):
             ai_narrative = normalize_ai_audit_narrative(parsed_payload)
             normalized_payload = normalize_ai_risks_payload(parsed_payload)
+            explicit_no_findings = (
+                isinstance(parsed_payload, dict)
+                and isinstance(parsed_payload.get("risks"), list)
+                and not parsed_payload.get("risks")
+            )
+            if explicit_no_findings:
+                st.session_state.ai_last_error = ""
+                st.session_state.ai_model_used = model_label
+                st.session_state.ai_provider_used = provider_label
+                st.session_state.ai_audit_narrative = ai_narrative
+                st.session_state.ai_analysis_succeeded = True
+                return []
             normalized_payload, skipped_ai_items = filter_ai_risks_by_answers(
                 normalized_payload,
                 results,
@@ -2087,7 +2100,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             if provider_label == "Groq":
                 prepared_payload, quality_error = ai_quality_gate(
                     normalized_payload,
-                    min_items=3,
+                    min_items=1,
                     min_security_items=0,
                     min_it_items=0,
                 )
@@ -2104,6 +2117,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             st.session_state.ai_model_used = model_label
             st.session_state.ai_provider_used = provider_label
             st.session_state.ai_audit_narrative = ai_narrative
+            st.session_state.ai_analysis_succeeded = True
             return prepared_payload
 
         def call_groq_once():
@@ -2242,7 +2256,7 @@ vendors (массив строк), legal_ids (массив строк), framewor
                             active_model,
                             ai_errors,
                         )
-                        if prepared_payload:
+                        if prepared_payload is not None:
                             return prepared_payload
                         stop_gemini = True
                         break
@@ -2261,7 +2275,7 @@ vendors (массив строк), legal_ids (массив строк), framewor
                     groq_model,
                     ai_errors,
                 )
-                if prepared_payload:
+                if prepared_payload is not None:
                     return prepared_payload
             except Exception as exc:
                 ai_errors.append(
@@ -2278,6 +2292,7 @@ vendors (массив строк), legal_ids (массив строк), framewor
         st.session_state.ai_last_error = safe_error
         st.session_state.ai_provider_used = "Нет ответа"
         st.session_state.ai_audit_narrative = {}
+        st.session_state.ai_analysis_succeeded = False
         return []
 
 
@@ -7370,8 +7385,9 @@ def build_report_risk_set(c_info, results, context):
         c_info,
         results
     )
+    ai_succeeded = bool(st.session_state.get("ai_analysis_succeeded"))
     ai_used = isinstance(ai_risks, list) and any(isinstance(item, dict) for item in ai_risks)
-    st.session_state.ai_used_in_last_report = ai_used
+    st.session_state.ai_used_in_last_report = ai_succeeded
 
     combined_risks = []
     if ai_used:
@@ -10235,6 +10251,7 @@ if st.session_state.generation_state == "heavy_ai":
             st.session_state.ai_model_used = ""
             st.session_state.ai_provider_used = ""
             st.session_state.ai_used_in_last_report = False
+            st.session_state.ai_analysis_succeeded = False
             st.session_state.ai_audit_narrative = {}
 
             # Внутренний XLSX нужен только как источник листов для sales playbook.
