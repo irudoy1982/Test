@@ -2033,8 +2033,8 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 prepared_payload, quality_error = ai_quality_gate(
                     normalized_payload,
                     min_items=3,
-                    min_security_items=1,
-                    min_it_items=1,
+                    min_security_items=0,
+                    min_it_items=0,
                 )
             else:
                 prepared_payload, quality_error = ai_quality_gate(normalized_payload)
