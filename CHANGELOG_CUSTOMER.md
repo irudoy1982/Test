@@ -43,6 +43,8 @@ Planned customer-visible improvement:
 - Expanded privileged-access roadmap wording from individual server platforms to the complete critical-system scope.
 - Kept technical audit depth consistent across industries by recovering confirmed recommendations from the complete analysis and roadmap, not only one response section.
 - Expanded concise technology findings into clear customer-facing risk titles without weakening questionnaire fact checks.
+- Improved recommendation consistency so network admission, identity lifecycle, and privileged access are described as separate, evidence-based initiatives.
+- Refined presentation risk cards to prevent long titles from overlapping impact text.
 
 ## v12.0.0
 

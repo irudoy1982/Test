@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.16-dev"
+APP_VERSION = "12.17-dev"
 
 
 def get_app_instance_label():
@@ -638,9 +638,9 @@ def augment_ai_risks_from_narrative(items, narrative, results):
     }
     profiles = {
         "mfa": ("ИБ", "Покрытие MFA требует расширения", "Компрометация пароля может открыть доступ к критичным ресурсам."),
-        "iam": ("ИБ", "Жизненный цикл учетных записей требует централизованного управления", "Несвоевременное создание, изменение или отзыв прав повышает риск избыточного доступа."),
+        "iam": ("ИБ", "Жизненный цикл учетных записей не автоматизирован", "Несвоевременное создание, изменение или отзыв прав повышает риск избыточного доступа."),
         "pam": ("ИБ", "Привилегированные доступы требуют отдельного контроля", "Неконтролируемая административная сессия может затронуть несколько критичных систем."),
-        "nac": ("ИБ", "Допуск устройств к сети требует централизованного контроля", "Неизвестное устройство может получить сетевой доступ до ручного обнаружения."),
+        "nac": ("ИБ", "Допуск устройств к сети не контролируется автоматически", "Неизвестное устройство может получить сетевой доступ до ручного обнаружения."),
         "dlp": ("ИБ", "Каналы передачи чувствительных данных требуют контроля", "Неконтролируемая передача данных повышает риск утечки и регуляторных последствий."),
         "siem_soc": ("ИБ", "Мониторинг событий и реагирование требуют развития", "Неполное покрытие источников увеличивает время обнаружения и расследования инцидентов."),
         "patch": ("ИТ", "Уязвимости и обновления требуют управляемого цикла", "Критичные уязвимости могут оставаться открытыми дольше согласованного срока."),
@@ -737,9 +737,9 @@ def is_truncated_ai_text(value):
 def canonical_ai_risk_title(semantic_key):
     titles = {
         "mfa": "Критичные доступы требуют полного покрытия MFA",
-        "iam": "Жизненный цикл учетных записей требует централизованного управления",
+        "iam": "Жизненный цикл учетных записей не автоматизирован",
         "pam": "Привилегированные доступы требуют отдельного контроля",
-        "nac": "Допуск устройств к сети требует централизованного контроля",
+        "nac": "Допуск устройств к сети не контролируется автоматически",
         "dlp": "Каналы передачи чувствительных данных требуют контроля",
         "siem_soc": "Мониторинг событий и реагирование требуют развития",
         "patch": "Уязвимости и обновления требуют управляемого цикла",
@@ -1287,8 +1287,8 @@ def sanitize_customer_roadmap_text(value):
             )
         if any(marker in lowered for marker in ("полноцен", "масштаб", "все сервер", "внедрить pam")):
             return (
-                "Распространить PAM на критичные системы, сетевое оборудование, платформы "
-                "виртуализации, базы данных и административные консоли; подключить события к SIEM."
+                "Расширить PAM на критичные системы, сетевое оборудование, базы данных и "
+                "административные консоли; передавать события в SIEM."
             )
 
     if "скан" in lowered and "уязв" in lowered:
@@ -7527,6 +7527,10 @@ def risk_source_label(source):
 
 
 def risk_semantic_key(item):
+    title = str(item.get("risk", "")).strip().lower()
+    if "сегментац" in title and not any(marker in title for marker in ("nac", "network access control")):
+        return "segmentation"
+
     text = " ".join(
         str(item.get(field, ""))
         for field in ("risk", "description", "impact", "recommendation")
@@ -7561,7 +7565,6 @@ def risk_semantic_key(item):
         if any(marker in text for marker in markers):
             return key
 
-    title = str(item.get("risk", "")).strip().lower()
     return re.sub(r"\s+", " ", title)
 
 
@@ -7700,6 +7703,55 @@ def enforce_audit_fact_policy(item, results, context):
             "vendors": ["NAC"],
         })
         key = "nac"
+
+    if key == "nac" and not is_enabled(results.get("NAC")):
+        normalized.update({
+            "level": "MEDIUM",
+            "risk": "Допуск устройств к сети не контролируется автоматически",
+            "description": (
+                "В анкете NAC не указан. Это не подтверждает отсутствие VLAN, ACL или межсетевого "
+                "экранирования, но указывает на отсутствие автоматической проверки устройств при подключении."
+            ),
+            "impact": (
+                "Неизвестное или несоответствующее политике устройство может получить сетевой доступ "
+                "до ручного обнаружения и изоляции."
+            ),
+            "recommendation": (
+                "Описать типы проводных и беспроводных подключений; провести пилот NAC на Wi-Fi и одном "
+                "проводном сегменте; проверить профилирование, контроль соответствия и изоляцию устройств."
+            ),
+            "evidence": [
+                f"NAC в анкете: {results.get('NAC', 'Нет')}",
+                f"Точки доступа Wi-Fi: {results.get('Wi-Fi Точки доступа', results.get('Количество точек доступа', 'не указано'))}",
+            ],
+            "success_metric": "Все подключения идентифицируются; неизвестные устройства автоматически изолируются",
+            "vendors": ["NAC"],
+        })
+
+    if key == "iam" and not is_enabled(results.get("IAM")):
+        user_count = int(context.get("users", results.get("_user_count", 0)) or 0)
+        normalized.update({
+            "level": "MEDIUM",
+            "risk": "Жизненный цикл учетных записей не автоматизирован",
+            "description": (
+                f"В анкете IAM не указан для контура из {user_count} рабочих мест. "
+                "Порядок создания, изменения, регулярного пересмотра и отзыва прав требует подтверждения."
+            ),
+            "impact": (
+                "Задержка отзыва доступа и накопление избыточных прав повышают вероятность "
+                "несанкционированного доступа к бизнес-системам."
+            ),
+            "recommendation": (
+                "Описать процессы приема, перевода и увольнения; определить владельцев ролей и согласования; "
+                "провести PoC IAM на выбранных подразделениях и критичных системах."
+            ),
+            "evidence": [
+                f"IAM в анкете: {results.get('IAM', 'Нет')}",
+                f"Рабочие места: {user_count}",
+            ],
+            "success_metric": "Учетные записи имеют владельца; создание, изменение и отзыв прав выполняются по SLA",
+            "vendors": ["IAM"],
+        })
 
     if key == "dlp" and not is_enabled(results.get("DLP")) and (
         context.get("is_kvoiki") or context.get("has_personal_data")
@@ -8422,9 +8474,14 @@ def presentation_presales_profile(item):
             "action": "Инвентаризировать привилегированные учетные записи, разделить персональные доступы и внедрить контроль критичных сессий.",
         },
         "nac": {
-            "title": "Контроль подключения устройств к сети требует усиления",
+            "title": "Допуск устройств к сети не контролируется автоматически",
             "impact": "Без централизованного профилирования и политики допуска неизвестные или несоответствующие требованиям устройства могут попасть в корпоративную сеть.",
             "action": "Провести пилот NAC на Wi-Fi и одном проводном сегменте, настроить профилирование, проверку соответствия и изоляцию неизвестных устройств.",
+        },
+        "iam": {
+            "title": "Жизненный цикл учетных записей не автоматизирован",
+            "impact": "Задержка отзыва доступа и накопление избыточных прав повышают вероятность несанкционированного доступа к бизнес-системам.",
+            "action": "Описать прием, перевод и увольнение, определить владельцев ролей и провести PoC IAM на выбранных подразделениях и критичных системах.",
         },
         "segmentation": {
             "title": "Архитектуру сегментации необходимо подтвердить",
@@ -8493,10 +8550,7 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
             normalized[field] = expand_regulatory_references(normalized[field])
     normalized["risk"] = normalized.get("risk") or normalized.get("domain") or "Рекомендация"
     normalized["recommendation"] = normalized.get("recommendation") or normalized.get("action") or normalized.get("description")
-    semantic_key, profile = presentation_presales_profile(normalized)
-    ai_authored = str(item.get("source") or item.get("_source") or "").strip().lower() in {
-        "ии", "ai", "gemini", "groq"
-    }
+    _, profile = presentation_presales_profile(normalized)
     generic_titles = {"ит", "иб", "ит/иб", "рекомендация"}
     title_by_key = {
         "mfa": "Многофакторная аутентификация",
@@ -8579,27 +8633,21 @@ def presentation_risk_entry(item):
         if field in normalized:
             normalized[field] = expand_regulatory_references(normalized[field])
     normalized["recommendation"] = normalized.get("recommendation") or normalized.get("action") or normalized.get("description")
-    _, profile = presentation_presales_profile(normalized)
+    semantic_key, profile = presentation_presales_profile(normalized)
     ai_authored = str(item.get("source") or item.get("_source") or "").strip().lower() in {
         "ии", "ai", "gemini", "groq"
     }
     raw_level, fill_color, text_color = presentation_severity_style(normalized.get("level"))
     return {
         "level": presentation_text(risk_level_label(raw_level), 16).upper(),
-        "title": (
-            presentation_text(normalized.get("risk", "Риск требует внимания"), 78)
-            if ai_authored
-            else profile.get("title") or presentation_text(normalized.get("risk", "Риск требует внимания"), 78)
+        "title": profile.get("title") or presentation_text(
+            normalized.get("risk", "Риск требует внимания"), 58
         ),
-        "impact": (None if ai_authored else profile.get("impact")) or presentation_action_text(
+        "impact": profile.get("impact") or presentation_action_text(
             normalized.get("impact") or normalized.get("description") or "Требуется уточнить влияние риска.",
             155,
         ),
-        "action": (
-            presentation_action_text(normalized["recommendation"], 135)
-            if ai_authored
-            else profile.get("action") or presentation_action_text(normalized["recommendation"], 135)
-        ),
+        "action": profile.get("action") or presentation_action_text(normalized["recommendation"], 135),
         "fill_color": fill_color,
         "text_color": text_color,
     }

@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.16-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.17-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -441,6 +441,26 @@ def check_presentation_fact_guards() -> None:
         namespace["risk_semantic_key"](nac_item) == "nac" and nac_item["level"] == "MEDIUM",
         "Unknown segmentation must become a precise NAC admission-control recommendation",
     )
+    assert_true(
+        "lateral movement" not in nac_item["impact"].lower()
+        and "vlan" in nac_item["description"].lower()
+        and "не подтверждает отсутствие" in nac_item["description"].lower(),
+        "NAC finding must not claim that segmentation or lateral movement was proven",
+    )
+    iam_item = enforce(
+        {
+            "level": "HIGH",
+            "risk": "Отсутствие IAM приводит к избыточным привилегиям пользователей",
+            "recommendation": "Включить RBAC в Active Directory.",
+        },
+        {"IAM": "Нет", "_user_count": 350},
+        {"users": 350},
+    )
+    assert_true(
+        "приема, перевода и увольнения" in iam_item["recommendation"].lower()
+        and "active directory" not in iam_item["recommendation"].lower(),
+        "IAM recommendation must cover the account lifecycle instead of only AD RBAC",
+    )
     dlp_item = enforce(
         {"level": "LOW", "risk": "Отсутствие DLP", "recommendation": "Оценить DLP."},
         {"DLP": "Нет"},
@@ -590,6 +610,13 @@ def check_customer_output_normalization() -> None:
         and "cyberark" not in pam_roadmap.lower()
         and "критич" in pam_roadmap.lower(),
         "PAM roadmap must cover the critical environment and remain vendor-neutral",
+    )
+    pam_scale = namespace["sanitize_customer_roadmap_text"](
+        "Внедрить PAM на все серверы и масштабировать на платформы виртуализации."
+    )
+    assert_true(
+        len(pam_scale) <= 140 and pam_scale.endswith("SIEM."),
+        "Scaled PAM roadmap must remain complete within the presentation text budget",
     )
     vm_roadmap = namespace["sanitize_customer_roadmap_text"](
         "Запустить базовый скан уязвимостей серверов с помощью OpenVAS."

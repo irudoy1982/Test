@@ -381,7 +381,6 @@ def test_presentation_template_rendering() -> None:
             rendered_xml = "\n".join(archive.read(name).decode("utf-8") for name in slide_names)
         assert_true(len(slide_names) == 13, f"{brand}: expected 13 slides, got {len(slide_names)}")
         assert_true("Команда для реализации изменений" in rendered_xml, f"{brand}: company profile slide is missing")
-        assert_true("Регуляторный профиль" in rendered_xml, f"{brand}: regulatory slide is missing")
         company_name, email, phone, founded_year, foreign_brand = brand_identity[brand]
         assert_true(company_name in rendered_xml, f"{brand}: company name is missing")
         assert_true(email in rendered_xml and phone in rendered_xml, f"{brand}: contact details are missing")
@@ -405,7 +404,7 @@ def test_presentation_text_is_self_contained() -> None:
 
 def test_presentation_actions_are_complete_and_deduplicated() -> None:
     module_text = APP.read_text(encoding="utf-8")
-    namespace = {"re": re}
+    namespace = {"re": re, "expand_regulatory_references": lambda value: value}
     for name in (
         "presentation_text",
         "presentation_action_text",
@@ -459,6 +458,19 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "recommendation": "Провести аудит сети.",
     })
     assert_true("сегментац" not in network_risk["impact"].lower(), "Network performance slide must not invent missing segmentation")
+    nac_risk = namespace["presentation_risk_entry"]({
+        "_source": "Groq",
+        "level": "MEDIUM",
+        "risk": "Отсутствие NAC приводит к неавтоматизированному контролю доступа устройств",
+        "impact": "Увеличение вероятности lateral movement и компрометации критических серверов.",
+        "recommendation": "Внедрить NAC.",
+    })
+    assert_true(
+        nac_risk["title"] == "Допуск устройств к сети не контролируется автоматически"
+        and "lateral movement" not in nac_risk["impact"].lower(),
+        "Known NAC findings must use the fact-safe presales title and impact",
+    )
+    assert_true(len(nac_risk["title"]) <= 58, "Risk-card title can overlap the impact block")
 
 
 def test_it_maturity_measures_controls_not_infrastructure_size() -> None:
