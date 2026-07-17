@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.8-dev"
+APP_VERSION = "12.9-dev"
 
 
 def get_app_instance_label():
@@ -2479,12 +2479,23 @@ def inject_audit_design():
         margin: 0 !important;
     }
 
-    .st-key-presentation_download {
-        width: min(460px, 100%);
-        margin: 18px auto 10px auto;
+    .st-key-presentation_download,
+    div[data-testid="stElementContainer"]:has(.st-key-presentation_download) {
+        width: min(460px, 100%) !important;
+        max-width: 460px !important;
+        margin: 18px auto 10px auto !important;
+        box-sizing: border-box;
+    }
+
+    .st-key-presentation_download [data-testid="stDownloadButton"] {
+        width: 100% !important;
+        max-width: 100% !important;
     }
 
     .st-key-presentation_download [data-testid="stDownloadButton"] button {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
         min-height: 58px;
         background: var(--audit-accent);
         color: #ffffff;
@@ -9228,7 +9239,7 @@ if st.session_state.generation_state == "finalized":
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             key="presentation_download",
             type="secondary",
-            use_container_width=True,
+            use_container_width=False,
         )
     elif st.session_state.presentation_status == "error":
         st.error("Не удалось сформировать презентацию. Попробуйте повторить позже.")

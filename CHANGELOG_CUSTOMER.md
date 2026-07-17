@@ -23,6 +23,7 @@ Planned customer-visible improvement:
 - Made the company's delivered IT project track record more prominent.
 - Refined company founding facts and improved the audit conclusion download experience.
 - Polished the final audit conclusion action for a clearer, more focused download.
+- Centered the final download action and improved its responsive behavior.
 
 ## v12.0.0
 
