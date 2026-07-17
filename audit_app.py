@@ -6849,8 +6849,6 @@ def network_segmentation_evidence(results):
 
 def neutralize_company_scale_language(value):
     text = str(value or "")
-    it_score_fill, it_score_text = presentation_maturity_style(it_maturity_score)
-    security_score_fill, security_score_text = presentation_maturity_style(final_score)
     replacements = {
         "маленькая компания": "компания с указанным ИТ-контуром",
         "малая компания": "компания с указанным ИТ-контуром",
@@ -7754,6 +7752,8 @@ def presentation_focus_items(context, business_systems):
 
 
 def build_audit_presentation_replacements(c_info, results, final_score, it_maturity_score):
+    it_score_fill, it_score_text = presentation_maturity_style(it_maturity_score)
+    security_score_fill, security_score_text = presentation_maturity_style(final_score)
     context = build_context(results, c_info)
     regulatory_profile = industry_regulatory_profile(c_info.get("Сфера деятельности", ""))
     regulatory_summary = presentation_regulatory_summary(
@@ -9902,3 +9902,4 @@ if st.session_state.generation_state == "finalized":
         st.rerun()
 
 st.info(f"Khalil Audit System {APP_VERSION} | by Ivan Rudoy | Алматы 2026")
+
