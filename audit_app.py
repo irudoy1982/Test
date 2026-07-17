@@ -1866,6 +1866,14 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
         gemini_retry_count = int(get_app_secret("GEMINI_RETRY_COUNT", 1))
         gemini_retry_delay = float(get_app_secret("GEMINI_RETRY_DELAY_SECONDS", 2.0))
 
+        def is_gemini_quota_exhausted(error_text):
+            lowered = str(error_text or "").lower()
+            return (
+                "resource_exhausted" in lowered
+                or "quota exceeded" in lowered
+                or "http 429" in lowered
+            )
+
         def should_retry_gemini_error(error_text):
             lowered = str(error_text or "").lower()
             return any(
@@ -2033,7 +2041,12 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
 
                     ai_errors.append(f"{active_model}: {quality_error or 'нет пригодных законченных рекомендаций'}")
                 except Exception as exc:
-                    ai_errors.append(f"{active_model}: {redact_secret(exc, api_key)}")
+                    safe_error = redact_secret(exc, api_key)
+                    if is_gemini_quota_exhausted(safe_error):
+                        raise RuntimeError(
+                            f"{active_model}: {safe_error}"
+                        ) from exc
+                    ai_errors.append(f"{active_model}: {safe_error}")
 
         raise ValueError("Gemini не дал пригодный ответ. " + " | ".join(ai_errors[-6:]))
 
