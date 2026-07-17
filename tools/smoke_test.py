@@ -202,6 +202,7 @@ def check_static_hooks() -> None:
     assert_true("Область для верификации" not in text, "Verification placeholder must not be emitted")
     assert_true("groq_prompt = f\"\"\"" in text, "Compact Groq prompt is missing")
     assert_true('"max_completion_tokens": 4200' in text, "Groq token budget is not capped below the free-tier TPM limit")
+    assert_true('"response_format": {"type": "json_object"}' in text, "Groq response must tolerate harmless extra JSON fields")
     assert_true("generation_error_message" in text, "Persistent generation error state is missing")
 
 

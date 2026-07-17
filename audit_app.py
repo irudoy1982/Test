@@ -409,6 +409,7 @@ def normalize_ai_risks_payload(payload):
 
         return {
             "level": repair_mojibake(item.get("level", "MEDIUM")).strip() or "MEDIUM",
+            "area": repair_mojibake(item.get("area", "")).strip(),
             "risk": risk,
             "description": repair_mojibake(item.get("description", risk)).strip() or risk,
             "impact": repair_mojibake(item.get("impact", "Риск может привести к снижению устойчивости ИТ/ИБ процессов.")).strip(),
@@ -428,7 +429,8 @@ def normalize_ai_risks_payload(payload):
         for item in value:
             normalized = normalize_risk_item(item)
             if normalized:
-                normalized["_ai_area"] = source_area
+                item_area = str(normalized.get("area", "")).strip().upper()
+                normalized["_ai_area"] = item_area if item_area in {"ИТ", "ИБ"} else source_area
                 normalized_items.append(normalized)
         return normalized_items
 
@@ -2033,6 +2035,13 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
 Ты senior-аудитор ИТ и ИБ. Проанализируй только факты обезличенной анкеты.
 Верни 8-10 законченных рекомендаций: минимум 3 по ИТ и минимум 4 по ИБ.
 
+Верни только валидный JSON-объект с корневым массивом "risks".
+Каждый элемент risks должен содержать поля:
+area (только "ИТ" или "ИБ"), level (CRITICAL/HIGH/MEDIUM/LOW), risk,
+description, impact, recommendation, evidence (массив строк), success_metric,
+vendors (массив строк), legal_ids (массив строк), frameworks (массив строк).
+Дополнительные поля допустимы, но не заменяют перечисленные обязательные поля.
+
 Для каждой рекомендации:
 - свяжи риск минимум с одним конкретным фактом анкеты;
 - укажи бизнес-последствие;
@@ -2060,54 +2069,6 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
 Регуляторный контекст:
 {regulator_context[:1000]}
 """.strip()
-            groq_schema = {
-                "type": "object",
-                "properties": {
-                    "risks": {
-                        "type": "array",
-                        "minItems": 6,
-                        "maxItems": 12,
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "level": {
-                                    "type": "string",
-                                    "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
-                                },
-                                "risk": {"type": "string"},
-                                "description": {"type": "string"},
-                                "impact": {"type": "string"},
-                                "recommendation": {"type": "string"},
-                                "evidence": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                },
-                                "success_metric": {"type": "string"},
-                                "vendors": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                },
-                                "legal_ids": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                },
-                                "frameworks": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                },
-                            },
-                            "required": [
-                                "level", "risk", "description", "impact",
-                                "recommendation", "evidence", "success_metric",
-                                "vendors", "legal_ids", "frameworks",
-                            ],
-                            "additionalProperties": False,
-                        },
-                    },
-                },
-                "required": ["risks"],
-                "additionalProperties": False,
-            }
             groq_payload = {
                 "model": groq_model,
                 "messages": [
@@ -2116,7 +2077,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                         "content": (
                             "Ты senior-аудитор ИТ и ИБ. Анализируй только факты "
                             "обезличенной анкеты, не выдумывай отсутствующие проблемы "
-                            "и возвращай только данные по заданной JSON-схеме."
+                            "и возвращай только валидный JSON-объект с массивом risks."
                         ),
                     },
                     {"role": "user", "content": groq_prompt},
@@ -2124,14 +2085,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 "temperature": 0.05,
                 "max_completion_tokens": 4200,
                 "reasoning_effort": "low",
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "audit_risk_analysis",
-                        "strict": True,
-                        "schema": groq_schema,
-                    },
-                },
+                "response_format": {"type": "json_object"},
             }
             groq_url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {groq_api_key}"}
