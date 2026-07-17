@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import py_compile
+import hashlib
 import re
 import zipfile
 from pathlib import Path
@@ -15,6 +16,10 @@ PORTFOLIO = ROOT / "vendor_matrix_detailed.xlsx"
 PRESENTATION_TEMPLATES = [
     ROOT / "static" / "audit_presentation_khalil.pptx",
     ROOT / "static" / "audit_presentation_btg.pptx",
+]
+PRESENTATION_QR_ASSETS = [
+    ROOT / "static" / "presentation_khalil_qr.png",
+    ROOT / "static" / "presentation_btg_qr.png",
 ]
 
 
@@ -35,7 +40,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.1-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.2-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -103,14 +108,21 @@ def check_static_hooks() -> None:
 def check_presentation_templates() -> None:
     required = {
         "{{COMPANY}}",
+        "{{IT_SCORE}}",
         "{{SUMMARY_1}}",
         "{{RISK_1_TITLE}}",
-        "{{IT_1}}",
-        "{{SEC_1}}",
+        "{{IT_1_TITLE}}",
+        "{{IT_1_ACTION}}",
+        "{{IT_1_SOLUTION}}",
+        "{{IT_1_VENDORS}}",
+        "{{SEC_1_TITLE}}",
+        "{{SEC_1_ACTION}}",
+        "{{SEC_1_SOLUTION}}",
+        "{{SEC_1_VENDORS}}",
         "{{ROADMAP_1_1}}",
         "{{DECISION_1}}",
     }
-    for template in PRESENTATION_TEMPLATES:
+    for template, qr_asset in zip(PRESENTATION_TEMPLATES, PRESENTATION_QR_ASSETS):
         assert_true(template.exists(), f"Presentation template is missing: {template.name}")
         with zipfile.ZipFile(template, "r") as archive:
             slide_xml = "\n".join(
@@ -118,8 +130,18 @@ def check_presentation_templates() -> None:
                 for name in archive.namelist()
                 if name.startswith("ppt/slides/slide") and name.endswith(".xml")
             )
+            media_hashes = {
+                hashlib.sha256(archive.read(name)).hexdigest()
+                for name in archive.namelist()
+                if name.startswith("ppt/media/")
+            }
         missing = sorted(token for token in required if token not in slide_xml)
         assert_true(not missing, f"{template.name} is missing placeholders: {missing}")
+        qr_hash = hashlib.sha256(qr_asset.read_bytes()).hexdigest()
+        assert_true(qr_hash in media_hashes, f"{template.name} does not embed its contact QR")
+    for qr_asset in PRESENTATION_QR_ASSETS:
+        assert_true(qr_asset.exists(), f"Presentation QR is missing: {qr_asset.name}")
+        assert_true(qr_asset.stat().st_size > 2000, f"Presentation QR is unexpectedly small: {qr_asset.name}")
 
 
 def main() -> None:

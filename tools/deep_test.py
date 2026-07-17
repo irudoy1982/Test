@@ -375,7 +375,8 @@ def test_presentation_text_is_self_contained() -> None:
     clean = namespace["presentation_text"]
     assert_true(clean("Нормальный русский текст") == "Нормальный русский текст", "Normal text was changed")
     assert_true(clean("  Строка   с пробелами. ") == "Строка с пробелами", "Whitespace cleanup failed")
-    assert_true(clean("Очень длинная рекомендация " * 20, 80).endswith("…"), "Long text was not shortened")
+    shortened = clean("Очень длинная рекомендация " * 20, 80)
+    assert_true(len(shortened) <= 80 and shortened.endswith("."), "Long text was not shortened to a complete phrase")
 
 
 def main() -> None:

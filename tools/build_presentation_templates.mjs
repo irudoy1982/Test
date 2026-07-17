@@ -102,6 +102,48 @@ function addBulletRows(slide, items, cfg, yStart, rowH = 112) {
   });
 }
 
+function addRecommendationRows(slide, prefix, cfg) {
+  for (let index = 0; index < 4; index += 1) {
+    const number = index + 1;
+    const y = 148 + index * 132;
+    addText(slide, String(number).padStart(2, "0"), 64, y + 6, 48, 28, {
+      fontSize: 16,
+      bold: true,
+      color: cfg.colors.accent,
+    });
+    addText(slide, `{{${prefix}_${number}_TITLE}}`, 126, y, 1048, 28, {
+      fontSize: 19,
+      bold: true,
+      color: cfg.colors.dark,
+    });
+    addText(slide, `{{${prefix}_${number}_ACTION}}`, 126, y + 31, 1048, 42, {
+      fontSize: 15,
+      color: cfg.colors.muted,
+    });
+    addText(slide, "Решение", 126, y + 80, 78, 20, {
+      fontSize: 13,
+      bold: true,
+      color: cfg.colors.accent,
+    });
+    addText(slide, `{{${prefix}_${number}_SOLUTION}}`, 206, y + 78, 400, 34, {
+      fontSize: 14,
+      bold: true,
+      color: cfg.colors.dark,
+    });
+    addText(slide, "Производители", 632, y + 80, 116, 20, {
+      fontSize: 13,
+      bold: true,
+      color: cfg.colors.accent,
+    });
+    addText(slide, `{{${prefix}_${number}_VENDORS}}`, 754, y + 78, 420, 34, {
+      fontSize: 14,
+      bold: true,
+      color: cfg.colors.dark,
+    });
+    if (index < 3) addRect(slide, 126, y + 120, 1048, 1, cfg.colors.rule, "none");
+  }
+}
+
 async function buildTemplate(cfg) {
   const deck = Presentation.create({ slideSize: { width: W, height: H } });
 
@@ -126,20 +168,33 @@ async function buildTemplate(cfg) {
       fontSize: 22,
       color: cfg.colors.muted,
     });
-    addRect(slide, 72, 495, 206, 104, cfg.colors.accent, "rounded-xl");
-    addText(slide, "Зрелость ИБ", 92, 512, 166, 25, {
+    addRect(slide, 72, 495, 190, 104, cfg.colors.dark, "rounded-xl");
+    addText(slide, "Зрелость ИТ", 88, 512, 158, 25, {
       fontSize: 15,
       bold: true,
       color: "#FFFFFF",
       alignment: "center",
     });
-    addText(slide, "{{SCORE}}%", 92, 541, 166, 44, {
+    addText(slide, "{{IT_SCORE}}%", 88, 541, 158, 44, {
       fontSize: 34,
       bold: true,
       color: "#FFFFFF",
       alignment: "center",
     });
-    addText(slide, "{{DATE}}", 316, 542, 210, 34, {
+    addRect(slide, 278, 495, 190, 104, cfg.colors.accent, "rounded-xl");
+    addText(slide, "Зрелость ИБ", 294, 512, 158, 25, {
+      fontSize: 15,
+      bold: true,
+      color: "#FFFFFF",
+      alignment: "center",
+    });
+    addText(slide, "{{SCORE}}%", 294, 541, 158, 44, {
+      fontSize: 34,
+      bold: true,
+      color: "#FFFFFF",
+      alignment: "center",
+    });
+    addText(slide, "{{DATE}}", 505, 542, 180, 34, {
       fontSize: 18,
       bold: true,
       color: cfg.colors.dark,
@@ -235,7 +290,7 @@ async function buildTemplate(cfg) {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
     await addHeader(slide, cfg, "ИТ-рекомендации укрепляют управляемость среды", 5);
-    addBulletRows(slide, ["{{IT_1}}", "{{IT_2}}", "{{IT_3}}", "{{IT_4}}"], cfg, 166, 122);
+    addRecommendationRows(slide, "IT", cfg);
   }
 
   // 6. Security recommendations
@@ -243,7 +298,7 @@ async function buildTemplate(cfg) {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
     await addHeader(slide, cfg, "ИБ-рекомендации снижают наиболее вероятные риски", 6);
-    addBulletRows(slide, ["{{SEC_1}}", "{{SEC_2}}", "{{SEC_3}}", "{{SEC_4}}"], cfg, 166, 122);
+    addRecommendationRows(slide, "SEC", cfg);
   }
 
   // 7. Roadmap
@@ -281,40 +336,56 @@ async function buildTemplate(cfg) {
   // 8. Decisions
   {
     const slide = deck.slides.add();
-    slide.background.fill = cfg.colors.dark;
-    addRect(slide, 0, 0, 22, H, cfg.colors.accent, "none");
-    await addImage(slide, cfg.logo, { left: 980, top: 36, width: 230, height: 72 }, "contain");
-    addText(slide, "Решения, которые стоит принять сейчас", 66, 58, 820, 58, {
-      fontSize: 36,
-      bold: true,
-      color: "#FFFFFF",
-    });
-    addRect(slide, 66, 134, 112, 8, cfg.colors.accent, "rounded-lg");
+    slide.background.fill = "#FFFFFF";
+    await addHeader(slide, cfg, "Зафиксируйте решения и следующий шаг", 8);
     const decisions = ["{{DECISION_1}}", "{{DECISION_2}}", "{{DECISION_3}}", "{{DECISION_4}}"];
     decisions.forEach((item, i) => {
-      const y = 184 + i * 92;
-      addText(slide, String(i + 1).padStart(2, "0"), 66, y, 48, 30, {
+      const y = 164 + i * 112;
+      addText(slide, String(i + 1).padStart(2, "0"), 58, y, 48, 30, {
         fontSize: 16,
         bold: true,
         color: cfg.colors.accent,
       });
-      addText(slide, item, 130, y - 4, 1020, 68, {
-        fontSize: 19,
-        color: "#FFFFFF",
+      addText(slide, item, 116, y - 4, 674, 78, {
+        fontSize: 17,
+        color: cfg.colors.dark,
       });
+      if (i < 3) addRect(slide, 116, y + 88, 674, 1, cfg.colors.rule, "none");
     });
-    addRect(slide, 66, 582, 570, 74, cfg.colors.accent, "rounded-lg");
-    addText(slide, "Следующий шаг: согласовать приоритеты, владельцев и критерии результата", 88, 601, 526, 42, {
-      fontSize: 17,
+
+    addRect(slide, 830, 146, 364, 494, cfg.colors.soft, "rounded-xl", {
+      style: "solid",
+      fill: cfg.colors.rule,
+      width: 1,
+    });
+    addText(slide, "Хотите получить больше сведений?", 862, 174, 300, 66, {
+      fontSize: 25,
       bold: true,
-      color: "#FFFFFF",
+      color: cfg.colors.dark,
       alignment: "center",
     });
-    addText(slide, `${cfg.brand} Audit System  |  by Ivan Rudoy`, 760, 617, 450, 24, {
+    addText(slide, "Обсудим приоритеты, варианты решений и практический план внедрения.", 866, 242, 292, 60, {
+      fontSize: 16,
+      color: cfg.colors.muted,
+      alignment: "center",
+    });
+    await addImage(slide, cfg.qr, { left: 914, top: 314, width: 196, height: 196 }, "contain");
+    addText(slide, "Сканируйте QR, чтобы сохранить контакты", 860, 520, 304, 28, {
       fontSize: 13,
+      color: cfg.colors.muted,
+      alignment: "center",
+    });
+    addText(slide, cfg.email, 854, 558, 316, 24, {
+      fontSize: 15,
       bold: true,
-      color: "#FFFFFF",
-      alignment: "right",
+      color: cfg.colors.accent,
+      alignment: "center",
+    });
+    addText(slide, cfg.phone, 854, 586, 316, 24, {
+      fontSize: 15,
+      bold: true,
+      color: cfg.colors.dark,
+      alignment: "center",
     });
   }
 
@@ -329,6 +400,9 @@ async function main() {
       brand: "Khalil",
       logo: path.join(STATIC, "presentation_khalil_logo.png"),
       cover: path.join(STATIC, "presentation_khalil_cover.png"),
+      qr: path.join(STATIC, "presentation_khalil_qr.png"),
+      email: "info@khalilgroup.kz",
+      phone: "+7 706 701 48 35",
       colors: {
         accent: "#FF6412",
         dark: "#161616",
@@ -342,6 +416,9 @@ async function main() {
       brand: "BTG",
       logo: path.join(STATIC, "presentation_btg_logo.png"),
       cover: path.join(STATIC, "presentation_btg_cover.png"),
+      qr: path.join(STATIC, "presentation_btg_qr.png"),
+      email: "info@btgroup.kz",
+      phone: "+7 706 700 48 35",
       colors: {
         accent: "#2048A8",
         dark: "#102A63",

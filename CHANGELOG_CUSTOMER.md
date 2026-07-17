@@ -9,6 +9,9 @@ Status: in development in Test.
 
 Planned customer-visible improvement:
 - Added a concise branded PowerPoint presentation with the audit summary, infrastructure profile, key risks, IT and security recommendations, 90-day roadmap, and management decisions.
+- Added separate IT and information security maturity indicators to the presentation cover.
+- Added solution classes and relevant manufacturers to presentation recommendations.
+- Added a clearer final action slide with company contacts.
 
 ## v12.0.0
 

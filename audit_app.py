@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.1-dev"
+APP_VERSION = "12.2-dev"
 
 
 def get_app_instance_label():
@@ -6900,8 +6900,12 @@ def presentation_text(value, limit=180):
         return "Не указано"
     if len(text) <= limit:
         return text
-    shortened = text[: max(1, limit - 1)].rsplit(" ", 1)[0].rstrip(" ,;:")
-    return f"{shortened}…"
+    candidate = text[:limit]
+    sentence_end = max(candidate.rfind(". "), candidate.rfind("! "), candidate.rfind("? "))
+    if sentence_end >= max(48, limit // 2):
+        return candidate[: sentence_end + 1].strip()
+    shortened = candidate.rsplit(" ", 1)[0].rstrip(" ,;:.-")
+    return f"{shortened}."
 
 
 def presentation_brand_key():
@@ -6917,7 +6921,26 @@ def presentation_recommendation(item, limit=205):
     return presentation_text(f"{risk}. {recommendation}", limit)
 
 
-def build_audit_presentation_replacements(c_info, results, final_score):
+def presentation_recommendation_entry(item):
+    title = presentation_text(item.get("risk") or item.get("domain") or "Рекомендация", 78)
+    action = presentation_text(
+        item.get("recommendation") or item.get("action") or item.get("description"),
+        150,
+    )
+    solution = presentation_text(solution_categories_for_report_item(item), 95)
+    vendors = portfolio_manufacturers_for_report_item(item)
+    if "матрице" in str(vendors).lower() or "нет подходящего" in str(vendors).lower():
+        vendors = "Подбор после уточнения требований"
+    vendors = presentation_text(vendors, 92)
+    return {
+        "title": title,
+        "action": action,
+        "solution": solution,
+        "vendors": vendors,
+    }
+
+
+def build_audit_presentation_replacements(c_info, results, final_score, it_maturity_score):
     context = build_context(results, c_info)
     domain_scores = calculate_domain_scores(results)
     rule_risks = generate_rule_based_risks(results, context)
@@ -6970,6 +6993,7 @@ def build_audit_presentation_replacements(c_info, results, final_score):
             "risk": item.get("risk", "Риск"),
             "impact": item.get("impact") or item.get("description") or "Требуется уточнение влияния",
             "recommendation": item.get("recommendation") or item.get("action") or "Требуется план улучшений",
+            "vendors": item.get("vendors", []),
             "area": item.get("area") or item.get("_ai_area") or "ИТ/ИБ",
         })
     normalized_risks = normalized_risks[:12]
@@ -6979,38 +7003,42 @@ def build_audit_presentation_replacements(c_info, results, final_score):
     for item in normalized_risks:
         area = str(item.get("area", "")).upper()
         target = it_items if "ИТ" in area and "ИБ" not in area else security_items
-        text = presentation_recommendation(item)
-        if text not in target:
-            target.append(text)
+        entry = presentation_recommendation_entry(item)
+        if entry["title"] not in {existing["title"] for existing in target}:
+            target.append(entry)
 
     for item in roadmap_items:
         domain = str(item.get("domain", "")).lower()
-        text = presentation_recommendation(item)
+        entry = presentation_recommendation_entry(item)
         security_terms = ("безопас", "защит", "доступ", "уязв", "soc", "siem", "endpoint", "почт", "web")
         target = security_items if any(term in domain for term in security_terms) else it_items
-        if text not in target:
-            target.append(text)
+        if entry["title"] not in {existing["title"] for existing in target}:
+            target.append(entry)
 
     it_fallback = [
-        "Мониторинг инфраструктуры. Определить пороги, владельцев и регулярный обзор доступности и емкости.",
-        "Управление изменениями. Фиксировать изменения, окна обслуживания, результат и порядок отката.",
-        "Резервное копирование. Согласовать RTO/RPO и регулярно подтверждать восстановление критичных сервисов.",
-        "Управление активами. Поддерживать единый реестр оборудования, систем, владельцев и жизненного цикла.",
+        {"risk": "Мониторинг инфраструктуры", "recommendation": "Определить пороги, владельцев и регулярный обзор доступности и емкости.", "vendors": ["IT Monitoring"]},
+        {"risk": "Управление изменениями", "recommendation": "Фиксировать изменения, окна обслуживания, результат и порядок отката.", "vendors": ["ITSM/CMDB"]},
+        {"risk": "Резервное копирование", "recommendation": "Согласовать RTO/RPO и регулярно подтверждать восстановление критичных сервисов.", "vendors": ["Backup"]},
+        {"risk": "Управление активами", "recommendation": "Поддерживать единый реестр оборудования, систем, владельцев и жизненного цикла.", "vendors": ["ITSM/ITAM"]},
     ]
     security_fallback = [
-        "Контроль доступа. Проверить критичные учетные записи, MFA, исключения и привилегии.",
-        "Защита конечных точек. Контролировать покрытие агентов, телеметрию и сценарии реагирования.",
-        "Управление уязвимостями. Ввести регулярное сканирование, SLA устранения и контроль исключений.",
-        "Мониторинг событий. Определить минимальный набор источников и регламент разбора инцидентов.",
+        {"risk": "Контроль доступа", "recommendation": "Проверить критичные учетные записи, MFA, исключения и привилегии.", "vendors": ["MFA"]},
+        {"risk": "Защита конечных точек", "recommendation": "Контролировать покрытие агентов, телеметрию и сценарии реагирования.", "vendors": ["EDR/XDR"]},
+        {"risk": "Управление уязвимостями", "recommendation": "Ввести регулярное сканирование, SLA устранения и контроль исключений.", "vendors": ["VM"]},
+        {"risk": "Мониторинг событий", "recommendation": "Определить минимальный набор источников и регламент разбора инцидентов.", "vendors": ["SIEM/SOC"]},
     ]
     for item in it_fallback:
         if len(it_items) >= 4:
             break
-        it_items.append(item)
+        entry = presentation_recommendation_entry(item)
+        if entry["title"] not in {existing["title"] for existing in it_items}:
+            it_items.append(entry)
     for item in security_fallback:
         if len(security_items) >= 4:
             break
-        security_items.append(item)
+        entry = presentation_recommendation_entry(item)
+        if entry["title"] not in {existing["title"] for existing in security_items}:
+            security_items.append(entry)
 
     roadmap_by_phase = {
         "0-30": [],
@@ -7046,6 +7074,7 @@ def build_audit_presentation_replacements(c_info, results, final_score):
         "INDUSTRY": presentation_text(c_info.get("Сфера деятельности", ""), 38),
         "CITY": presentation_text(c_info.get("Город", ""), 28),
         "SCORE": str(int(final_score)),
+        "IT_SCORE": str(int(it_maturity_score)),
         "DATE": datetime.now().strftime("%d.%m.%Y"),
         "SUMMARY_TITLE": presentation_text(summary_title, 120),
         "USERS": str(context.get("users", 0)),
@@ -7065,8 +7094,12 @@ def build_audit_presentation_replacements(c_info, results, final_score):
         replacements[f"RISK_{index + 1}_LEVEL"] = presentation_text(risk["level"], 16).upper()
         replacements[f"RISK_{index + 1}_TITLE"] = presentation_text(risk["risk"], 72)
         replacements[f"RISK_{index + 1}_IMPACT"] = presentation_text(risk["impact"], 190)
-        replacements[f"IT_{index + 1}"] = presentation_text(it_items[index], 205)
-        replacements[f"SEC_{index + 1}"] = presentation_text(security_items[index], 205)
+        for prefix, entries in (("IT", it_items), ("SEC", security_items)):
+            entry = entries[index]
+            replacements[f"{prefix}_{index + 1}_TITLE"] = entry["title"]
+            replacements[f"{prefix}_{index + 1}_ACTION"] = entry["action"]
+            replacements[f"{prefix}_{index + 1}_SOLUTION"] = entry["solution"]
+            replacements[f"{prefix}_{index + 1}_VENDORS"] = entry["vendors"]
         replacements[f"DECISION_{index + 1}"] = presentation_text(decisions[index], 205)
 
     for phase_index, phase in enumerate(("0-30", "31-60", "61-90"), start=1):
@@ -7107,7 +7140,7 @@ def render_audit_presentation_template(template_path, replacements):
     return presentation_bytes
 
 
-def make_audit_presentation(c_info, results, final_score):
+def make_audit_presentation(c_info, results, final_score, it_maturity_score):
     brand_key = presentation_brand_key()
     template_path = os.path.join(
         os.path.dirname(__file__),
@@ -7116,7 +7149,12 @@ def make_audit_presentation(c_info, results, final_score):
     )
     if not os.path.exists(template_path):
         raise FileNotFoundError(f"Не найден шаблон презентации: {template_path}")
-    replacements = build_audit_presentation_replacements(c_info, results, final_score)
+    replacements = build_audit_presentation_replacements(
+        c_info,
+        results,
+        final_score,
+        it_maturity_score,
+    )
     return render_audit_presentation_template(template_path, replacements)
 
 
@@ -8789,6 +8827,7 @@ if st.session_state.generation_state == "heavy_ai":
                     client_info,
                     results,
                     f_score,
+                    it_maturity_score,
                 )
                 st.session_state.presentation_status = "ok"
             except Exception as presentation_exc:
