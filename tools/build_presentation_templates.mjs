@@ -250,7 +250,7 @@ async function buildTemplate(cfg) {
       addText(slide, value, x, 432, 148, 46, {
         fontSize: i === 1 ? 36 : 31,
         bold: true,
-        color: i === 1 ? cfg.colors.accent : cfg.colors.dark,
+        color: cfg.colors.dark,
       });
       addText(slide, label, x, 481, 148, 62, {
         fontSize: 13,

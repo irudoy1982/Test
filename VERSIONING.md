@@ -3,7 +3,7 @@
 ## Release lanes
 
 - `v12.0.0`: current production label from the previous versioning scheme.
-- `v12.7-dev`: current development lane in Test with refined company facts and download experience.
+- `v12.8-dev`: current development lane in Test with the production-ready audit conclusion CTA.
 - `v12-rcN`: release candidate after Test validation, bug fixes only.
 - `v12`: stable release after production approval.
 

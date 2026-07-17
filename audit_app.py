@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.7-dev"
+APP_VERSION = "12.8-dev"
 
 
 def get_app_instance_label():
@@ -2479,38 +2479,60 @@ def inject_audit_design():
         margin: 0 !important;
     }
 
+    .st-key-presentation_download {
+        width: min(460px, 100%);
+        margin: 18px auto 10px auto;
+    }
+
     .st-key-presentation_download [data-testid="stDownloadButton"] button {
-        min-height: 54px;
-        background: #ffffff;
-        color: var(--audit-accent);
+        min-height: 58px;
+        background: var(--audit-accent);
+        color: #ffffff;
         border: 1px solid var(--audit-accent);
         border-radius: 8px;
         font-size: 16px;
         font-weight: 760;
-        box-shadow: 0 8px 20px rgba(15, 118, 110, 0.12);
+        box-shadow: 0 12px 28px rgba(15, 118, 110, 0.24);
         transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
     }
 
     .st-key-presentation_download [data-testid="stDownloadButton"] button:hover {
-        background: var(--audit-accent-soft);
-        color: #0b5f59;
+        background: #0b5f59;
+        color: #ffffff;
         border-color: #0b5f59;
-        box-shadow: 0 10px 24px rgba(15, 118, 110, 0.18);
-        transform: translateY(-1px);
+        box-shadow: 0 15px 34px rgba(15, 118, 110, 0.30);
+        transform: translateY(-2px);
     }
 
     .st-key-presentation_download [data-testid="stDownloadButton"] button:active {
         transform: translateY(0);
-        box-shadow: 0 5px 12px rgba(15, 118, 110, 0.14);
+        box-shadow: 0 7px 16px rgba(15, 118, 110, 0.20);
+    }
+
+    .st-key-presentation_download [data-testid="stDownloadButton"] button:focus-visible {
+        outline: 3px solid rgba(15, 118, 110, 0.24);
+        outline-offset: 3px;
+    }
+
+    .st-key-presentation_download [data-testid="stDownloadButton"] button p {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
     }
 
     .st-key-presentation_download [data-testid="stDownloadButton"] button p::before {
         content: "↓";
-        display: inline-block;
-        margin-right: 10px;
-        font-size: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.16);
+        font-size: 18px;
+        font-weight: 700;
         line-height: 1;
-        vertical-align: -1px;
     }
 
     @media (max-width: 900px) {
