@@ -103,55 +103,55 @@ function addBulletRows(slide, items, cfg, yStart, rowH = 112) {
 }
 
 function addRecommendationCards(slide, startIndex, cfg) {
-  const positions = [
-    { x: 58, y: 150 },
-    { x: 638, y: 150 },
-    { x: 58, y: 405 },
-    { x: 638, y: 405 },
-  ];
-  for (let index = 0; index < 4; index += 1) {
+  const positions = [{ x: 58, y: 145 }, { x: 58, y: 392 }];
+  for (let index = 0; index < 2; index += 1) {
     const number = startIndex + index;
     const { x, y } = positions[index];
-    addRect(slide, x, y, 542, 225, "#FFFFFF", "rounded-lg", {
+    addRect(slide, x, y, 1120, 218, "#FFFFFF", "rounded-lg", {
       style: "solid",
       fill: cfg.colors.rule,
       width: 1,
     });
-    addText(slide, String(number).padStart(2, "0"), x + 20, y + 18, 38, 26, {
-      fontSize: 16,
+    addRect(slide, x, y, 118, 218, `#B1000${number}`, "rounded-lg");
+    addText(slide, `{{REC_${number}_LEVEL}}`, x + 12, y + 26, 94, 24, {
+      fontSize: 12,
       bold: true,
-      color: cfg.colors.accent,
+      color: `#B2000${number}`,
+      alignment: "center",
     });
-    addText(slide, `{{REC_${number}_TITLE}}`, x + 64, y + 15, 454, 42, {
-      fontSize: 18,
+    addText(slide, String(number).padStart(2, "0"), x + 20, y + 82, 78, 62, {
+      fontSize: 34,
+      bold: true,
+      color: `#B2000${number}`,
+      alignment: "center",
+    });
+    addText(slide, `{{REC_${number}_TITLE}}`, x + 144, y + 15, 512, 34, {
+      fontSize: 19,
       bold: true,
       color: cfg.colors.dark,
     });
-    addText(slide, `{{REC_${number}_ACTION}}`, x + 22, y + 65, 498, 58, {
-      fontSize: 15,
+    addText(slide, "Факт анкеты", x + 144, y + 58, 120, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
+    addText(slide, `{{REC_${number}_EVIDENCE}}`, x + 144, y + 78, 470, 46, {
+      fontSize: 13,
       color: cfg.colors.muted,
     });
-    addRect(slide, x + 22, y + 132, 498, 1, cfg.colors.rule, "none");
-    addText(slide, "Решение", x + 22, y + 146, 228, 18, {
-      fontSize: 12,
-      bold: true,
-      color: cfg.colors.accent,
-    });
-    addText(slide, `{{REC_${number}_SOLUTION}}`, x + 22, y + 166, 238, 43, {
-      fontSize: 14,
+    addText(slide, "Что сделать", x + 144, y + 132, 120, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
+    addText(slide, `{{REC_${number}_ACTION}}`, x + 144, y + 152, 470, 52, {
+      fontSize: 13,
       bold: true,
       color: cfg.colors.dark,
     });
-    addText(slide, "Производители", x + 280, y + 146, 238, 18, {
-      fontSize: 12,
-      bold: true,
-      color: cfg.colors.accent,
-    });
-    addText(slide, `{{REC_${number}_VENDORS}}`, x + 280, y + 166, 238, 43, {
-      fontSize: 14,
+    addRect(slide, x + 636, y + 18, 1, 182, cfg.colors.rule, "none");
+    addText(slide, "Решение и производители", x + 660, y + 18, 420, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
+    addText(slide, `{{REC_${number}_SOLUTION}} · {{REC_${number}_VENDORS}}`, x + 660, y + 40, 420, 45, {
+      fontSize: 13,
       bold: true,
       color: cfg.colors.dark,
     });
+    addText(slide, "Основание", x + 660, y + 95, 120, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
+    addText(slide, `{{REC_${number}_LEGAL}}`, x + 660, y + 116, 420, 36, { fontSize: 12, color: cfg.colors.muted });
+    addText(slide, "Критерий результата", x + 660, y + 160, 150, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
+    addText(slide, `{{REC_${number}_METRIC}}`, x + 660, y + 181, 420, 28, { fontSize: 12, bold: true, color: cfg.colors.dark });
   }
 }
 
@@ -210,7 +210,14 @@ async function buildTemplate(cfg) {
       bold: true,
       color: cfg.colors.dark,
     });
-    await addImage(slide, cfg.cover, { left: 766, top: 0, width: 514, height: 720 }, "cover");
+    addRect(slide, 766, 0, 514, H, cfg.colors.dark, "none");
+    addText(slide, "ИТ", 824, 126, 130, 80, { fontSize: 60, bold: true, color: "#FFFFFF" });
+    addText(slide, "ИБ", 1030, 126, 130, 80, { fontSize: 60, bold: true, color: cfg.colors.accent });
+    addRect(slide, 824, 242, 338, 2, cfg.colors.accent, "none");
+    addText(slide, "Факты анкеты", 824, 286, 330, 38, { fontSize: 24, bold: true, color: "#FFFFFF" });
+    addText(slide, "Риски и последствия", 824, 354, 330, 38, { fontSize: 24, bold: true, color: "#FFFFFF" });
+    addText(slide, "Требования Республики Казахстан", 824, 422, 360, 70, { fontSize: 24, bold: true, color: "#FFFFFF" });
+    addText(slide, "План практических изменений", 824, 520, 350, 68, { fontSize: 24, bold: true, color: "#FFFFFF" });
     addRect(slide, 766, 0, 12, H, cfg.colors.accent, "none");
     addText(slide, "by Ivan Rudoy", 72, 650, 220, 24, {
       fontSize: 14,
@@ -293,14 +300,27 @@ async function buildTemplate(cfg) {
       });
       if (i < directions.length - 1) addRect(slide, 690, y + 103, 486, 1, cfg.colors.rule, "none");
     });
+
+    // The company profile is intentionally moved near the close. This slide is the executive snapshot.
+    addRect(slide, 0, 0, W, H, "#FFFFFF", "none");
+    await addHeader(slide, cfg, "Аудит в одном экране", 2);
+    addText(slide, "{{SUMMARY_TITLE}}", 58, 150, 720, 96, { fontSize: 29, bold: true, color: cfg.colors.dark });
+    addRect(slide, 840, 148, 158, 126, cfg.colors.dark, "rounded-lg");
+    addText(slide, "ЗРЕЛОСТЬ ИТ", 858, 170, 122, 20, { fontSize: 12, bold: true, color: "#FFFFFF", alignment: "center" });
+    addText(slide, "{{IT_SCORE}}%", 858, 201, 122, 46, { fontSize: 34, bold: true, color: "#FFFFFF", alignment: "center" });
+    addRect(slide, 1018, 148, 158, 126, cfg.colors.accent, "rounded-lg");
+    addText(slide, "ЗРЕЛОСТЬ ИБ", 1036, 170, 122, 20, { fontSize: 12, bold: true, color: "#FFFFFF", alignment: "center" });
+    addText(slide, "{{SCORE}}%", 1036, 201, 122, 46, { fontSize: 34, bold: true, color: "#FFFFFF", alignment: "center" });
+    addText(slide, "Ключевые наблюдения", 58, 306, 300, 30, { fontSize: 19, bold: true, color: cfg.colors.accent });
+    addBulletRows(slide, ["{{SUMMARY_1}}", "{{SUMMARY_2}}", "{{SUMMARY_3}}"], cfg, 356, 92);
   }
 
   // 3. Executive summary
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Главный вывод аудита", 3);
-    addText(slide, "{{SUMMARY_TITLE}}", 58, 146, 1118, 72, {
+    await addHeader(slide, cfg, "Что результаты означают для бизнеса", 3);
+    addText(slide, "Влияние на непрерывность, управляемость, соответствие и развитие", 58, 146, 1118, 72, {
       fontSize: 28,
       bold: true,
       color: cfg.colors.accent,
@@ -312,7 +332,7 @@ async function buildTemplate(cfg) {
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Масштаб инфраструктуры задает три приоритета", 4);
+    await addHeader(slide, cfg, "Контекст среды и уже работающие контроли", 4);
     const metrics = [
       ["{{USERS}}", "рабочих мест"],
       ["{{SERVERS}}", "серверов"],
@@ -340,19 +360,11 @@ async function buildTemplate(cfg) {
     });
     addText(slide, "Профиль", 58, 316, 180, 26, { fontSize: 17, bold: true, color: cfg.colors.accent });
     addText(slide, "{{PROFILE}}", 58, 348, 1118, 62, { fontSize: 18, bold: true, color: cfg.colors.dark });
-    addText(slide, "Управленческий фокус", 58, 432, 300, 28, { fontSize: 18, bold: true, color: cfg.colors.accent });
+    addText(slide, "Подтвержденные сильные стороны", 58, 432, 360, 28, { fontSize: 18, bold: true, color: cfg.colors.accent });
     for (let i = 0; i < 3; i += 1) {
       const x = 58 + i * 382;
       addRect(slide, x, 482, 7, 140, cfg.colors.accent, "rounded-lg");
-      addText(slide, `{{FOCUS_${i + 1}_TITLE}}`, x + 24, 478, 326, 38, {
-        fontSize: 18,
-        bold: true,
-        color: cfg.colors.dark,
-      });
-      addText(slide, `{{FOCUS_${i + 1}_TEXT}}`, x + 24, 525, 326, 98, {
-        fontSize: 15,
-        color: cfg.colors.muted,
-      });
+      addText(slide, `{{STRENGTH_${i + 1}}}`, x + 24, 490, 326, 112, { fontSize: 17, bold: true, color: cfg.colors.dark });
     }
   }
 
@@ -360,45 +372,45 @@ async function buildTemplate(cfg) {
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Четыре риска требуют управленческого внимания", 5);
-    const severityColors = ["#B42318", "#D9480F", "#E67700", cfg.colors.accent];
-    for (let i = 0; i < 4; i += 1) {
-      const y = 146 + i * 128;
-      addRect(slide, 58, y, 110, 106, severityColors[i], "rounded-lg");
-      addText(slide, `{{RISK_${i + 1}_LEVEL}}`, 68, y + 37, 90, 28, {
-        fontSize: 13,
-        bold: true,
-        color: "#FFFFFF",
-        alignment: "center",
-      });
-      addText(slide, `{{RISK_${i + 1}_TITLE}}`, 196, y, 980, 31, {
-        fontSize: 18,
-        bold: true,
-        color: cfg.colors.dark,
-      });
-      addText(slide, `{{RISK_${i + 1}_IMPACT}}`, 196, y + 32, 980, 35, {
-        fontSize: 14,
-        color: cfg.colors.muted,
-      });
-      addText(slide, "Рекомендуем", 196, y + 76, 104, 20, {
-        fontSize: 13,
-        bold: true,
-        color: cfg.colors.accent,
-      });
-      addText(slide, `{{RISK_${i + 1}_RECOMMENDATION}}`, 304, y + 72, 872, 34, {
-        fontSize: 14,
-        bold: true,
-        color: cfg.colors.dark,
-      });
-      if (i < 3) addRect(slide, 196, y + 116, 980, 1, cfg.colors.rule, "none");
+    await addHeader(slide, cfg, "Карта подтвержденных рисков", 5);
+    for (let i = 0; i < 6; i += 1) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = 58 + col * 578;
+      const y = 146 + row * 164;
+      addRect(slide, x, y, 542, 142, "#FFFFFF", "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
+      addRect(slide, x, y, 108, 142, `#A1000${i + 1}`, "rounded-lg");
+      addText(slide, `{{RISK_${i + 1}_LEVEL}}`, x + 10, y + 54, 88, 28, { fontSize: 12, bold: true, color: `#A2000${i + 1}`, alignment: "center" });
+      addText(slide, `{{RISK_${i + 1}_TITLE}}`, x + 128, y + 16, 388, 42, { fontSize: 17, bold: true, color: cfg.colors.dark });
+      addText(slide, `{{RISK_${i + 1}_IMPACT}}`, x + 128, y + 66, 388, 60, { fontSize: 13, color: cfg.colors.muted });
     }
   }
 
-  // 6. Priority recommendations
+  // 6. Regulatory profile
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Рекомендации: первоочередные меры", 6);
+    await addHeader(slide, cfg, "Регуляторный профиль по сфере деятельности", 6);
+    addText(slide, "Отрасль: {{INDUSTRY}}", 58, 142, 700, 34, { fontSize: 19, bold: true, color: cfg.colors.accent });
+    for (let i = 0; i < 4; i += 1) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = 58 + col * 578;
+      const y = 194 + row * 186;
+      addRect(slide, x, y, 542, 160, i === 0 ? cfg.colors.soft : "#FFFFFF", "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
+      addText(slide, `{{LAW_${i + 1}_STATUS}}`, x + 20, y + 18, 190, 18, { fontSize: 10, bold: true, color: cfg.colors.accent });
+      addText(slide, `{{LAW_${i + 1}_TITLE}}`, x + 20, y + 45, 500, 42, { fontSize: 16, bold: true, color: cfg.colors.dark });
+      addText(slide, `{{LAW_${i + 1}_SCOPE}}`, x + 20, y + 96, 500, 48, { fontSize: 12, color: cfg.colors.muted });
+    }
+    addText(slide, "Методические ориентиры: {{FRAMEWORKS}}", 58, 590, 1118, 44, { fontSize: 14, color: cfg.colors.muted });
+    addText(slide, "Нормативный акт задает требование к контролю, а не обязанность покупать конкретный продукт.", 58, 642, 1118, 28, { fontSize: 13, bold: true, color: cfg.colors.dark });
+  }
+
+  // 7-10. Detailed recommendations
+  {
+    const slide = deck.slides.add();
+    slide.background.fill = "#FFFFFF";
+    await addHeader(slide, cfg, "Рекомендации: первоочередные меры", 7);
     addRecommendationCards(slide, 1, cfg);
   }
 
@@ -406,15 +418,27 @@ async function buildTemplate(cfg) {
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Рекомендации: следующий этап", 7);
+    await addHeader(slide, cfg, "Рекомендации: снижение основных рисков", 8);
+    addRecommendationCards(slide, 3, cfg);
+  }
+  {
+    const slide = deck.slides.add();
+    slide.background.fill = "#FFFFFF";
+    await addHeader(slide, cfg, "Рекомендации: устойчивость ИТ и ИБ", 9);
     addRecommendationCards(slide, 5, cfg);
+  }
+  {
+    const slide = deck.slides.add();
+    slide.background.fill = "#FFFFFF";
+    await addHeader(slide, cfg, "Рекомендации: следующий уровень зрелости", 10);
+    addRecommendationCards(slide, 7, cfg);
   }
 
   // 8. Roadmap
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "План на 90 дней переводит выводы в действия", 8);
+    await addHeader(slide, cfg, "План на 90 дней переводит выводы в действия", 11);
     const phases = [
       ["0–30 дней", "{{ROADMAP_1_1}}", "{{ROADMAP_1_2}}"],
       ["31–60 дней", "{{ROADMAP_2_1}}", "{{ROADMAP_2_2}}"],
@@ -442,11 +466,34 @@ async function buildTemplate(cfg) {
     });
   }
 
-  // 9. Decisions
+  // 12. Company profile near the close
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Зафиксируйте решения и следующий шаг", 9);
+    await addHeader(slide, cfg, "Команда для реализации изменений", 12);
+    addText(slide, cfg.companyName, 58, 150, 540, 44, { fontSize: 27, bold: true, color: cfg.colors.dark });
+    addText(slide, cfg.companySummary, 58, 212, 540, 82, { fontSize: 18, color: cfg.colors.muted });
+    addText(slide, "От оценки и проектирования до внедрения, поддержки и развития.", 58, 324, 540, 70, { fontSize: 22, bold: true, color: cfg.colors.accent });
+    const stats = [[cfg.foundedYear, "год основания"], ["70+", "крупных проектов"], ["40+", "технологических партнеров"]];
+    stats.forEach(([value, label], i) => {
+      const x = 58 + i * 180;
+      addText(slide, value, x, 456, 150, 48, { fontSize: 31, bold: true, color: cfg.colors.dark, alignment: "center" });
+      addText(slide, label, x, 510, 150, 50, { fontSize: 13, color: cfg.colors.muted, alignment: "center" });
+    });
+    addRect(slide, 660, 146, 520, 466, cfg.colors.soft, "rounded-lg");
+    addText(slide, "Компетенции", 700, 178, 430, 34, { fontSize: 23, bold: true, color: cfg.colors.dark });
+    ["Аудит и информационная безопасность", "Сетевая и серверная инфраструктура", "Автоматизация и цифровые решения", "Внедрение, поддержка и передача знаний"].forEach((item, i) => {
+      const y = 248 + i * 82;
+      addText(slide, String(i + 1).padStart(2, "0"), 700, y, 42, 26, { fontSize: 14, bold: true, color: cfg.colors.accent });
+      addText(slide, item, 754, y - 3, 370, 52, { fontSize: 17, bold: true, color: cfg.colors.dark });
+    });
+  }
+
+  // 13. Decisions and call to action
+  {
+    const slide = deck.slides.add();
+    slide.background.fill = "#FFFFFF";
+    await addHeader(slide, cfg, "Зафиксируйте решения и следующий шаг", 13);
     const decisions = ["{{DECISION_1}}", "{{DECISION_2}}", "{{DECISION_3}}", "{{DECISION_4}}"];
     decisions.forEach((item, i) => {
       const y = 164 + i * 112;

@@ -19,12 +19,15 @@ Planned customer-visible improvement:
 - Limited recommended manufacturers to the maintained solution portfolio.
 - Improved the 90-day plan so later phases continue the identified priorities instead of showing generic actions.
 - Simplified customer delivery to one management presentation.
-- Added an early company profile slide explaining the audit team's capabilities and delivery scope.
+- Moved the company profile near the conclusion so the presentation opens with the customer's situation and decisions.
 - Made the company's delivered IT project track record more prominent.
 - Refined company founding facts and improved the audit conclusion download experience.
 - Polished the final audit conclusion action for a clearer, more focused download.
 - Centered the final download action and improved its responsive behavior.
 - Centered and refined the presentation generation action so the primary next step is clear and visually consistent.
+- Added sector-aware Kazakhstan regulatory context and clearer separation between legal obligations and recommended standards.
+- Expanded the sector list with banking, insurance, healthcare, public and quasi-public sectors, critical infrastructure, telecom, utilities, transport, and industrial environments.
+- Rebuilt the presentation as a 13-slide decision narrative with confirmed strengths, a consistent severity palette, regulatory context, evidence-based recommendations, and measurable outcomes.
 
 ## v12.0.0
 

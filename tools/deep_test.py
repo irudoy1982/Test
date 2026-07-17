@@ -379,8 +379,9 @@ def test_presentation_template_rendering() -> None:
                 if name.startswith("ppt/slides/slide") and name.endswith(".xml")
             ]
             rendered_xml = "\n".join(archive.read(name).decode("utf-8") for name in slide_names)
-        assert_true(len(slide_names) == 9, f"{brand}: expected 9 slides, got {len(slide_names)}")
-        assert_true("Кто стоит за аудитом" in rendered_xml, f"{brand}: company profile slide is missing")
+        assert_true(len(slide_names) == 13, f"{brand}: expected 13 slides, got {len(slide_names)}")
+        assert_true("Команда для реализации изменений" in rendered_xml, f"{brand}: company profile slide is missing")
+        assert_true("Регуляторный профиль" in rendered_xml, f"{brand}: regulatory slide is missing")
         company_name, email, phone, founded_year, foreign_brand = brand_identity[brand]
         assert_true(company_name in rendered_xml, f"{brand}: company name is missing")
         assert_true(email in rendered_xml and phone in rendered_xml, f"{brand}: contact details are missing")
@@ -411,6 +412,7 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "risk_semantic_key",
         "presentation_recommendation_key",
         "presentation_presales_profile",
+        "presentation_severity_style",
         "presentation_risk_entry",
     ):
         exec(extract_function_source(module_text, name), namespace)
