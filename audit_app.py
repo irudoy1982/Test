@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.17-dev"
+APP_VERSION = "12.18-dev"
 
 
 def get_app_instance_label():
@@ -8550,7 +8550,10 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
             normalized[field] = expand_regulatory_references(normalized[field])
     normalized["risk"] = normalized.get("risk") or normalized.get("domain") or "Рекомендация"
     normalized["recommendation"] = normalized.get("recommendation") or normalized.get("action") or normalized.get("description")
-    _, profile = presentation_presales_profile(normalized)
+    semantic_key, profile = presentation_presales_profile(normalized)
+    ai_authored = str(item.get("source") or item.get("_source") or "").strip().lower() in {
+        "ии", "ai", "gemini", "groq"
+    }
     generic_titles = {"ит", "иб", "ит/иб", "рекомендация"}
     title_by_key = {
         "mfa": "Многофакторная аутентификация",
@@ -8633,10 +8636,7 @@ def presentation_risk_entry(item):
         if field in normalized:
             normalized[field] = expand_regulatory_references(normalized[field])
     normalized["recommendation"] = normalized.get("recommendation") or normalized.get("action") or normalized.get("description")
-    semantic_key, profile = presentation_presales_profile(normalized)
-    ai_authored = str(item.get("source") or item.get("_source") or "").strip().lower() in {
-        "ии", "ai", "gemini", "groq"
-    }
+    _, profile = presentation_presales_profile(normalized)
     raw_level, fill_color, text_color = presentation_severity_style(normalized.get("level"))
     return {
         "level": presentation_text(risk_level_label(raw_level), 16).upper(),

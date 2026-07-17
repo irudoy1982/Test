@@ -45,6 +45,7 @@ Planned customer-visible improvement:
 - Expanded concise technology findings into clear customer-facing risk titles without weakening questionnaire fact checks.
 - Improved recommendation consistency so network admission, identity lifecycle, and privileged access are described as separate, evidence-based initiatives.
 - Refined presentation risk cards to prevent long titles from overlapping impact text.
+- Fixed presentation generation for recommendations produced by the expert analysis service.
 
 ## v12.0.0
 

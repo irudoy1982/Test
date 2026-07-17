@@ -487,6 +487,35 @@ def test_it_maturity_measures_controls_not_infrastructure_size() -> None:
     assert_true(score <= 95, f"Questionnaire-only IT maturity cannot be 100%, got {score}")
 
 
+def test_ai_presentation_recommendation_path() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {
+        "expand_regulatory_references": lambda value: value,
+        "presentation_presales_profile": lambda item: ("nac", {}),
+        "presentation_text": lambda value, limit=None: str(value),
+        "presentation_action_text": lambda value, limit=None: str(value),
+        "solution_categories_for_report_item": lambda item: "NAC",
+        "portfolio_manufacturers_for_report_item": lambda item: "Fortinet",
+        "split_portfolio_list": lambda value: [part.strip() for part in str(value).split(",") if part.strip()],
+        "presentation_evidence_for_key": lambda *args: "NAC в анкете: Нет",
+        "REGULATORY_CATALOG": {},
+        "presentation_legal_basis": lambda *args: "Применимость подтверждена",
+        "presentation_severity_style": lambda level: ("MEDIUM", "#F4B400", "#1F2937"),
+        "risk_level_label": lambda level: "Средний",
+        "presentation_success_metric": lambda key: "Все подключения идентифицируются",
+    }
+    exec(extract_function_source(module_text, "presentation_recommendation_entry"), namespace)
+    rendered = namespace["presentation_recommendation_entry"]({
+        "_source": "Groq",
+        "level": "MEDIUM",
+        "risk": "Контроль допуска устройств к сети",
+        "recommendation": "Провести пилот NAC.",
+        "evidence": ["NAC в анкете: Нет"],
+    })
+    assert_true(rendered["key"] == "nac", "AI recommendation lost its semantic key")
+    assert_true(rendered["action"] == "Провести пилот NAC.", "AI recommendation path did not render")
+
+
 def test_presentation_evidence_and_maturity_palette() -> None:
     module_text = APP.read_text(encoding="utf-8")
     namespace = {"re": re}
@@ -525,6 +554,7 @@ def main() -> None:
         test_presentation_template_rendering,
         test_presentation_text_is_self_contained,
         test_presentation_actions_are_complete_and_deduplicated,
+        test_ai_presentation_recommendation_path,
         test_it_maturity_measures_controls_not_infrastructure_size,
         test_presentation_evidence_and_maturity_palette,
     ]
