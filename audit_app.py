@@ -3154,6 +3154,9 @@ def decode_draft_token(token):
 
 
 def normalize_draft_selectbox_value(key, value):
+    if key not in DRAFT_SELECTBOX_OPTIONS:
+        return value, None
+
     aliases = {
         "client_industry_select": {
             "Финансы / Банки": "Финтех / Банки",

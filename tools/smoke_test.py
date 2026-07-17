@@ -121,6 +121,11 @@ def check_selectbox_contract() -> None:
     )
     exec(compile(ast.Module(body=[normalizer], type_ignores=[]), str(APP), "exec"), namespace)
     normalize = namespace["normalize_draft_selectbox_value"]
+    arbitrary_list = ["Windows 11", "Linux"]
+    assert_true(
+        normalize("os_select", arbitrary_list) == (arbitrary_list, None),
+        "Non-selectbox list values must pass through unchanged",
+    )
     assert_true(
         normalize("client_industry_select", "Критическая инфраструктура")[0]
         == "КВОИКИ / Критическая инфраструктура",
