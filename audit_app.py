@@ -8043,12 +8043,6 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
     for item in roadmap_items:
         add_recommendation(item)
 
-    if len(recommendation_items) < 8:
-        raise ValueError(
-            "Недостаточно подтвержденных рекомендаций для клиентской презентации: "
-            f"получено {len(recommendation_items)} из 8."
-        )
-
     roadmap_by_phase = {
         "0-30": [],
         "31-60": [],
@@ -8153,13 +8147,20 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         replacements[f"SUMMARY_{index + 1}"] = summary_items[index] if index < len(summary_items) else "Приоритеты определены по подтвержденным данным анкеты."
         if index < len(normalized_risks):
             risk = normalized_risks[index]
-        else:
+        elif index < len(recommendation_items):
             entry = recommendation_items[index]
             risk = {
                 "level": entry["level"],
                 "risk": entry["title"],
                 "impact": entry["evidence"],
                 "recommendation": entry["action"],
+            }
+        else:
+            risk = {
+                "level": "LOW",
+                "risk": "Дополнительный критичный риск не подтвержден",
+                "impact": "По данным анкеты оснований для отдельного вывода не выявлено.",
+                "recommendation": "Сохранять текущий контроль и периодически пересматривать остаточные риски.",
             }
         risk_entry = presentation_risk_entry(risk)
         replacements[f"RISK_{index + 1}_LEVEL"] = risk_entry["level"]
@@ -8168,14 +8169,32 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         replacements[f"RISK_{index + 1}_RECOMMENDATION"] = risk_entry["action"]
         replacements[f"RISK_{index + 1}_FILL"] = risk_entry["fill_color"]
         replacements[f"RISK_{index + 1}_TEXT"] = risk_entry["text_color"]
-        if index < 4:
+        if index < min(4, len(recommendation_items)):
             entry = recommendation_items[index]
             replacements[f"DECISION_{index + 1}"] = presentation_text(
                 f"Утвердить направление «{entry['title']}» и результат: {entry['metric']}",
                 205,
             )
 
-    for index, entry in enumerate(recommendation_items[:8], start=1):
+    for index in range(4):
+        replacements.setdefault(
+            f"DECISION_{index + 1}",
+            "Поддерживать достигнутый уровень контроля и регулярно пересматривать остаточные риски.",
+        )
+
+    replacements["__RECOMMENDATION_COUNT__"] = len(recommendation_items)
+    replacements["__RISK_COUNT__"] = len(normalized_risks)
+    recommendation_fields = (
+        "LEVEL", "TITLE", "ACTION", "SOLUTION", "VENDORS",
+        "EVIDENCE", "LEGAL", "METRIC",
+    )
+    for index in range(1, max(8, len(recommendation_items)) + 1):
+        for field in recommendation_fields:
+            replacements[f"REC_{index}_{field}"] = ""
+        replacements[f"REC_{index}_FILL"] = "#FFFFFF"
+        replacements[f"REC_{index}_TEXT"] = "#FFFFFF"
+
+    for index, entry in enumerate(recommendation_items, start=1):
         replacements[f"REC_{index}_LEVEL"] = entry["level"]
         replacements[f"REC_{index}_TITLE"] = entry["title"]
         replacements[f"REC_{index}_ACTION"] = entry["action"]
@@ -8187,6 +8206,10 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         replacements[f"REC_{index}_FILL"] = entry["fill_color"]
         replacements[f"REC_{index}_TEXT"] = entry["text_color"]
 
+    for index in range(1, 5):
+        replacements[f"OUTCOME_{index}_TITLE"] = "Поддержание зрелости"
+        replacements[f"OUTCOME_{index}_FROM"] = "Критичный дополнительный разрыв не подтвержден"
+        replacements[f"OUTCOME_{index}_TO"] = "Контроль регулярно пересматривается"
     for index, entry in enumerate(recommendation_items[:4], start=1):
         replacements[f"OUTCOME_{index}_TITLE"] = presentation_text(entry["title"], 70)
         replacements[f"OUTCOME_{index}_FROM"] = presentation_text(entry["evidence"], 145)
@@ -8211,16 +8234,214 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
 
 def render_audit_presentation_template(template_path, replacements):
     import zipfile
+    import xml.etree.ElementTree as ET
     from xml.sax.saxutils import escape
 
+    recommendation_count = max(0, int(replacements.get("__RECOMMENDATION_COUNT__", 8)))
+    risk_count = max(0, int(replacements.get("__RISK_COUNT__", 0)))
+    recommendation_slide_count = (recommendation_count + 1) // 2
+
+    presentation_ns = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    relationships_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    office_relationships_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    drawing_ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    content_types_ns = "http://schemas.openxmlformats.org/package/2006/content-types"
+    ET.register_namespace("p", presentation_ns)
+    ET.register_namespace("a", drawing_ns)
+    ET.register_namespace("r", office_relationships_ns)
+
     output = BytesIO()
-    with zipfile.ZipFile(template_path, "r") as source, zipfile.ZipFile(
-        output,
-        "w",
-        compression=zipfile.ZIP_DEFLATED,
-    ) as target:
-        for item in source.infolist():
-            content = source.read(item.filename)
+    with zipfile.ZipFile(template_path, "r") as source:
+        source_items = source.infolist()
+        package_files = {item.filename: source.read(item.filename) for item in source_items}
+
+    presentation_rels = ET.fromstring(package_files["ppt/_rels/presentation.xml.rels"])
+    presentation_root = ET.fromstring(package_files["ppt/presentation.xml"])
+    slide_id_list = presentation_root.find(f"{{{presentation_ns}}}sldIdLst")
+    content_types_root = ET.fromstring(package_files["[Content_Types].xml"])
+
+    relationship_elements = presentation_rels.findall(f"{{{relationships_ns}}}Relationship")
+    relationship_targets = {
+        rel.get("Id"): rel.get("Target", "")
+        for rel in relationship_elements
+    }
+    slide10_rel_id = next(
+        (
+            rel_id for rel_id, target in relationship_targets.items()
+            if target.endswith("slides/slide10.xml")
+        ),
+        None,
+    )
+    slide10_position = None
+    if slide_id_list is not None and slide10_rel_id:
+        for position, slide_id in enumerate(list(slide_id_list)):
+            if slide_id.get(f"{{{office_relationships_ns}}}id") == slide10_rel_id:
+                slide10_position = position
+                break
+
+    recommendation_slide_numbers = [7, 8, 9, 10]
+    extra_slide_paths = []
+    extra_pairs = max(0, recommendation_slide_count - 4)
+    existing_slide_numbers = [
+        int(match.group(1))
+        for path in package_files
+        for match in [re.match(r"ppt/slides/slide(\d+)\.xml$", path)]
+        if match
+    ]
+    next_slide_number = max(existing_slide_numbers, default=13) + 1
+    numeric_rel_ids = [
+        int(match.group(1))
+        for rel in relationship_elements
+        for match in [re.match(r"rId(\d+)$", rel.get("Id", ""))]
+        if match
+    ]
+    next_rel_number = max(numeric_rel_ids, default=0) + 1
+    existing_slide_ids = [
+        int(slide_id.get("id", "0") or 0)
+        for slide_id in list(slide_id_list or [])
+    ]
+    next_slide_id = max(existing_slide_ids, default=255) + 1
+
+    for extra_index in range(extra_pairs):
+        new_slide_number = next_slide_number + extra_index
+        first_recommendation = 9 + extra_index * 2
+        second_recommendation = first_recommendation + 1
+        new_slide_path = f"ppt/slides/slide{new_slide_number}.xml"
+        clone_xml = package_files["ppt/slides/slide10.xml"].decode("utf-8")
+        clone_xml = clone_xml.replace("REC_7_", f"REC_{first_recommendation}_")
+        clone_xml = clone_xml.replace("REC_8_", f"REC_{second_recommendation}_")
+        clone_xml = clone_xml.replace("B10007", f"B1{first_recommendation:04d}")
+        clone_xml = clone_xml.replace("B20007", f"B2{first_recommendation:04d}")
+        clone_xml = clone_xml.replace("B10008", f"B1{second_recommendation:04d}")
+        clone_xml = clone_xml.replace("B20008", f"B2{second_recommendation:04d}")
+        clone_xml = clone_xml.replace(">07<", f">{first_recommendation:02d}<")
+        clone_xml = clone_xml.replace(">08<", f">{second_recommendation:02d}<")
+        package_files[new_slide_path] = clone_xml.encode("utf-8")
+        extra_slide_paths.append(new_slide_path)
+
+        source_rels_path = "ppt/slides/_rels/slide10.xml.rels"
+        if source_rels_path in package_files:
+            new_rels_path = f"ppt/slides/_rels/slide{new_slide_number}.xml.rels"
+            package_files[new_rels_path] = package_files[source_rels_path]
+            extra_slide_paths.append(new_rels_path)
+
+        new_rel_id = f"rId{next_rel_number + extra_index}"
+        ET.SubElement(
+            presentation_rels,
+            f"{{{relationships_ns}}}Relationship",
+            {
+                "Id": new_rel_id,
+                "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide",
+                "Target": f"slides/slide{new_slide_number}.xml",
+            },
+        )
+        if slide_id_list is not None:
+            new_slide_id = ET.Element(
+                f"{{{presentation_ns}}}sldId",
+                {
+                    "id": str(next_slide_id + extra_index),
+                    f"{{{office_relationships_ns}}}id": new_rel_id,
+                },
+            )
+            insert_at = (slide10_position + 1 + extra_index) if slide10_position is not None else len(slide_id_list)
+            slide_id_list.insert(insert_at, new_slide_id)
+        ET.SubElement(
+            content_types_root,
+            f"{{{content_types_ns}}}Override",
+            {
+                "PartName": f"/ppt/slides/slide{new_slide_number}.xml",
+                "ContentType": "application/vnd.openxmlformats-officedocument.presentationml.slide+xml",
+            },
+        )
+        recommendation_slide_numbers.append(new_slide_number)
+
+    active_recommendation_slides = set(
+        recommendation_slide_numbers[:recommendation_slide_count]
+    )
+    unused_recommendation_slides = set(recommendation_slide_numbers) - active_recommendation_slides
+    partial_recommendation_slide = (
+        recommendation_slide_numbers[recommendation_slide_count - 1]
+        if recommendation_count % 2 and recommendation_slide_count
+        else None
+    )
+
+    relationship_targets = {
+        rel.get("Id"): rel.get("Target", "")
+        for rel in presentation_rels.findall(f"{{{relationships_ns}}}Relationship")
+    }
+    if slide_id_list is not None:
+        for slide_id in list(slide_id_list):
+            rel_id = slide_id.get(f"{{{office_relationships_ns}}}id")
+            target = relationship_targets.get(rel_id, "")
+            match = re.search(r"slides/slide(\d+)\.xml$", target)
+            if match and int(match.group(1)) in unused_recommendation_slides:
+                slide_id_list.remove(slide_id)
+            elif recommendation_count == 0 and match and int(match.group(1)) == 3:
+                slide_id_list.remove(slide_id)
+            elif risk_count == 0 and match and int(match.group(1)) == 5:
+                slide_id_list.remove(slide_id)
+    package_files["ppt/presentation.xml"] = ET.tostring(
+        presentation_root,
+        encoding="utf-8",
+        xml_declaration=True,
+    )
+    package_files["ppt/_rels/presentation.xml.rels"] = ET.tostring(
+        presentation_rels,
+        encoding="utf-8",
+        xml_declaration=True,
+    )
+    package_files["[Content_Types].xml"] = ET.tostring(
+        content_types_root,
+        encoding="utf-8",
+        xml_declaration=True,
+    )
+
+    active_slide_numbers = []
+    if slide_id_list is not None:
+        for slide_id in slide_id_list:
+            rel_id = slide_id.get(f"{{{office_relationships_ns}}}id")
+            target = relationship_targets.get(rel_id, "")
+            match = re.search(r"slides/slide(\d+)\.xml$", target)
+            if match:
+                active_slide_numbers.append(int(match.group(1)))
+
+    for visible_number, slide_number in enumerate(active_slide_numbers, start=1):
+        slide_path = f"ppt/slides/slide{slide_number}.xml"
+        if slide_path not in package_files:
+            continue
+        slide_root = ET.fromstring(package_files[slide_path])
+        shape_tree = slide_root.find(f".//{{{presentation_ns}}}spTree")
+        if shape_tree is not None and slide_number == partial_recommendation_slide:
+            for shape in list(shape_tree):
+                offset = shape.find(f".//{{{drawing_ns}}}xfrm/{{{drawing_ns}}}off")
+                if offset is None:
+                    continue
+                y_position = int(offset.get("y", "0") or 0)
+                if 3700000 <= y_position < 6300000:
+                    shape_tree.remove(shape)
+
+        if shape_tree is not None:
+            for shape in list(shape_tree):
+                offset = shape.find(f".//{{{drawing_ns}}}xfrm/{{{drawing_ns}}}off")
+                if offset is None:
+                    continue
+                x_position = int(offset.get("x", "0") or 0)
+                y_position = int(offset.get("y", "0") or 0)
+                if x_position >= 11000000 and y_position >= 6500000:
+                    text_nodes = shape.findall(f".//{{{drawing_ns}}}t")
+                    if text_nodes:
+                        text_nodes[0].text = str(visible_number)
+
+        package_files[slide_path] = ET.tostring(
+            slide_root,
+            encoding="utf-8",
+            xml_declaration=True,
+        )
+
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        written_paths = set()
+        for item in source_items:
+            content = package_files[item.filename]
             if item.filename.endswith(".xml"):
                 xml_text = content.decode("utf-8")
                 for key, value in replacements.items():
@@ -8228,21 +8449,38 @@ def render_audit_presentation_template(template_path, replacements):
                 for index in range(1, 7):
                     xml_text = xml_text.replace(f"A1000{index}", replacements.get(f"RISK_{index}_FILL", "#F4B400").lstrip("#"))
                     xml_text = xml_text.replace(f"A2000{index}", replacements.get(f"RISK_{index}_TEXT", "#1F2937").lstrip("#"))
-                for index in range(1, 9):
-                    xml_text = xml_text.replace(f"B1000{index}", replacements.get(f"REC_{index}_FILL", "#F4B400").lstrip("#"))
-                    xml_text = xml_text.replace(f"B2000{index}", replacements.get(f"REC_{index}_TEXT", "#1F2937").lstrip("#"))
+                for index in range(1, max(8, recommendation_count) + 1):
+                    xml_text = xml_text.replace(f"B1{index:04d}", replacements.get(f"REC_{index}_FILL", "#F4B400").lstrip("#"))
+                    xml_text = xml_text.replace(f"B2{index:04d}", replacements.get(f"REC_{index}_TEXT", "#1F2937").lstrip("#"))
                 xml_text = xml_text.replace("C10001", replacements.get("IT_SCORE_FILL", "#13877C").lstrip("#"))
                 xml_text = xml_text.replace("C20001", replacements.get("IT_SCORE_TEXT", "#FFFFFF").lstrip("#"))
                 xml_text = xml_text.replace("C10002", replacements.get("SCORE_FILL", "#13877C").lstrip("#"))
                 xml_text = xml_text.replace("C20002", replacements.get("SCORE_TEXT", "#FFFFFF").lstrip("#"))
                 content = xml_text.encode("utf-8")
             target.writestr(item, content)
+            written_paths.add(item.filename)
+
+        for path, content in package_files.items():
+            if path in written_paths:
+                continue
+            if path.endswith(".xml"):
+                xml_text = content.decode("utf-8")
+                for key, value in replacements.items():
+                    xml_text = xml_text.replace(f"{{{{{key}}}}}", escape(str(value)))
+                for index in range(1, max(8, recommendation_count) + 1):
+                    xml_text = xml_text.replace(f"B1{index:04d}", replacements.get(f"REC_{index}_FILL", "#F4B400").lstrip("#"))
+                    xml_text = xml_text.replace(f"B2{index:04d}", replacements.get(f"REC_{index}_TEXT", "#1F2937").lstrip("#"))
+                content = xml_text.encode("utf-8")
+            target.writestr(path, content)
 
     presentation_bytes = output.getvalue()
     with zipfile.ZipFile(BytesIO(presentation_bytes), "r") as check_zip:
         unresolved = []
+        active_slide_paths = {f"ppt/slides/slide{number}.xml" for number in active_slide_numbers}
         for name in check_zip.namelist():
             if not name.startswith("ppt/slides/slide") or not name.endswith(".xml"):
+                continue
+            if name not in active_slide_paths:
                 continue
             slide_xml = check_zip.read(name).decode("utf-8")
             unresolved.extend(re.findall(r"\{\{[A-Z0-9_]+\}\}", slide_xml))

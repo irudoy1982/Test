@@ -3,6 +3,7 @@ from __future__ import annotations
 import py_compile
 import hashlib
 import ast
+import io
 import json
 import re
 import zipfile
@@ -198,7 +199,7 @@ def check_static_hooks() -> None:
     assert_true('key="presentation_generate"' in text, "Presentation generation button key is missing")
     assert_true('"suffix": ".pptx"' in text and "Audit_Presentation_" in text, "Telegram presentation attachment is missing")
     assert_true("AI quality gate rejected the customer presentation" in text, "Customer presentation is not blocked on AI failure")
-    assert_true("Недостаточно подтвержденных рекомендаций для клиентской презентации" in text, "Presentation quality gate is missing")
+    assert_true("Недостаточно подтвержденных рекомендаций для клиентской презентации" not in text, "Fixed recommendation threshold must stay removed")
     assert_true("Область для верификации" not in text, "Verification placeholder must not be emitted")
     assert_true("groq_prompt = f\"\"\"" in text, "Compact Groq prompt is missing")
     assert_true('"max_completion_tokens": 4200' in text, "Groq token budget is not capped below the free-tier TPM limit")
@@ -207,6 +208,8 @@ def check_static_hooks() -> None:
     assert_true("def render_generation_failure_state" in text, "Stable generation failure screen is missing")
     assert_true('st.spinner("Производится глубокий анализ рисков...")' not in text, "Native spinner must not survive a failed generation")
     assert_true('min_items=3' in text and 'min_security_items=0' in text, "Groq quality gate must allow expert-rule supplementation")
+    assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")
+    assert_true("partial_recommendation_slide" in text, "Odd recommendation counts must use a single-card final slide")
 
 
 def check_presentation_templates() -> None:
@@ -264,6 +267,59 @@ def check_presentation_templates() -> None:
         assert_true(qr_asset.stat().st_size > 2000, f"Presentation QR is unexpectedly small: {qr_asset.name}")
 
 
+def check_dynamic_presentation_range() -> None:
+    app_tree = ast.parse(read_text(APP))
+    renderer_node = next(
+        node
+        for node in app_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "render_audit_presentation_template"
+    )
+    namespace = {"BytesIO": io.BytesIO, "re": re}
+    exec(compile(ast.Module(body=[renderer_node], type_ignores=[]), str(APP), "exec"), namespace)
+    renderer = namespace["render_audit_presentation_template"]
+
+    template = PRESENTATION_TEMPLATES[0]
+    with zipfile.ZipFile(template, "r") as archive:
+        template_xml = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.endswith(".xml")
+        )
+    base_replacements = {
+        token: "Проверка"
+        for token in re.findall(r"\{\{([A-Z0-9_]+)\}\}", template_xml)
+    }
+
+    for recommendation_count in (0, 1, 7, 8, 9, 12, 15):
+        replacements = dict(base_replacements)
+        replacements["__RECOMMENDATION_COUNT__"] = recommendation_count
+        replacements["__RISK_COUNT__"] = 1
+        for index in range(1, recommendation_count + 2):
+            for field in ("LEVEL", "TITLE", "ACTION", "SOLUTION", "VENDORS", "EVIDENCE", "LEGAL", "METRIC"):
+                replacements[f"REC_{index}_{field}"] = f"Рекомендация {index}"
+            replacements[f"REC_{index}_FILL"] = "#F4B400"
+            replacements[f"REC_{index}_TEXT"] = "#1F2937"
+
+        result = renderer(template, replacements)
+        with zipfile.ZipFile(io.BytesIO(result), "r") as archive:
+            presentation = archive.read("ppt/presentation.xml").decode("utf-8")
+            active_slide_count = presentation.count("<p:sldId ")
+            expected_slide_count = 13 - 4 + ((recommendation_count + 1) // 2)
+            if recommendation_count == 0:
+                expected_slide_count -= 1
+            assert_true(
+                active_slide_count == expected_slide_count,
+                f"Unexpected slide count for {recommendation_count} recommendations: "
+                f"{active_slide_count} != {expected_slide_count}",
+            )
+            active_xml = "\n".join(
+                archive.read(name).decode("utf-8")
+                for name in archive.namelist()
+                if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+            )
+            assert_true("{{REC_" not in active_xml, f"Unresolved recommendation token at count {recommendation_count}")
+
+
 def check_sample_drafts() -> None:
     if not BANK_DRAFT.exists():
         print("SKIP banking draft fixture is not present")
@@ -289,6 +345,7 @@ def main() -> None:
         check_portfolio,
         check_static_hooks,
         check_presentation_templates,
+        check_dynamic_presentation_range,
         check_sample_drafts,
     ]
     for check in checks:
