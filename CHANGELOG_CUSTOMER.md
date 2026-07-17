@@ -15,6 +15,10 @@ Planned customer-visible improvement:
 - Reworked the infrastructure slide to explain the operational priorities created by the customer's environment.
 - Added a recommended action to every key risk in the presentation.
 - Unified the recommendation slides, removed semantic duplicates, and ensured that actions are shown as complete statements.
+- Improved presales wording so presentation risks, impacts, and actions are concise and complete.
+- Limited recommended manufacturers to the maintained solution portfolio.
+- Improved the 90-day plan so later phases continue the identified priorities instead of showing generic actions.
+- Simplified customer delivery to one management presentation.
 
 ## v12.0.0
 

@@ -40,7 +40,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.3-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.4-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -103,6 +103,9 @@ def check_static_hooks() -> None:
     assert_true("def it_context_summary" in text and "ИТ-контекст" in text, "Client report IT context is missing")
     assert_true("def make_audit_presentation" in text, "Presentation generator is missing")
     assert_true("cached_presentation_bytes" in text, "Presentation download state is missing")
+    assert_true("Скачать экспертный отчет (XLSX)" not in text, "Client XLSX download must stay hidden")
+    assert_true("Скачать презентацию аудита (PPTX)" in text, "Client presentation download is missing")
+    assert_true('"suffix": ".pptx"' in text and "Audit_Presentation_" in text, "Telegram presentation attachment is missing")
 
 
 def check_presentation_templates() -> None:

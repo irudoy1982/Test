@@ -248,6 +248,18 @@ def test_customer_report_separates_solutions_from_manufacturers() -> None:
     assert_true("WAF" in solution and "F5" not in solution and "Imperva" not in solution, f"Solutions should be classes, got: {solution}")
     assert_true("Check Point" in manufacturers, f"WAF manufacturer should be resolved from matrix, got: {manufacturers}")
 
+    change_item = {
+        "risk": "Отсутствие формализованного управления изменениями и конфигурациями",
+        "impact": "Ошибки могут привести к уязвимостям.",
+    }
+    change_solution = helpers["solution_categories_for_report_item"](change_item)
+    change_vendors = helpers["portfolio_manufacturers_for_report_item"](change_item)
+    assert_true("Change Management" in change_solution, f"Unexpected change-management solution: {change_solution}")
+    assert_true("Qualys" not in change_vendors and "Tenable" not in change_vendors, f"VM vendors leaked into change management: {change_vendors}")
+
+    legacy_vendors = helpers["portfolio_manufacturers_for_report_item"]({"risk": "Устаревшие Windows 7 на рабочих станциях"})
+    assert_true(legacy_vendors == "Microsoft", f"Legacy OS slide should recommend Microsoft only, got: {legacy_vendors}")
+
 
 def test_segmentation_never_maps_to_dlp() -> None:
     helpers = load_portfolio_helpers()
@@ -382,7 +394,15 @@ def test_presentation_text_is_self_contained() -> None:
 def test_presentation_actions_are_complete_and_deduplicated() -> None:
     module_text = APP.read_text(encoding="utf-8")
     namespace = {"re": re}
-    for name in ("presentation_text", "presentation_action_text", "risk_semantic_key", "presentation_recommendation_key"):
+    for name in (
+        "presentation_text",
+        "presentation_action_text",
+        "risk_level_label",
+        "risk_semantic_key",
+        "presentation_recommendation_key",
+        "presentation_presales_profile",
+        "presentation_risk_entry",
+    ):
         exec(extract_function_source(module_text, name), namespace)
 
     clean_action = namespace["presentation_action_text"]
@@ -404,6 +424,28 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "recommendation": "Вести реестр версий и обновлений.",
     })
     assert_true(software_lifecycle == "itam", "Software lifecycle recommendation should map to ITAM, not AppSec or patching")
+
+    change_key = recommendation_key({
+        "risk": "Отсутствие формализованного управления изменениями и конфигурациями",
+        "impact": "Ошибки могут привести к уязвимостям.",
+    })
+    assert_true(change_key == "change_management", "Change management should not map to vulnerability management")
+
+    _, monitoring_profile = namespace["presentation_presales_profile"]({
+        "risk": "Отсутствие централизованного мониторинга производительности",
+        "recommendation": "Внедрить Zabbix или Prometheus.",
+    })
+    profile_text = str(monitoring_profile)
+    assert_true("Zabbix" not in profile_text and "Prometheus" not in profile_text, "Non-portfolio monitoring brands leaked into presentation")
+    assert_true(monitoring_profile["action"].endswith("."), "Monitoring action must be a complete sentence")
+
+    network_risk = namespace["presentation_risk_entry"]({
+        "level": "HIGH",
+        "risk": "Недостаточная производительность и масштабируемость сетевой инфраструктуры",
+        "impact": "Масштабирование затруднено, сегментация неизвестна.",
+        "recommendation": "Провести аудит сети.",
+    })
+    assert_true("сегментац" not in network_risk["impact"].lower(), "Network performance slide must not invent missing segmentation")
 
 
 def main() -> None:
