@@ -28,6 +28,7 @@ Planned customer-visible improvement:
 - Added sector-aware Kazakhstan regulatory context and clearer separation between legal obligations and recommended standards.
 - Expanded the sector list with banking, insurance, healthcare, public and quasi-public sectors, critical infrastructure, telecom, utilities, transport, and industrial environments.
 - Rebuilt the presentation as a 13-slide decision narrative with confirmed strengths, a consistent severity palette, regulatory context, evidence-based recommendations, and measurable outcomes.
+- Improved compatibility with previously saved questionnaires when selectable values are renamed or expanded.
 
 ## v12.0.0
 

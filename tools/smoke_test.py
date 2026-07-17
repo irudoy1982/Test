@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import py_compile
 import hashlib
+import ast
 import re
 import zipfile
 from pathlib import Path
@@ -40,7 +41,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.11-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.12-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -57,6 +58,79 @@ def check_customer_changelog() -> None:
     ]
     found = [word for word in forbidden if word in text]
     assert_true(not found, f"Customer changelog contains internal words: {found}")
+
+
+def check_selectbox_contract() -> None:
+    text = read_text(APP)
+    tree = ast.parse(text)
+    names = {
+        "INDUSTRY_OPTIONS",
+        "COUNTRY_CODE_OPTIONS",
+        "NETWORK_TYPE_OPTIONS",
+        "WIFI_TYPE_OPTIONS",
+        "MAIL_SYSTEM_OPTIONS",
+        "WEB_HOSTING_OPTIONS",
+        "DRAFT_SELECTBOX_OPTIONS",
+    }
+    assignments = []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(isinstance(target, ast.Name) and target.id in names for target in node.targets):
+            assignments.append(node)
+    namespace: dict[str, object] = {}
+    exec(compile(ast.Module(body=assignments, type_ignores=[]), str(APP), "exec"), namespace)
+
+    industries = namespace["INDUSTRY_OPTIONS"]
+    required_industries = {
+        "Финтех / Банки",
+        "Страхование",
+        "Здравоохранение / Медицинская организация",
+        "Госсектор",
+        "Квазигосударственный сектор",
+        "КВОИКИ / Критическая инфраструктура",
+        "Телеком / Связь",
+        "Энергетика / Коммунальная инфраструктура",
+        "Транспорт / Логистика",
+        "Производство / АСУ ТП",
+    }
+    assert_true(required_industries.issubset(set(industries)), "Required industry options are missing")
+
+    selectboxes = namespace["DRAFT_SELECTBOX_OPTIONS"]
+    expected_keys = {
+        "client_industry_select",
+        "client_phone_code",
+        "main_net_type",
+        "back_net_type",
+        "wf_type_sel",
+        "mail_system",
+        "web_hosting",
+    }
+    assert_true(set(selectboxes) == expected_keys, "Draft selectbox contract is incomplete")
+    assert_true("net_types = NETWORK_TYPE_OPTIONS" in text, "Network selectboxes do not use the shared contract")
+    assert_true("country_codes = COUNTRY_CODE_OPTIONS" in text, "Country selectbox does not use the shared contract")
+
+    normalizer = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "normalize_draft_selectbox_value"
+    )
+    exec(compile(ast.Module(body=[normalizer], type_ignores=[]), str(APP), "exec"), namespace)
+    normalize = namespace["normalize_draft_selectbox_value"]
+    assert_true(
+        normalize("client_industry_select", "Критическая инфраструктура")[0]
+        == "КВОИКИ / Критическая инфраструктура",
+        "Legacy critical-infrastructure value is not normalized",
+    )
+    assert_true(
+        normalize("client_industry_select", "Новая отрасль")
+        == ("Другое", "Новая отрасль"),
+        "Unknown industry does not fall back to the custom option",
+    )
+    assert_true(
+        normalize("web_hosting", "Устаревшее значение")[0] in namespace["WEB_HOSTING_OPTIONS"],
+        "Invalid hosting value is not normalized",
+    )
 
 
 def find_header_row(ws, required_headers: set[str]) -> tuple[int, dict[str, int]]:
@@ -162,6 +236,7 @@ def main() -> None:
         check_compile,
         check_version,
         check_customer_changelog,
+        check_selectbox_contract,
         check_portfolio,
         check_static_hooks,
         check_presentation_templates,

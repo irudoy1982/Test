@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.11-dev"
+APP_VERSION = "12.12-dev"
 
 
 def get_app_instance_label():
@@ -751,6 +751,46 @@ INDUSTRY_OPTIONS = [
     "Услуги / Корпоративный сектор",
     "Другое",
 ]
+
+COUNTRY_CODE_OPTIONS = [
+    ("🇰🇿 +7", "+7"),
+    ("🇷🇺 +7", "+7"),
+    ("🇺🇿 +998", "+998"),
+    ("🇰🇬 +996", "+996"),
+    ("🇹🇯 +992", "+992"),
+    ("🇦🇪 +971", "+971"),
+    ("🇹🇷 +90", "+90"),
+    ("🇦🇿 +994", "+994"),
+]
+
+NETWORK_TYPE_OPTIONS = [
+    "Оптика", "RJ45 (Ethernet)", "Радиорелейная", "Спутник",
+    "4G/5G", "Starlink", "ADSL/VDSL", "Нет",
+]
+
+WIFI_TYPE_OPTIONS = [
+    "Wi-Fi 6/6E (802.11ax)",
+    "Wi-Fi 5 (802.11ac)",
+    "Wi-Fi 4 (802.11n)",
+    "Другое",
+]
+
+MAIL_SYSTEM_OPTIONS = [
+    "Exchange (On-Prem)", "Lotus", "Microsoft 365",
+    "Google Workspace", "Собственный", "Нет",
+]
+
+WEB_HOSTING_OPTIONS = ["Собственный ЦОД", "Облако KZ", "Облако Global"]
+
+DRAFT_SELECTBOX_OPTIONS = {
+    "client_industry_select": [""] + INDUSTRY_OPTIONS,
+    "client_phone_code": COUNTRY_CODE_OPTIONS,
+    "main_net_type": NETWORK_TYPE_OPTIONS,
+    "back_net_type": NETWORK_TYPE_OPTIONS,
+    "wf_type_sel": WIFI_TYPE_OPTIONS,
+    "mail_system": MAIL_SYSTEM_OPTIONS,
+    "web_hosting": WEB_HOSTING_OPTIONS,
+}
 
 
 REGULATORY_CATALOG = {
@@ -3113,6 +3153,52 @@ def decode_draft_token(token):
     return json.loads(raw.decode("utf-8"))
 
 
+def normalize_draft_selectbox_value(key, value):
+    aliases = {
+        "client_industry_select": {
+            "Финансы / Банки": "Финтех / Банки",
+            "Банки": "Финтех / Банки",
+            "Медицина": "Здравоохранение / Медицинская организация",
+            "Медицинское учреждение": "Здравоохранение / Медицинская организация",
+            "Критическая инфраструктура": "КВОИКИ / Критическая инфраструктура",
+            "Квазигоссектор": "Квазигосударственный сектор",
+        },
+        "main_net_type": {
+            "Оптоволокно": "Оптика",
+            "Радиоканал": "Радиорелейная",
+        },
+        "back_net_type": {
+            "Оптоволокно": "Оптика",
+            "Радиоканал": "Радиорелейная",
+        },
+        "web_hosting": {
+            "ЦОД KZ": "Собственный ЦОД",
+            "Собственный дата-центр": "Собственный ЦОД",
+        },
+    }
+
+    if key == "client_phone_code" and isinstance(value, list):
+        value = tuple(value)
+
+    value = aliases.get(key, {}).get(value, value)
+    options = DRAFT_SELECTBOX_OPTIONS.get(key)
+    if options is None or value in options:
+        return value, None
+
+    if key == "client_industry_select" and str(value or "").strip():
+        return "Другое", str(value).strip()
+
+    defaults = {
+        "client_phone_code": COUNTRY_CODE_OPTIONS[0],
+        "main_net_type": "Нет",
+        "back_net_type": "Нет",
+        "wf_type_sel": WIFI_TYPE_OPTIONS[0],
+        "mail_system": "Нет",
+        "web_hosting": WEB_HOSTING_OPTIONS[0],
+    }
+    return defaults.get(key, options[0]), None
+
+
 def apply_draft_state(payload):
     state = payload.get("state", payload)
     if not isinstance(state, dict):
@@ -3120,11 +3206,18 @@ def apply_draft_state(payload):
 
     applied = 0
 
+    normalized_state = dict(state)
     for key, value in state.items():
         if is_draft_system_key(key):
             continue
-        if key == "client_phone_code" and isinstance(value, list):
-            value = tuple(value)
+        value, custom_industry = normalize_draft_selectbox_value(key, value)
+        if custom_industry:
+            normalized_state["client_industry_other"] = custom_industry
+        normalized_state[key] = value
+
+    for key, value in normalized_state.items():
+        if is_draft_system_key(key):
+            continue
         if key in SECURITY_CHECKBOX_KEYS:
             value = coerce_draft_bool(value)
         st.session_state[key] = value
@@ -3808,10 +3901,7 @@ with col_h2:
     
     st.write("Контактный телефон*")
     p_col1, p_col2 = st.columns([1, 2])
-    country_codes = [
-        ("🇰🇿 +7", "+7"), ("🇷🇺 +7", "+7"), ("🇺🇿 +998", "+998"), ("🇰🇬 +996", "+996"),
-        ("🇹🇯 +992", "+992"), ("🇦🇪 +971", "+971"), ("🇹🇷 +90", "+90"), ("🇦🇿 +994", "+994")
-    ]
+    country_codes = COUNTRY_CODE_OPTIONS
     selected_code = p_col1.selectbox("Код", country_codes, format_func=lambda x: x[0], label_visibility="collapsed", key="client_phone_code")
     phone_num = p_col2.text_input("Номер", placeholder="777 777 77 77", label_visibility="collapsed", key="client_phone_number", help="Телефон для оперативной связи.")
     normalized_phone = normalize_phone_number(phone_num)
@@ -3904,7 +3994,7 @@ wifi_ctrl_enabled = False
 net_active = st.toggle("Своя сетевая инфраструктура", key="net_toggle", help="Активируйте, если организация самостоятельно управляет сетевым оборудованием.")
 
 if net_active:
-    net_types = ["Оптика", "RJ45 (Ethernet)", "Радиорелейная", "Спутник", "4G/5G", "Starlink", "ADSL/VDSL", "Нет"]
+    net_types = NETWORK_TYPE_OPTIONS
     routing_types = ["Статическая", "RIP", "OSPF", "EIGRP", "BGP", "IS-IS"]
     
     col_net1, col_net2 = st.columns(2)
@@ -3983,7 +4073,7 @@ if net_active:
             data['Wi-Fi Точки доступа'] = ap_cnt
             if ap_cnt == 0: validation_errors.append("Укажите количество точек доступа Wi-Fi")
         with w_col3:
-            wf_types = ["Wi-Fi 6/6E (802.11ax)", "Wi-Fi 5 (802.11ac)", "Wi-Fi 4 (802.11n)", "Другое"]
+            wf_types = WIFI_TYPE_OPTIONS
             data['Wi-Fi Тип'] = st.selectbox("Тип Wi-Fi", wf_types, key="wf_type_sel", help="Преимущественный стандарт беспроводной связи.")
 
     if st.checkbox("Межсетевой экран (NGFW)", key="ngfw_chk", help="Многофункциональные шлюзы безопасности (FortiGate, UserGate, CheckPoint и т.д.)."):
@@ -4164,7 +4254,7 @@ if is_active:
         "BI (Аналитика)": "bi", "WMS (Склад)": "wms", "Учет (Бухгалтерия)": "acc"
     }
     
-    m_opts = ["Exchange (On-Prem)", "Lotus", "Microsoft 365", "Google Workspace", "Собственный", "Нет"]
+    m_opts = MAIL_SYSTEM_OPTIONS
     m_sys = st.selectbox("Почтовая система", m_opts, key="mail_system", help="Где физически и логически располагается ваша электронная почта.")
     
     if m_sys in ["Exchange (On-Prem)", "Lotus"]:
@@ -4373,7 +4463,7 @@ render_section_marker(
 )
 web_active = st.toggle("Веб-ресурсы", key="web_toggle")
 if web_active:
-    data['3.1. Хостинг'] = st.selectbox("Хостинг", ["Собственный ЦОД", "Облако KZ", "Облако Global"], key="web_hosting")
+    data['3.1. Хостинг'] = st.selectbox("Хостинг", WEB_HOSTING_OPTIONS, key="web_hosting")
     data['3.2. Frontend'] = st.multiselect("Frontend серверы", ["Nginx", "Apache", "IIS", "LiteSpeed", "Cloudflare"], key="web_frontend")
     data['Примечание (Web)'] = st.text_area("Примечания по Web", placeholder="Стек...", key="note_web")
 
