@@ -966,6 +966,67 @@ REGULATORY_CATALOG = {
 }
 
 
+def expand_regulatory_references(value):
+    """Replace internal legal IDs in AI prose with customer-facing titles."""
+    text = str(value or "")
+
+    def replace_penalty(match):
+        item = REGULATORY_CATALOG.get(match.group(1))
+        if not item:
+            return match.group(0)
+        return f"Регуляторные последствия при нарушении требований: {item['short']}"
+
+    text = re.sub(r"Штрафы\s+по\s*\[([A-Z0-9_]+)\]", replace_penalty, text, flags=re.IGNORECASE)
+
+    def replace_requirements(match):
+        item = REGULATORY_CATALOG.get(match.group(1))
+        return f"требованиям документа «{item['short']}»" if item else match.group(0)
+
+    text = re.sub(
+        r"требованиям(?:\s+регулятор(?:а|ов))?\s*\[([A-Z0-9_]+)\]",
+        replace_requirements,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    def replace_token(match):
+        item = REGULATORY_CATALOG.get(match.group(1))
+        return item["short"] if item else match.group(0)
+
+    return re.sub(r"\[([A-Z0-9_]+)\]", replace_token, text)
+
+
+def sanitize_customer_roadmap_text(value):
+    """Keep roadmap vendor-neutral and enforce pilot-before-procurement wording."""
+    text = expand_regulatory_references(value).strip()
+    lowered = text.lower()
+
+    if "dlp" in lowered and any(marker in lowered for marker in ("закупить", "выбрать поставщика")):
+        if "пилот" in lowered or "закупить" in lowered:
+            return (
+                "Провести ограниченный пилот DLP на согласованных каналах; по результатам "
+                "подтвердить требования, модель внедрения и решение о масштабировании."
+            )
+        return "Определить каналы контроля, политики и измеримые критерии пилота DLP."
+
+    text = re.sub(r"\s*\([^)]*(?:Cisco|CyberArk|Veeam|Fortinet|Check Point|Huawei|IBM|Splunk|ManageEngine|Broadcom|Forcepoint)[^)]*\)", "", text, flags=re.IGNORECASE)
+    vendor_names = {
+        "Cisco ISE", "CyberArk", "Veeam Backup", "Veeam", "Fortinet", "Check Point",
+        "Huawei", "IBM", "Splunk", "ManageEngine", "Broadcom", "Forcepoint",
+    }
+    try:
+        for values in load_detailed_solution_vendor_map().values():
+            vendor_names.update(str(value).strip() for value in values if str(value).strip())
+    except Exception:
+        pass
+    for vendor in sorted(vendor_names, key=len, reverse=True):
+        text = re.sub(re.escape(vendor), "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bBackup\b", "резервных копий", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    return text.strip(" .,-") + ("." if text.strip(" .,-") else "")
+
+
 INDUSTRY_REGULATORY_IDS = {
     "Финтех / Банки": ["PD_LAW", "PD_RULES", "FINANCE_IS", "BANK_IS"],
     "Страхование": ["PD_LAW", "PD_RULES", "FINANCE_IS"],
@@ -1802,6 +1863,9 @@ JSON должен быть валидным: все строковые знач�
 - для КВОИКИ с персональными данными отсутствие DLP имеет уровень HIGH.
 - при наличии серверов и критичных систем без PAM обязательно оцени PAM; SOAR указывай как этап развития SIEM/SOC, а не отдельный срочный проект.
 - отсутствие NAC описывай как отсутствие автоматизированного контроля допуска устройств, а не как доказательство отсутствия сегментации.
+- в roadmap не указывай производителей и названия продуктов; используй только классы технологий и управленческие действия.
+- result каждого объекта roadmap должен описывать измеримый результат именно его action, а не всей фазы целиком.
+- для новых решений соблюдай порядок: требования и критерии -> ограниченный пилот -> решение о закупке и масштабировании.
 
 Отрасль: {c_info.get("Сфера деятельности", "-")}
 
@@ -2243,6 +2307,8 @@ vendors (массив строк), legal_ids (массив строк), framewor
 - отсутствие NAC формулируй как разрыв автоматизированного допуска и профилирования устройств, а не как отсутствие VLAN/ACL;
 - при серверном и критичном контуре без PAM обязательно оцени привилегированные доступы;
 - SOAR показывай только как следующий этап развития SIEM/SOC после стабилизации источников, сценариев и SLA;
+- в roadmap не указывай производителей или продукты; result каждого объекта должен относиться только к его action;
+- для нового решения сначала требования и пилот, затем решение о закупке и масштабировании;
 - не используй Microsoft как ИБ-вендора, кроме миграции Windows/Windows Server;
 - legal_ids выбирай только из переданного регуляторного контекста.
 
@@ -7151,6 +7217,9 @@ def risk_semantic_key(item):
         ("mfa", ("mfa", "многофактор", "2fa", "двухфактор")),
         ("legacy_os", ("legacy", "устаревш", "windows xp", "windows vista", "windows 7", "windows 8", "2008", "2012 r2")),
         ("siem_soc", ("siem", "soc", "мониторинг событий", "централизованный мониторинг")),
+        ("pam", ("pam", "привилегирован", "администраторск")),
+        ("nac", ("nac", "контроль подключения устройств", "контроль доступа устройств к сети", "network access control")),
+        ("dlp", ("dlp", "утеч", "эксфильтрац", "data loss")),
         ("network_performance", ("масштабируемость сетевой", "производительность сетевой", "сетевая топология", "конфигурации маршрутизации")),
         ("itam", ("программными активами", "жизненным циклом", "управление активами", "лицензи", "инвентаризац")),
         ("change_management", ("управления изменениями", "управление изменениями", "change management", "изменениями и конфигурациями")),
@@ -7158,10 +7227,7 @@ def risk_semantic_key(item):
         ("endpoint_detection", ("edr", "xdr", "endpoint", "рабочих мест", "lateral movement")),
         ("backup", ("backup", "резерв", "immutable", "ransomware")),
         ("web_waf", ("waf", "web", "веб", "owasp", "публичн")),
-        ("pam", ("pam", "привилегирован", "администраторск")),
-        ("nac", ("nac", "контроль подключения устройств", "контроль доступа устройств к сети", "network access control")),
         ("segmentation", ("сегментац", "vlan", "lateral")),
-        ("dlp", ("dlp", "утеч", "эксфильтрац", "data loss")),
         ("mail", ("mail", "почт", "фишинг")),
         ("it_monitoring", ("эксплуатационный мониторинг", "доступности", "производительности", "capacity")),
         ("virtualization", ("виртуализац", "гипервизор", "vm", "хост")),
@@ -7229,7 +7295,7 @@ def sanitize_ai_audit_narrative(narrative, results):
     ) > 0
 
     def clean_text(value):
-        text = neutralize_company_scale_language(value)
+        text = expand_regulatory_references(neutralize_company_scale_language(value))
         lowered = text.lower()
         if not legacy_reported and any(marker in lowered for marker in (
             "устаревш", "legacy", "windows 10", "linux-сервер", "linux сервер",
@@ -7269,9 +7335,9 @@ def sanitize_ai_audit_narrative(narrative, results):
     cleaned["roadmap"] = [
         {
             **item,
-            "action": clean_text(item.get("action", "")),
-            "rationale": clean_text(item.get("rationale", "")),
-            "result": clean_text(item.get("result", "")),
+            "action": sanitize_customer_roadmap_text(item.get("action", "")),
+            "rationale": expand_regulatory_references(item.get("rationale", "")),
+            "result": sanitize_customer_roadmap_text(item.get("result", "")),
         }
         for item in narrative.get("roadmap", [])
         if isinstance(item, dict) and str(item.get("action", "")).strip()
@@ -7282,6 +7348,12 @@ def sanitize_ai_audit_narrative(narrative, results):
 def enforce_audit_fact_policy(item, results, context):
     """Apply narrow fact and priority guards without rewriting the AI conclusion."""
     normalized = dict(item)
+    for field in ("risk", "description", "impact", "recommendation"):
+        if field in normalized:
+            normalized[field] = expand_regulatory_references(normalized[field])
+    evidence = normalized.get("evidence", [])
+    if isinstance(evidence, list):
+        normalized["evidence"] = [expand_regulatory_references(value) for value in evidence]
     key = risk_semantic_key(normalized)
 
     if key == "segmentation" and network_segmentation_evidence(results) != "absent" and not is_enabled(results.get("NAC")):
@@ -7313,6 +7385,10 @@ def enforce_audit_fact_policy(item, results, context):
         context.get("is_kvoiki") or context.get("has_personal_data")
     ):
         normalized["level"] = "HIGH"
+        normalized["recommendation"] = (
+            "Определить категории данных, каналы контроля и критерии успеха; провести ограниченный "
+            "пилот DLP; по результатам пилота выбрать архитектуру и масштабировать подтвержденные политики."
+        )
 
     if key == "siem_soc" and not is_enabled(results.get("SOAR")):
         recommendation = str(normalized.get("recommendation", "")).strip()
@@ -8059,8 +8135,11 @@ def presentation_severity_style(level):
 
 def presentation_recommendation_entry(item, regulatory_profile=None, results=None, context=None):
     normalized = dict(item)
-    normalized["risk"] = item.get("risk") or item.get("domain") or "Рекомендация"
-    normalized["recommendation"] = item.get("recommendation") or item.get("action") or item.get("description")
+    for field in ("risk", "description", "impact", "recommendation", "action", "success_metric"):
+        if field in normalized:
+            normalized[field] = expand_regulatory_references(normalized[field])
+    normalized["risk"] = normalized.get("risk") or normalized.get("domain") or "Рекомендация"
+    normalized["recommendation"] = normalized.get("recommendation") or normalized.get("action") or normalized.get("description")
     semantic_key, profile = presentation_presales_profile(normalized)
     ai_authored = str(item.get("source") or item.get("_source") or "").strip().lower() in {
         "ии", "ai", "gemini", "groq"
@@ -8102,14 +8181,14 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
     if semantic_key in {"patch", "itam"} and "hcl" not in str(vendors).lower():
         vendors = ", ".join([*split_portfolio_list(vendors), "HCL BigFix"])
     vendors = presentation_text(vendors, 92)
-    evidence_values = item.get("evidence", [])
+    evidence_values = normalized.get("evidence", [])
     if not isinstance(evidence_values, list):
         evidence_values = [evidence_values] if evidence_values else []
     evidence = "; ".join(str(value).strip() for value in evidence_values if str(value).strip())
     if results is not None and context is not None and not (ai_authored and evidence):
         evidence = presentation_evidence_for_key(semantic_key, results, context, item)
     elif not evidence:
-        evidence = item.get("description") or item.get("impact") or "Основание приоритета требует уточнения"
+        evidence = normalized.get("description") or normalized.get("impact") or "Основание приоритета требует уточнения"
 
     legal_ids = [
         value for value in item.get("legal_ids", [])
@@ -8124,7 +8203,7 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
     else:
         legal = "Применимость подтверждается с учетом отрасли и роли организации"
 
-    raw_level, fill_color, text_color = presentation_severity_style(item.get("level"))
+    raw_level, fill_color, text_color = presentation_severity_style(normalized.get("level"))
     return {
         "key": semantic_key,
         "level": risk_level_label(raw_level).upper(),
@@ -8142,21 +8221,24 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
 
 def presentation_risk_entry(item):
     normalized = dict(item)
-    normalized["recommendation"] = item.get("recommendation") or item.get("action") or item.get("description")
+    for field in ("risk", "description", "impact", "recommendation", "action"):
+        if field in normalized:
+            normalized[field] = expand_regulatory_references(normalized[field])
+    normalized["recommendation"] = normalized.get("recommendation") or normalized.get("action") or normalized.get("description")
     _, profile = presentation_presales_profile(normalized)
     ai_authored = str(item.get("source") or item.get("_source") or "").strip().lower() in {
         "ии", "ai", "gemini", "groq"
     }
-    raw_level, fill_color, text_color = presentation_severity_style(item.get("level"))
+    raw_level, fill_color, text_color = presentation_severity_style(normalized.get("level"))
     return {
         "level": presentation_text(risk_level_label(raw_level), 16).upper(),
         "title": (
-            presentation_text(item.get("risk", "Риск требует внимания"), 78)
+            presentation_text(normalized.get("risk", "Риск требует внимания"), 78)
             if ai_authored
-            else profile.get("title") or presentation_text(item.get("risk", "Риск требует внимания"), 78)
+            else profile.get("title") or presentation_text(normalized.get("risk", "Риск требует внимания"), 78)
         ),
         "impact": (None if ai_authored else profile.get("impact")) or presentation_action_text(
-            item.get("impact") or item.get("description") or "Требуется уточнить влияние риска.",
+            normalized.get("impact") or normalized.get("description") or "Требуется уточнить влияние риска.",
             155,
         ),
         "action": (
@@ -8318,9 +8400,16 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         phase_key = next((key for key in roadmap_by_phase if key in phase), None)
         if not phase_key:
             continue
-        action = presentation_action_text(item.get("action") or item.get("recommendation"), 120)
-        if action not in roadmap_by_phase[phase_key]:
-            roadmap_by_phase[phase_key].append(action)
+        action = presentation_action_text(
+            sanitize_customer_roadmap_text(item.get("action") or item.get("recommendation")),
+            120,
+        )
+        result = presentation_action_text(
+            sanitize_customer_roadmap_text(item.get("result") or "Результат подтверждается измеримым критерием."),
+            90,
+        )
+        if action not in [entry["action"] for entry in roadmap_by_phase[phase_key]]:
+            roadmap_by_phase[phase_key].append({"action": action, "result": result})
 
     roadmap_phase_by_key = {
         "mfa": "0-30",
@@ -8340,9 +8429,12 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         phase = roadmap_phase_by_key.get(entry["key"])
         if not phase or len(roadmap_by_phase[phase]) >= 2:
             continue
-        action = presentation_action_text(entry["action"], 150)
-        if action not in roadmap_by_phase[phase]:
-            roadmap_by_phase[phase].append(action)
+        action = presentation_action_text(sanitize_customer_roadmap_text(entry["action"]), 120)
+        if action not in [item["action"] for item in roadmap_by_phase[phase]]:
+            roadmap_by_phase[phase].append({
+                "action": action,
+                "result": presentation_action_text(entry["metric"], 90),
+            })
 
     enabled_controls, _ = security_control_snapshot(results)
     strengths = [presentation_text(item, 105) for item in enabled_controls[:4]]
@@ -8391,16 +8483,25 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         ("Восстановление", domain_scores.get("Резервное копирование", 0)),
         ("Инфраструктура", domain_scores.get("Инфраструктура", 0)),
     ]
+    coverage_values = [max(0, min(100, int(score or 0))) for _, score in threat_domains]
+    replacements["COVERAGE_AVERAGE"] = str(round(sum(coverage_values) / max(1, len(coverage_values))))
+    strongest_label, strongest_score = max(threat_domains, key=lambda item: int(item[1] or 0))
+    weakest_label, weakest_score = min(threat_domains, key=lambda item: int(item[1] or 0))
+    replacements["COVERAGE_INSIGHT"] = presentation_text(
+        f"Сильнейший домен: {strongest_label} — {int(strongest_score or 0)}%. "
+        f"Главный резерв улучшения: {weakest_label} — {int(weakest_score or 0)}%.",
+        150,
+    )
     for index, (label, score) in enumerate(threat_domains, start=1):
-        gap = max(0, min(100, 100 - int(score or 0)))
-        if gap >= 70:
+        coverage = max(0, min(100, int(score or 0)))
+        if coverage < 40:
             fill = "#D92D20"
-        elif gap >= 40:
+        elif coverage < 70:
             fill = "#F4B400"
         else:
             fill = "#13877C"
         replacements[f"THREAT_{index}_LABEL"] = label
-        replacements[f"THREAT_{index}_VALUE"] = str(gap)
+        replacements[f"THREAT_{index}_VALUE"] = str(coverage)
         replacements[f"THREAT_{index}_FILL"] = fill
     for index, (title, text) in enumerate(focus_items, start=1):
         replacements[f"FOCUS_{index}_TITLE"] = presentation_text(title, 42)
@@ -8493,18 +8594,15 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         replacements[f"OUTCOME_{index}_FROM"] = presentation_text(entry["evidence"], 145)
         replacements[f"OUTCOME_{index}_TO"] = presentation_text(entry["metric"], 125)
 
-    roadmap_results = {}
-    for phase in ("0-30", "31-60", "61-90"):
-        phase_items = [item for item in roadmap_items if phase in str(item.get("phase", ""))]
-        roadmap_results[phase] = next(
-            (str(item.get("result", "")).strip() for item in phase_items if str(item.get("result", "")).strip()),
-            "Результат этапа подтвержден измеримыми критериями.",
-        )
-
     for phase_index, phase in enumerate(("0-30", "31-60", "61-90"), start=1):
-        replacements[f"ROADMAP_{phase_index}_1"] = roadmap_by_phase[phase][0]
-        replacements[f"ROADMAP_{phase_index}_2"] = roadmap_by_phase[phase][1]
-        replacements[f"ROADMAP_{phase_index}_RESULT"] = presentation_text(roadmap_results[phase], 90)
+        while len(roadmap_by_phase[phase]) < 2:
+            roadmap_by_phase[phase].append({
+                "action": "Поддерживать действующий контроль и подтвердить его эффективность.",
+                "result": "Контроль проверен, владелец и периодичность пересмотра утверждены.",
+            })
+        for item_index, item in enumerate(roadmap_by_phase[phase][:2], start=1):
+            replacements[f"ROADMAP_{phase_index}_{item_index}"] = item["action"]
+            replacements[f"ROADMAP_{phase_index}_{item_index}_RESULT"] = item["result"]
     return replacements
 
 

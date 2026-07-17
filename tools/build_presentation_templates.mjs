@@ -322,13 +322,16 @@ async function buildTemplate(cfg) {
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Профиль угроз и разрывов контроля", 3);
-    addText(slide, "Доля незакрытых контрольных зон по данным анкеты", 58, 140, 1118, 34, {
+    await addHeader(slide, cfg, "Профиль покрытия ключевых контролей", 3);
+    addText(slide, "0% — контроль не подтвержден; 100% — целевой контур закрыт", 58, 140, 760, 34, {
       fontSize: 19, bold: true, color: cfg.colors.accent,
     });
-    addText(slide, "Красный требует первоочередного решения, желтый — управляемого плана, зеленый — контроля эффективности.", 58, 178, 1118, 28, {
+    addText(slide, "Красный требует первоочередного решения, желтый — управляемого плана, зеленый — контроля эффективности.", 58, 178, 820, 28, {
       fontSize: 14, color: cfg.colors.muted,
     });
+    addRect(slide, 938, 140, 238, 68, cfg.colors.soft, "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
+    addText(slide, "{{COVERAGE_AVERAGE}}%", 958, 150, 82, 38, { fontSize: 27, bold: true, color: cfg.colors.dark, alignment: "center" });
+    addText(slide, "среднее покрытие", 1044, 158, 112, 24, { fontSize: 12, bold: true, color: cfg.colors.muted, alignment: "center" });
     for (let i = 0; i < 6; i += 1) {
       const col = i % 3;
       const row = Math.floor(i / 3);
@@ -342,10 +345,12 @@ async function buildTemplate(cfg) {
       addText(slide, `{{THREAT_${i + 1}_LABEL}}`, x - 52, y + 146, 236, 34, {
         fontSize: 16, bold: true, color: cfg.colors.dark, alignment: "center",
       });
-      addText(slide, "разрыв контроля", x - 52, y + 177, 236, 22, {
+      addText(slide, "уровень покрытия", x - 52, y + 177, 236, 22, {
         fontSize: 12, color: cfg.colors.muted, alignment: "center",
       });
     }
+    addRect(slide, 58, 648, 1118, 34, cfg.colors.soft, "rounded-lg");
+    addText(slide, "{{COVERAGE_INSIGHT}}", 78, 656, 1078, 20, { fontSize: 12, bold: true, color: cfg.colors.dark, alignment: "center" });
   }
 
   // 4. Infrastructure profile
@@ -467,26 +472,28 @@ async function buildTemplate(cfg) {
     slide.background.fill = "#FFFFFF";
     await addHeader(slide, cfg, "План на 90 дней переводит выводы в действия", 11);
     const phases = [
-      ["0–30 дней", "ПРИОРИТЕТЫ И БЫСТРЫЕ МЕРЫ", "{{ROADMAP_1_1}}", "{{ROADMAP_1_2}}", "{{ROADMAP_1_RESULT}}"],
-      ["31–60 дней", "ПИЛОТЫ И РЕГЛАМЕНТЫ", "{{ROADMAP_2_1}}", "{{ROADMAP_2_2}}", "{{ROADMAP_2_RESULT}}"],
-      ["61–90 дней", "МАСШТАБИРОВАНИЕ И КОНТРОЛЬ", "{{ROADMAP_3_1}}", "{{ROADMAP_3_2}}", "{{ROADMAP_3_RESULT}}"],
+      ["0–30 дней", "ПРИОРИТЕТЫ И БЫСТРЫЕ МЕРЫ", "{{ROADMAP_1_1}}", "{{ROADMAP_1_1_RESULT}}", "{{ROADMAP_1_2}}", "{{ROADMAP_1_2_RESULT}}"],
+      ["31–60 дней", "ПИЛОТЫ И РЕГЛАМЕНТЫ", "{{ROADMAP_2_1}}", "{{ROADMAP_2_1_RESULT}}", "{{ROADMAP_2_2}}", "{{ROADMAP_2_2_RESULT}}"],
+      ["61–90 дней", "МАСШТАБИРОВАНИЕ И КОНТРОЛЬ", "{{ROADMAP_3_1}}", "{{ROADMAP_3_1_RESULT}}", "{{ROADMAP_3_2}}", "{{ROADMAP_3_2_RESULT}}"],
     ];
     addText(slide, "Сначала 20% первоочередных мер, которые закрывают основную долю подтвержденных рисков.", 58, 140, 1118, 30, { fontSize: 17, color: cfg.colors.muted });
     addRect(slide, 89, 204, 4, 398, cfg.colors.rule, "none");
-    phases.forEach(([phase, label, one, two, result], i) => {
+    phases.forEach(([phase, label, one, oneResult, two, twoResult], i) => {
       const y = 184 + i * 154;
       addEllipse(slide, 64, y + 38, 54, 54, i === 0 ? cfg.colors.accent : cfg.colors.dark);
       addText(slide, String(i + 1), 74, y + 51, 34, 24, { fontSize: 16, bold: true, color: "#FFFFFF", alignment: "center" });
       addRect(slide, 146, y, 1030, 132, i === 0 ? cfg.colors.soft : "#FFFFFF", "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
       addText(slide, phase, 170, y + 16, 148, 24, { fontSize: 15, bold: true, color: cfg.colors.accent });
       addText(slide, label, 170, y + 46, 250, 52, { fontSize: 15, bold: true, color: cfg.colors.dark });
-      addText(slide, "01", 442, y + 21, 32, 20, { fontSize: 11, bold: true, color: cfg.colors.accent });
-      addText(slide, one, 480, y + 15, 248, 94, { fontSize: 13, color: cfg.colors.dark });
-      addText(slide, "02", 748, y + 21, 32, 20, { fontSize: 11, bold: true, color: cfg.colors.accent });
-      addText(slide, two, 786, y + 15, 194, 94, { fontSize: 13, color: cfg.colors.dark });
-      addRect(slide, 998, y + 14, 160, 104, "#FFFFFF", "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
-      addText(slide, "РЕЗУЛЬТАТ", 1010, y + 24, 136, 18, { fontSize: 9, bold: true, color: cfg.colors.accent, alignment: "center" });
-      addText(slide, result, 1010, y + 46, 136, 64, { fontSize: 10, bold: true, color: cfg.colors.dark, alignment: "center" });
+      addText(slide, "01", 442, y + 19, 32, 20, { fontSize: 11, bold: true, color: cfg.colors.accent });
+      addText(slide, one, 480, y + 13, 292, 56, { fontSize: 12, color: cfg.colors.dark });
+      addText(slide, "РЕЗУЛЬТАТ", 480, y + 76, 76, 14, { fontSize: 8, bold: true, color: cfg.colors.accent });
+      addText(slide, oneResult, 480, y + 92, 292, 30, { fontSize: 10, bold: true, color: cfg.colors.dark });
+      addRect(slide, 792, y + 16, 1, 100, cfg.colors.rule, "none");
+      addText(slide, "02", 816, y + 19, 32, 20, { fontSize: 11, bold: true, color: cfg.colors.accent });
+      addText(slide, two, 854, y + 13, 284, 56, { fontSize: 12, color: cfg.colors.dark });
+      addText(slide, "РЕЗУЛЬТАТ", 854, y + 76, 76, 14, { fontSize: 8, bold: true, color: cfg.colors.accent });
+      addText(slide, twoResult, 854, y + 92, 284, 30, { fontSize: 10, bold: true, color: cfg.colors.dark });
     });
   }
 

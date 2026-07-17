@@ -254,7 +254,7 @@ def check_presentation_fact_guards() -> None:
         for node in app_tree.body
         if isinstance(node, ast.FunctionDef) and node.name in function_names
     }
-    namespace = {"re": re}
+    namespace = {"re": re, "expand_regulatory_references": lambda value: str(value or "")}
     ordered_nodes = [nodes_by_name[name] for name in (
         "is_enabled",
         "risk_semantic_key",
@@ -326,6 +326,8 @@ def check_presentation_templates() -> None:
         "{{THREAT_1_VALUE}}",
         "{{THREAT_6_LABEL}}",
         "{{THREAT_6_VALUE}}",
+        "{{COVERAGE_AVERAGE}}",
+        "{{COVERAGE_INSIGHT}}",
         "{{REG_TITLE}}",
         "{{REG_APPLICABILITY}}",
         "{{REG_EXPECTATIONS}}",
@@ -342,7 +344,8 @@ def check_presentation_templates() -> None:
         "{{REC_8_TITLE}}",
         "{{REC_8_ACTION}}",
         "{{ROADMAP_1_1}}",
-        "{{ROADMAP_1_RESULT}}",
+        "{{ROADMAP_1_1_RESULT}}",
+        "{{ROADMAP_1_2_RESULT}}",
         "{{DECISION_1}}",
     }
     assert_true(PRESENTATION_COVER_ASSET.exists(), "Presentation cover image is missing")
@@ -368,6 +371,62 @@ def check_presentation_templates() -> None:
     for qr_asset in PRESENTATION_QR_ASSETS:
         assert_true(qr_asset.exists(), f"Presentation QR is missing: {qr_asset.name}")
         assert_true(qr_asset.stat().st_size > 2000, f"Presentation QR is unexpectedly small: {qr_asset.name}")
+
+
+def check_customer_output_normalization() -> None:
+    app_tree = ast.parse(read_text(APP))
+    wanted_assignments = {"REGULATORY_CATALOG", "INDUSTRY_REGULATORY_IDS", "INDUSTRY_FRAMEWORKS"}
+    assignment_nodes = [
+        node for node in app_tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id in wanted_assignments for target in node.targets)
+    ]
+    function_names = {
+        "expand_regulatory_references",
+        "sanitize_customer_roadmap_text",
+        "risk_semantic_key",
+        "industry_regulatory_profile",
+    }
+    functions = {
+        node.name: node for node in app_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in function_names
+    }
+    ordered = [
+        *assignment_nodes,
+        functions["expand_regulatory_references"],
+        functions["sanitize_customer_roadmap_text"],
+        functions["risk_semantic_key"],
+        functions["industry_regulatory_profile"],
+    ]
+    namespace = {"re": re}
+    exec(compile(ast.Module(body=ordered, type_ignores=[]), str(APP), "exec"), namespace)
+
+    assert_true(
+        "[PD_LAW]" not in namespace["expand_regulatory_references"]("Штрафы по [PD_LAW]"),
+        "Internal regulatory IDs leaked into customer text",
+    )
+    assert_true(
+        namespace["risk_semantic_key"]({
+            "risk": "Привилегированные учетные записи требуют PAM",
+            "recommendation": "Провести инвентаризацию администраторов",
+        }) == "pam",
+        "PAM risk was incorrectly classified as ITAM",
+    )
+    roadmap = namespace["sanitize_customer_roadmap_text"]("Закупить и начать пилот DLP (Forcepoint).")
+    assert_true(
+        "закупить" not in roadmap.lower() and "пилот" in roadmap.lower() and "forcepoint" not in roadmap.lower(),
+        "DLP roadmap must use pilot-before-procurement and remain vendor-neutral",
+    )
+    bank = namespace["industry_regulatory_profile"]("Финтех / Банки")
+    kvoiki = namespace["industry_regulatory_profile"]("КВОИКИ / Критическая инфраструктура")
+    assert_true(
+        "BANK_IS" in bank["legal_ids"] and "KVOIKI_529" not in bank["legal_ids"],
+        "Bank profile contains incorrect regulatory scope",
+    )
+    assert_true(
+        "KVOIKI_529" in kvoiki["legal_ids"] and bank["legal_ids"] != kvoiki["legal_ids"],
+        "Industry profiles do not produce distinct regulatory outputs",
+    )
 
 
 def check_dynamic_presentation_range() -> None:
@@ -452,6 +511,7 @@ def main() -> None:
         check_partial_ai_json_recovery,
         check_presentation_fact_guards,
         check_presentation_templates,
+        check_customer_output_normalization,
         check_dynamic_presentation_range,
         check_sample_drafts,
     ]
