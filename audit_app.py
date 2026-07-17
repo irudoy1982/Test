@@ -583,7 +583,7 @@ def prepare_ai_risks_for_report(items, min_items=1):
     return prepared if len(prepared) >= min_items else []
 
 
-def ai_quality_gate(items, min_items=6):
+def ai_quality_gate(items, min_items=6, min_security_items=3, min_it_items=3):
     prepared = prepare_ai_risks_for_report(items, min_items=1)
     if len(prepared) < min_items:
         return [], f"ИИ дал только {len(prepared)} пригодных пунктов из минимально ожидаемых {min_items}."
@@ -616,9 +616,9 @@ def ai_quality_gate(items, min_items=6):
 
     if weak_text_count > max(2, len(prepared) // 3):
         return [], "ИИ дал слишком короткие рекомендации; включены экспертные правила."
-    if security_count < 3:
+    if security_count < min_security_items:
         return [], "ИИ почти не покрыл ИБ-домены; включены экспертные правила."
-    if it_count < 3:
+    if it_count < min_it_items:
         return [], "ИИ почти не покрыл ИТ-инфраструктуру; включены экспертные правила."
 
     return prepared, ""
@@ -676,7 +676,19 @@ def risk_conflicts_with_answers(item, results):
     if key == "dlp" and is_enabled(results.get("DLP")):
         return "DLP already enabled"
     if key == "backup" and is_enabled(results.get("Резервное копирование")):
-        return "Backup already enabled"
+        combined = " ".join(
+            str(item.get(field, ""))
+            for field in ("risk", "description", "recommendation")
+        ).lower()
+        absence_markers = (
+            "резервное копирование отсутств",
+            "резервное копирование не внедр",
+            "нет резервного копирования",
+            "backup отсутств",
+            "backup не внедр",
+        )
+        if any(marker in combined for marker in absence_markers):
+            return "Backup already enabled"
     if key == "endpoint_detection" and any(
         is_enabled(results.get(control))
         for control in ("EDR", "XDR", "MDR")
@@ -2016,7 +2028,15 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                     + "; ".join(skipped_ai_items[:5])
                 )
 
-            prepared_payload, quality_error = ai_quality_gate(normalized_payload)
+            if provider_label == "Groq":
+                prepared_payload, quality_error = ai_quality_gate(
+                    normalized_payload,
+                    min_items=5,
+                    min_security_items=2,
+                    min_it_items=2,
+                )
+            else:
+                prepared_payload, quality_error = ai_quality_gate(normalized_payload)
             if not prepared_payload:
                 errors.append(
                     f"{provider_label}: "
@@ -2033,7 +2053,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
         def call_groq_once():
             groq_prompt = f"""
 Ты senior-аудитор ИТ и ИБ. Проанализируй только факты обезличенной анкеты.
-Верни 8-10 законченных рекомендаций: минимум 3 по ИТ и минимум 4 по ИБ.
+Верни ровно 7 законченных рекомендаций: 3 по ИТ и 4 по ИБ.
 
 Верни только валидный JSON-объект с корневым массивом "risks".
 Каждый элемент risks должен содержать поля:
@@ -9897,7 +9917,7 @@ if st.session_state.generation_state == "heavy_ai":
             st.session_state.telegram_generation_started_sent = True
 
     # Этот текст и анимация будут гореть параллельно с фактами сверху
-    with st.spinner("Производится глубокий анализ рисков..."):
+    with st.container():
         try:
             # Подготовка данных перед передачей
             results = build_report_results(
