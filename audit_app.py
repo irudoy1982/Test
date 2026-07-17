@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.14-dev"
+APP_VERSION = "12.15-dev"
 
 
 def get_app_instance_label():
@@ -627,6 +627,100 @@ def normalize_ai_audit_narrative(payload):
     }
 
 
+def augment_ai_risks_from_narrative(items, narrative, results):
+    """Recover AI-authored findings that the provider placed outside the risks array."""
+    augmented = [dict(item) for item in items if isinstance(item, dict)]
+    existing_keys = {risk_semantic_key(item) for item in augmented}
+    allowed_keys = {
+        "mfa", "iam", "pam", "nac", "dlp", "siem_soc", "patch",
+        "endpoint_detection", "backup", "web_waf", "mail", "legacy_os",
+        "it_monitoring", "change_management", "network_performance", "appsec", "dr",
+    }
+    profiles = {
+        "mfa": ("ИБ", "Покрытие MFA требует расширения", "Компрометация пароля может открыть доступ к критичным ресурсам."),
+        "iam": ("ИБ", "Жизненный цикл учетных записей требует централизованного управления", "Несвоевременное создание, изменение или отзыв прав повышает риск избыточного доступа."),
+        "pam": ("ИБ", "Привилегированные доступы требуют отдельного контроля", "Неконтролируемая административная сессия может затронуть несколько критичных систем."),
+        "nac": ("ИБ", "Допуск устройств к сети требует централизованного контроля", "Неизвестное устройство может получить сетевой доступ до ручного обнаружения."),
+        "dlp": ("ИБ", "Каналы передачи чувствительных данных требуют контроля", "Неконтролируемая передача данных повышает риск утечки и регуляторных последствий."),
+        "siem_soc": ("ИБ", "Мониторинг событий и реагирование требуют развития", "Неполное покрытие источников увеличивает время обнаружения и расследования инцидентов."),
+        "patch": ("ИТ", "Уязвимости и обновления требуют управляемого цикла", "Критичные уязвимости могут оставаться открытыми дольше согласованного срока."),
+        "endpoint_detection": ("ИБ", "Защита конечных точек требует измеримого контроля", "Неполная телеметрия затрудняет обнаружение и расследование сложных атак."),
+        "backup": ("ИТ", "Восстановление из резервных копий требует подтверждения", "Без тестов нельзя подтвердить достижение согласованных RTO и RPO."),
+        "web_waf": ("ИБ", "Публичные приложения требуют прикладной защиты", "Атаки на веб-приложения могут затронуть данные и доступность цифровых сервисов."),
+        "mail": ("ИБ", "Почтовый контур требует усиления защиты", "Фишинг остается вероятным каналом компрометации учетных записей."),
+        "legacy_os": ("ИТ", "Операционные системы без поддержки требуют плана миграции", "Отсутствие обновлений повышает риск эксплуатации известных уязвимостей."),
+        "it_monitoring": ("ИТ", "Мониторинг ИТ-сервисов требует централизации", "Позднее обнаружение деградации увеличивает продолжительность простоя."),
+        "change_management": ("ИТ", "Изменения и конфигурации требуют формального процесса", "Несогласованные изменения повышают риск ошибок и простоев."),
+        "network_performance": ("ИТ", "Сетевая архитектура требует подтверждения измерениями", "Без замеров нельзя обоснованно оценить емкость и отказоустойчивость каналов."),
+        "appsec": ("ИБ", "Проверки безопасности необходимо встроить в релизы", "Уязвимости приложений и зависимостей могут попадать в продуктивную среду."),
+        "dr": ("ИТ", "Аварийное восстановление требует формализованного сценария", "Неопределенные RTO/RPO повышают риск неприемлемого простоя критичных сервисов."),
+    }
+    control_by_key = {
+        "mfa": "MFA", "iam": "IAM", "pam": "PAM", "nac": "NAC", "dlp": "DLP",
+        "siem_soc": "SIEM/SOAR", "patch": "Patch Management", "endpoint_detection": "EDR/XDR/MDR",
+        "backup": "Резервное копирование", "web_waf": "WAF", "mail": "Mail Security",
+    }
+
+    observations = narrative.get("audit_observations", []) if isinstance(narrative, dict) else []
+    roadmap = narrative.get("roadmap", []) if isinstance(narrative, dict) else []
+    candidates = {}
+    for row in roadmap:
+        if not isinstance(row, dict):
+            continue
+        action = str(row.get("action") or row.get("recommendation") or "").strip()
+        if not action:
+            continue
+        key = risk_semantic_key({"risk": action, "recommendation": action})
+        if key not in allowed_keys:
+            continue
+        candidates.setdefault(key, []).append(row)
+
+    for key, rows in candidates.items():
+        if key in existing_keys:
+            continue
+        area, title, impact = profiles[key]
+        actions = []
+        for row in rows[:3]:
+            action = str(row.get("action") or "").strip()
+            rationale = str(row.get("rationale") or "").strip()
+            combined = ". ".join(part.rstrip(". ") for part in (action, rationale) if part)
+            if combined:
+                actions.append(combined + ".")
+        recommendation = " ".join(actions)
+        matching_observation = next(
+            (
+                str(row.get("text") or "").strip()
+                for row in observations
+                if isinstance(row, dict)
+                and risk_semantic_key({"risk": row.get("title", ""), "description": row.get("text", "")}) == key
+                and str(row.get("text") or "").strip()
+            ),
+            "",
+        )
+        control = control_by_key.get(key, title)
+        evidence = [f"{control} в анкете: {results.get(control, 'не подтверждено')}"]
+        success_metric = next(
+            (str(row.get("result") or row.get("success_metric") or "").strip() for row in rows if str(row.get("result") or row.get("success_metric") or "").strip()),
+            "Владелец, срок и измеримый критерий результата утверждены",
+        )
+        augmented.append({
+            "area": area,
+            "_ai_area": area,
+            "level": "HIGH" if key in {"pam", "nac", "dlp", "mfa"} else "MEDIUM",
+            "risk": title,
+            "description": matching_observation or title,
+            "impact": impact,
+            "recommendation": recommendation,
+            "evidence": evidence,
+            "success_metric": success_metric,
+            "vendors": [control],
+            "legal_ids": [],
+            "frameworks": [],
+        })
+        existing_keys.add(key)
+    return augmented
+
+
 def is_truncated_ai_text(value):
     text = str(value or "").strip()
     if not text:
@@ -848,6 +942,8 @@ def risk_conflicts_with_answers(item, results):
 
     if key == "mfa" and is_enabled(results.get("MFA")):
         return "MFA already enabled"
+    if key == "iam" and (is_enabled(results.get("IAM")) or is_enabled(results.get("IDM"))):
+        return "IAM already enabled"
     if key == "pam" and is_enabled(results.get("PAM")):
         return "PAM already enabled"
     if key == "siem_soc" and is_enabled(results.get("SIEM")):
@@ -1138,6 +1234,19 @@ def sanitize_customer_roadmap_text(value):
             )
         return "Определить каналы контроля, политики и измеримые критерии пилота DLP."
 
+    if any(marker in lowered for marker in ("закупить", "закупка")) and any(
+        marker in lowered for marker in ("пилот", "poc", "proof of concept")
+    ):
+        if "iam" in lowered:
+            return (
+                "Сформировать требования и провести PoC IAM на ограниченной группе пользователей; "
+                "по результатам подтвердить архитектуру, интеграции и решение о масштабировании."
+            )
+        return (
+            "Сформировать требования и провести ограниченный пилот решения; по измеримым результатам "
+            "принять решение о закупке и масштабировании."
+        )
+
     if "pam" in lowered or "привилегирован" in lowered:
         if any(marker in lowered for marker in ("рабочую группу", "собрать требования", "выбрать пилот")):
             return (
@@ -1182,6 +1291,12 @@ def sanitize_customer_roadmap_text(value):
         text = re.sub(re.escape(vendor), "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bBackup\b", "резервных копий", text, flags=re.IGNORECASE)
     text = re.sub(r"\s+с\s+помощью\s+(?:бесплатного\s+)?инструмента\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"восстановлени([ея])\s+из\s+(?=(?:и|с|для|по)\b)",
+        r"восстановлени\1 из резервных копий ",
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"\(\s*\)", "", text)
     text = re.sub(r"\s{2,}", " ", text)
     text = re.sub(r"\s+([,.;:])", r"\1", text)
@@ -2380,6 +2495,11 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 return None
             raw_candidate_count = count_ai_risk_candidates(parsed_payload)
             normalized_payload = normalize_ai_risks_payload(parsed_payload)
+            normalized_payload = augment_ai_risks_from_narrative(
+                normalized_payload,
+                ai_narrative,
+                results,
+            )
             normalized_candidate_count = len(normalized_payload)
             recommendation_fields = ("risks", "it_recommendations", "security_recommendations")
             present_recommendation_fields = [
@@ -2387,7 +2507,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 for field in recommendation_fields
                 if isinstance(parsed_payload, dict) and isinstance(parsed_payload.get(field), list)
             ]
-            explicit_no_findings = bool(present_recommendation_fields) and all(
+            explicit_no_findings = bool(present_recommendation_fields) and not normalized_payload and all(
                 not parsed_payload.get(field) for field in present_recommendation_fields
             )
             if explicit_no_findings:
@@ -2438,8 +2558,10 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
         def call_groq_once():
             groq_prompt = f"""
 Ты senior-аудитор ИТ и ИБ. Проанализируй только факты обезличенной анкеты.
-Верни до 6 законченных подтвержденных рекомендаций по ИТ и ИБ. Не добавляй
-искусственные пункты ради количества. Если ответ не помещается, сократи число
+Верни от 4 до 6 законченных подтвержденных рекомендаций по ИТ и ИБ, если в блоке
+«Не указано» есть не менее четырех применимых разрывов. Каждый технический домен,
+который используется в roadmap, обязательно представь отдельным объектом в risks.
+Не добавляй искусственные пункты ради количества. Если ответ не помещается, сократи число
 пунктов, но обязательно заверши JSON и каждую выданную рекомендацию.
 
 Верни только валидный JSON-объект со следующими корневыми полями:
@@ -5958,6 +6080,7 @@ def solution_categories_for_report_item(item):
 
     categories_by_key = {
         "mfa": "MFA / Conditional Access",
+        "iam": "IAM / Identity Governance / управление жизненным циклом учетных записей",
         "legacy_os": "Миграция на поддерживаемую ОС; изоляция legacy-сегмента",
         "siem_soc": "SOC / MSSP; SIEM; SOAR как этап 2",
         "change_management": "ITSM / Change Management / CMDB",
@@ -6017,6 +6140,7 @@ def portfolio_manufacturers_for_report_item(item):
 
     category_map = {
         "mfa": (["MFA", "IAM"], [], ["ManageEngine"]),
+        "iam": (["IAM", "IGA"], ["ManageEngine", "Wallix", "CyberArk"], []),
         "siem_soc": (["SOC", "SIEM"], ["Fortinet", "ManageEngine", "Splunk", "IBM", "Rapid7", "Palo Alto"], []),
         "change_management": (["ITSM"], ["ManageEngine", "Ivanti", "Broadcom (Symantec)"], []),
         "patch": (["VM", "Patch Management"], ["Qualys", "Tenable", "Rapid7", "Ivanti"], []),
@@ -7384,10 +7508,11 @@ def risk_semantic_key(item):
     buckets = [
         ("mfa", ("mfa", "многофактор", "2fa", "двухфактор")),
         ("legacy_os", ("legacy", "устаревш", "windows xp", "windows vista", "windows 7", "windows 8", "2008", "2012 r2")),
-        ("siem_soc", ("siem", "soc", "мониторинг событий", "централизованный мониторинг")),
         ("pam", ("pam", "привилегирован", "администраторск")),
+        ("iam", ("iam", "identity and access management", "централизованному управлению учетными", "централизованное управление учетными", "управление идентификацией", "жизненный цикл учетных записей")),
         ("nac", ("nac", "контроль подключения устройств", "контроль доступа устройств к сети", "network access control")),
         ("dlp", ("dlp", "утеч", "эксфильтрац", "data loss")),
+        ("siem_soc", ("siem", "soc", "soar", "мониторинг событий", "централизованный мониторинг")),
         ("network_performance", ("масштабируемость сетевой", "производительность сетевой", "сетевая топология", "конфигурации маршрутизации")),
         ("itam", ("программными активами", "жизненным циклом", "управление активами", "лицензи", "инвентаризац")),
         ("change_management", ("управления изменениями", "управление изменениями", "change management", "изменениями и конфигурациями")),
@@ -8093,6 +8218,7 @@ def presentation_legal_basis(semantic_key, regulatory_profile):
         "patch": ["KVOIKI_MONITORING", "UNIFIED_832", "BANK_IS", "FINANCE_IS"],
         "backup": ["UNIFIED_832", "BANK_IS", "FINANCE_IS", "MEDICAL_DATA", "INFORMATIZATION"],
         "mfa": ["UNIFIED_832", "BANK_IS", "FINANCE_IS", "MEDICAL_DATA", "PD_RULES"],
+        "iam": ["UNIFIED_832", "BANK_IS", "FINANCE_IS", "MEDICAL_DATA", "PD_RULES"],
         "pam": ["UNIFIED_832", "BANK_IS", "FINANCE_IS", "PD_RULES"],
     }
     default_priority = [
@@ -8228,6 +8354,11 @@ def presentation_presales_profile(item):
             "impact": "Компрометация пароля может открыть доступ к почте, удаленным подключениям, административным консолям и бизнес-системам.",
             "action": "Проверить фактическое покрытие MFA и закрыть административные, удаленные и критичные доступы без второго фактора.",
         },
+        "iam": {
+            "title": "Жизненный цикл учетных записей требует централизованного управления",
+            "impact": "Несвоевременное создание, изменение или отзыв прав повышает риск избыточного и несанкционированного доступа.",
+            "action": "Определить процессы joiner/mover/leaver, владельцев ролей и интеграции; провести PoC IAM на ограниченной группе и подтвердить критерии масштабирования.",
+        },
         "siem_soc": {
             "title": "События ИБ не собираются в единый контур",
             "impact": "Разрозненные журналы замедляют обнаружение атак и усложняют расследование инцидентов в критичных системах.",
@@ -8290,6 +8421,7 @@ def presentation_presales_profile(item):
 def presentation_success_metric(semantic_key):
     metrics = {
         "mfa": "100% критичных и удаленных учетных записей защищены MFA",
+        "iam": "100% учетных записей имеют владельца и управляемый жизненный цикл",
         "legacy_os": "Нет рабочих мест на ОС без поддержки либо утвержден план миграции",
         "siem_soc": "Критичные источники подключены, SLA разбора событий утвержден",
         "patch": "Критичные уязвимости устраняются в согласованный SLA",
@@ -8341,6 +8473,7 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
     generic_titles = {"ит", "иб", "ит/иб", "рекомендация"}
     title_by_key = {
         "mfa": "Многофакторная аутентификация",
+        "iam": "Управление жизненным циклом учетных записей",
         "legacy_os": "Обновление устаревших операционных систем",
         "siem_soc": "Мониторинг событий и реагирование",
         "patch": "Управление уязвимостями и обновлениями",
@@ -8607,6 +8740,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
 
     roadmap_phase_by_key = {
         "mfa": "0-30",
+        "iam": "31-60",
         "legacy_os": "0-30",
         "change_management": "31-60",
         "network_performance": "31-60",

@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.14-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.15-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -280,6 +280,60 @@ def check_groq_payload_alias_normalization() -> None:
     assert_true(namespace["count_ai_risk_candidates"](payload) == 1, "Raw Groq candidate count is incorrect")
 
 
+def check_ai_narrative_risk_augmentation() -> None:
+    app_tree = ast.parse(read_text(APP))
+    nodes = {
+        node.name: node
+        for node in app_tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {"risk_semantic_key", "augment_ai_risks_from_narrative"}
+    }
+    namespace = {"re": re}
+    exec(
+        compile(
+            ast.Module(
+                body=[nodes["risk_semantic_key"], nodes["augment_ai_risks_from_narrative"]],
+                type_ignores=[],
+            ),
+            str(APP),
+            "exec",
+        ),
+        namespace,
+    )
+    narrative = {
+        "audit_observations": [
+            {"title": "Привилегированные доступы", "text": "PAM в критичных системах не подтвержден."},
+        ],
+        "roadmap": [
+            {"action": "Провести оценку привилегированных учетных записей и интегрировать PAM с SIEM.", "result": "Доступы учтены."},
+            {"action": "Запустить пилотный NAC и проверить передачу событий в SIEM.", "result": "Устройства профилируются."},
+            {"action": "Провести PoC IAM для управления жизненным циклом учетных записей.", "result": "Процесс согласован."},
+        ],
+    }
+    initial = [{
+        "risk": "Восстановление из резервных копий требует подтверждения",
+        "recommendation": "Проводить регулярные тесты восстановления критичных сервисов и фиксировать RTO/RPO.",
+    }]
+    augmented = namespace["augment_ai_risks_from_narrative"](
+        initial,
+        narrative,
+        {"PAM": "Нет", "NAC": "Нет", "IAM": "Нет"},
+    )
+    keys = {namespace["risk_semantic_key"](item) for item in augmented}
+    assert_true(
+        {"backup", "pam", "nac", "iam"}.issubset(keys),
+        f"AI narrative did not restore all technical findings: {sorted(keys)}",
+    )
+    assert_true(
+        namespace["risk_semantic_key"]({"risk": "Пилот NAC с передачей событий в SIEM"}) == "nac",
+        "NAC must not be misclassified as SIEM when both technologies are mentioned",
+    )
+    assert_true(
+        namespace["risk_semantic_key"]({"risk": "PAM с передачей событий в SIEM"}) == "pam",
+        "PAM must not be misclassified as SIEM when both technologies are mentioned",
+    )
+
+
 def check_presentation_fact_guards() -> None:
     app_tree = ast.parse(read_text(APP))
     function_names = {
@@ -504,6 +558,15 @@ def check_customer_output_normalization() -> None:
         "openvas" not in vm_roadmap.lower() and "уязвим" in vm_roadmap.lower(),
         "Vulnerability roadmap must remain vendor-neutral",
     )
+    backup_roadmap = namespace["sanitize_customer_roadmap_text"](
+        "Внедрить регулярное тестирование восстановления из Veeam и документировать RTO/RPO."
+    )
+    assert_true(
+        "veeam" not in backup_roadmap.lower()
+        and "из и" not in backup_roadmap.lower()
+        and "резервных копий" in backup_roadmap.lower(),
+        "Vendor removal must not leave a broken backup roadmap sentence",
+    )
     bank = namespace["industry_regulatory_profile"]("Финтех / Банки")
     kvoiki = namespace["industry_regulatory_profile"]("КВОИКИ / Критическая инфраструктура")
     assert_true(
@@ -597,6 +660,7 @@ def main() -> None:
         check_static_hooks,
         check_partial_ai_json_recovery,
         check_groq_payload_alias_normalization,
+        check_ai_narrative_risk_augmentation,
         check_presentation_fact_guards,
         check_presentation_templates,
         check_customer_output_normalization,
