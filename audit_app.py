@@ -2029,6 +2029,37 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             return prepared_payload
 
         def call_groq_once():
+            groq_prompt = f"""
+Ты senior-аудитор ИТ и ИБ. Проанализируй только факты обезличенной анкеты.
+Верни 8-10 законченных рекомендаций: минимум 3 по ИТ и минимум 4 по ИБ.
+
+Для каждой рекомендации:
+- свяжи риск минимум с одним конкретным фактом анкеты;
+- укажи бизнес-последствие;
+- дай три шага через точку с запятой: быстрый шаг, проектный шаг, контроль результата;
+- добавь измеримый success_metric;
+- не объявляй контроль отсутствующим, если он есть в блоке "Уже внедрено";
+- не превращай каждый отсутствующий продукт в отдельный риск;
+- не путай MFA с PAM, управление уязвимостями с SIEM, DLP с сегментацией;
+- OSPF/BGP не доказывают наличие или отсутствие сегментации;
+- legacy OS закрывай миграцией, обновлением и компенсирующими мерами;
+- не используй Microsoft как ИБ-вендора, кроме миграции Windows/Windows Server;
+- legal_ids выбирай только из переданного регуляторного контекста.
+
+Отрасль: {c_info.get("Сфера деятельности", "-")}
+
+Уже внедрено:
+{enabled_controls_text[:1800]}
+
+Не указано:
+{missing_controls_text[:1200]}
+
+Ключевые данные анкеты:
+{ai_summary[:5200]}
+
+Регуляторный контекст:
+{regulator_context[:1000]}
+""".strip()
             groq_schema = {
                 "type": "object",
                 "properties": {
@@ -2088,10 +2119,10 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                             "и возвращай только данные по заданной JSON-схеме."
                         ),
                     },
-                    {"role": "user", "content": compact_prompt},
+                    {"role": "user", "content": groq_prompt},
                 ],
                 "temperature": 0.05,
-                "max_completion_tokens": 6144,
+                "max_completion_tokens": 4200,
                 "reasoning_effort": "low",
                 "response_format": {
                     "type": "json_schema",
@@ -9589,6 +9620,8 @@ if "telegram_status" not in st.session_state:
     st.session_state.telegram_status = ""
 if "generation_attempt_started_at" not in st.session_state:
     st.session_state.generation_attempt_started_at = None
+if "generation_error_message" not in st.session_state:
+    st.session_state.generation_error_message = ""
 if "report_shortened_last" not in st.session_state:
     st.session_state.report_shortened_last = False
 if "last_report_risk_sources" not in st.session_state:
@@ -9760,6 +9793,8 @@ st.markdown("""
 </a>.
 """, unsafe_allow_html=True)
 if st.session_state.generation_state == "idle":
+    if st.session_state.generation_error_message:
+        st.error(st.session_state.generation_error_message)
     if st.button(
         "Сформировать презентацию аудита",
         disabled=len(validation_errors) > 0,
@@ -9767,6 +9802,7 @@ if st.session_state.generation_state == "idle":
         type="primary",
         use_container_width=False,
     ):
+        st.session_state.generation_error_message = ""
         st.session_state.telegram_generation_started_sent = False
         st.session_state.generation_state = "preparing"
         st.rerun()
@@ -9875,8 +9911,10 @@ if st.session_state.generation_state == "heavy_ai":
     elif time.time() - st.session_state.generation_attempt_started_at > 300:
         st.session_state.generation_state = "idle"
         st.session_state.generation_attempt_started_at = None
-        st.error("Формирование отчета было сброшено по таймауту. Запустите формирование еще раз.")
-        st.stop()
+        st.session_state.generation_error_message = (
+            "Формирование презентации превысило допустимое время. Попробуйте повторить позже."
+        )
+        st.rerun()
 
     render_generation_live_panel("Идет глубокий анализ и сборка презентации", active_step=4)
 
@@ -9972,8 +10010,11 @@ if st.session_state.generation_state == "heavy_ai":
                 )
             st.session_state.generation_state = "idle"
             st.session_state.generation_attempt_started_at = None
-            st.error("Не удалось сформировать презентацию. Попробуйте повторить позже.")
-            st.stop()
+            st.session_state.generation_error_message = (
+                "ИИ-анализ временно недоступен. Презентация не сформирована. "
+                "Попробуйте повторить позже."
+            )
+            st.rerun()
 
     # Тихо отправляем в ТГ без создания задержек на экране
     st.session_state.telegram_status = ""
@@ -10039,6 +10080,7 @@ if st.session_state.generation_state == "heavy_ai":
     # Переключаем статус в финал
     st.session_state.generation_state = "finalized"
     st.session_state.generation_attempt_started_at = None
+    st.session_state.generation_error_message = ""
     st.rerun()
 
 # --- СЦЕНАРИЙ 3: НЕУДАЧНАЯ СБОРКА БЕЗ КЛИЕНТСКОГО ОТЧЕТА ---
@@ -10077,6 +10119,7 @@ if st.session_state.generation_state == "finalized":
         st.session_state.ai_last_error = ""
         st.session_state.report_shortened_last = False
         st.session_state.generation_attempt_started_at = None
+        st.session_state.generation_error_message = ""
         st.session_state.telegram_generation_started_sent = False
         st.rerun()
 

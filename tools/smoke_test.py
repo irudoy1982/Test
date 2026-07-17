@@ -200,6 +200,9 @@ def check_static_hooks() -> None:
     assert_true("AI quality gate rejected the customer presentation" in text, "Customer presentation is not blocked on AI failure")
     assert_true("Недостаточно подтвержденных рекомендаций для клиентской презентации" in text, "Presentation quality gate is missing")
     assert_true("Область для верификации" not in text, "Verification placeholder must not be emitted")
+    assert_true("groq_prompt = f\"\"\"" in text, "Compact Groq prompt is missing")
+    assert_true('"max_completion_tokens": 4200' in text, "Groq token budget is not capped below the free-tier TPM limit")
+    assert_true("generation_error_message" in text, "Persistent generation error state is missing")
 
 
 def check_presentation_templates() -> None:
