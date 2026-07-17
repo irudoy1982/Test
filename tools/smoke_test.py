@@ -3,6 +3,7 @@ from __future__ import annotations
 import py_compile
 import hashlib
 import ast
+import json
 import re
 import zipfile
 from pathlib import Path
@@ -22,6 +23,8 @@ PRESENTATION_QR_ASSETS = [
     ROOT / "static" / "presentation_khalil_qr.png",
     ROOT / "static" / "presentation_btg_qr.png",
 ]
+PRESENTATION_COVER_ASSET = ROOT / "static" / "presentation_audit_cover.jpg"
+BANK_DRAFT = ROOT / "samples" / "bank_audit_demo.json"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -204,8 +207,14 @@ def check_presentation_templates() -> None:
         "{{RISK_1_TITLE}}",
         "{{RISK_6_TITLE}}",
         "{{STRENGTH_1}}",
-        "{{LAW_1_TITLE}}",
-        "{{LAW_1_SCOPE}}",
+        "{{OUTCOME_1_TITLE}}",
+        "{{OUTCOME_1_FROM}}",
+        "{{OUTCOME_1_TO}}",
+        "{{REG_TITLE}}",
+        "{{REG_APPLICABILITY}}",
+        "{{REG_EXPECTATIONS}}",
+        "{{REG_IMPLEMENTATION}}",
+        "{{REG_ANCHORS}}",
         "{{REC_1_TITLE}}",
         "{{REC_1_ACTION}}",
         "{{REC_1_EVIDENCE}}",
@@ -216,8 +225,11 @@ def check_presentation_templates() -> None:
         "{{REC_8_TITLE}}",
         "{{REC_8_ACTION}}",
         "{{ROADMAP_1_1}}",
+        "{{ROADMAP_1_RESULT}}",
         "{{DECISION_1}}",
     }
+    assert_true(PRESENTATION_COVER_ASSET.exists(), "Presentation cover image is missing")
+    cover_hash = hashlib.sha256(PRESENTATION_COVER_ASSET.read_bytes()).hexdigest()
     for template, qr_asset in zip(PRESENTATION_TEMPLATES, PRESENTATION_QR_ASSETS):
         assert_true(template.exists(), f"Presentation template is missing: {template.name}")
         with zipfile.ZipFile(template, "r") as archive:
@@ -235,9 +247,24 @@ def check_presentation_templates() -> None:
         assert_true(not missing, f"{template.name} is missing placeholders: {missing}")
         qr_hash = hashlib.sha256(qr_asset.read_bytes()).hexdigest()
         assert_true(qr_hash in media_hashes, f"{template.name} does not embed its contact QR")
+        assert_true(cover_hash in media_hashes, f"{template.name} does not embed the audit cover image")
     for qr_asset in PRESENTATION_QR_ASSETS:
         assert_true(qr_asset.exists(), f"Presentation QR is missing: {qr_asset.name}")
         assert_true(qr_asset.stat().st_size > 2000, f"Presentation QR is unexpectedly small: {qr_asset.name}")
+
+
+def check_sample_drafts() -> None:
+    assert_true(BANK_DRAFT.exists(), "Banking sample draft is missing")
+    payload = json.loads(BANK_DRAFT.read_text(encoding="utf-8"))
+    state = payload.get("state", {})
+    assert_true(payload.get("schema") == "khalil-audit-draft-v1", "Unexpected banking draft schema")
+    assert_true(state.get("client_industry_select") == "Финтех / Банки", "Banking sector is not selected")
+    assert_true(state.get("mfa") is True, "Banking sample must confirm existing MFA")
+    assert_true(state.get("pam") is False, "Banking sample must expose the PAM gap")
+    arm_total = sum(int(state.get(f"arm_{name}", 0) or 0) for name in state.get("selected_os_arm", []))
+    server_total = sum(int(state.get(f"fsrv_{name}", 0) or 0) for name in state.get("ms_srv_list", []))
+    assert_true(arm_total == int(state.get("total_arm", 0)), "Banking ARM counts are inconsistent")
+    assert_true(server_total == int(state.get("phys_srv", 0)) + int(state.get("virt_srv", 0)), "Banking server counts are inconsistent")
 
 
 def main() -> None:
@@ -249,6 +276,7 @@ def main() -> None:
         check_portfolio,
         check_static_hooks,
         check_presentation_templates,
+        check_sample_drafts,
     ]
     for check in checks:
         check()

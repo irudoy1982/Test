@@ -829,6 +829,13 @@ REGULATORY_CATALOG = {
         "scope": "Определение и подтверждение статуса критически важного объекта ИК-инфраструктуры.",
         "status": "Обязательное для КВОИКИ",
     },
+    "KVOIKI_MONITORING": {
+        "title": "Правила мониторинга обеспечения ИБ объектов электронного правительства и КВОИКИ, № 17019",
+        "short": "Правила мониторинга ИБ КВОИКИ № 17019",
+        "url": "https://adilet.zan.kz/rus/docs/V1800017019",
+        "scope": "Мониторинг событий, ответственный по ИБ, реагирование на инциденты и устранение уязвимостей для КВОИКИ.",
+        "status": "Обязательное для КВОИКИ",
+    },
     "FINANCE_IS": {
         "title": "Минимальные требования по обеспечению ИБ на финансовом рынке, № 38505",
         "short": "Требования ИБ финансового рынка № 38505",
@@ -860,7 +867,7 @@ INDUSTRY_REGULATORY_IDS = {
     "Здравоохранение / Медицинская организация": ["PD_LAW", "PD_RULES", "MEDICAL_DATA"],
     "Госсектор": ["PD_LAW", "PD_RULES", "INFORMATIZATION", "UNIFIED_832"],
     "Квазигосударственный сектор": ["PD_LAW", "PD_RULES", "INFORMATIZATION", "UNIFIED_832"],
-    "КВОИКИ / Критическая инфраструктура": ["PD_LAW", "PD_RULES", "INFORMATIZATION", "UNIFIED_832", "KVOIKI_529"],
+    "КВОИКИ / Критическая инфраструктура": ["PD_LAW", "PD_RULES", "INFORMATIZATION", "UNIFIED_832", "KVOIKI_529", "KVOIKI_MONITORING"],
     "Телеком / Связь": ["PD_LAW", "PD_RULES", "INFORMATIZATION"],
     "Энергетика / Коммунальная инфраструктура": ["PD_LAW", "PD_RULES", "INFORMATIZATION", "KVOIKI_529"],
     "Транспорт / Логистика": ["PD_LAW", "PD_RULES", "INFORMATIZATION", "KVOIKI_529"],
@@ -7330,6 +7337,85 @@ def presentation_brand_key():
     return "btg" if "btg" in get_app_instance_label().lower() else "khalil"
 
 
+def presentation_regulatory_summary(industry, regulatory_profile):
+    profiles = {
+        "Финтех / Банки": (
+            "Для банков требования ИБ закреплены отдельными отраслевыми нормами",
+            "Выбран банковский профиль. Требования финансового рынка применяются наряду с правилами защиты персональных данных.",
+            "Нужно подтвердить управление доступом, журналирование, реагирование, непрерывность и контроль критичных информационных систем.",
+        ),
+        "Страхование": (
+            "Для страхового сектора действуют требования финансового рынка и защиты данных",
+            "Выбран страховой профиль, поэтому общие требования к персональным данным дополняются отраслевыми требованиями финансового рынка.",
+            "Нужно подтвердить управление доступом, событиями ИБ, инцидентами, резервированием и непрерывностью ключевых сервисов.",
+        ),
+        "Здравоохранение / Медицинская организация": (
+            "Медицинские данные требуют отдельного режима защиты",
+            "Выбран профиль медицинской организации. Помимо общих правил защиты данных применяются требования к персональным медицинским данным.",
+            "Нужно подтвердить разграничение доступа, учет действий, сохранность, резервирование и порядок реагирования на инциденты.",
+        ),
+        "Госсектор": (
+            "Для государственного сектора требования ИКТ и ИБ являются частью обязательного контура",
+            "Выбран профиль государственного сектора. Применимость единых требований определяется статусом систем и государственными интеграциями.",
+            "Нужно подтвердить документацию по ИБ, управление доступом, журналирование, мониторинг, реагирование и восстановление.",
+        ),
+        "Квазигосударственный сектор": (
+            "Для квазигосударственного сектора применимость требований зависит от роли систем и интеграций",
+            "Выбран квазигосударственный профиль. Единые требования применяются с учетом статуса организации, систем и государственных интеграций.",
+            "Нужно подтвердить границы применимости, документацию по ИБ, журналирование, реагирование и восстановление.",
+        ),
+        "КВОИКИ / Критическая инфраструктура": (
+            "Для КВОИКИ мониторинг, реагирование и восстановление входят в обязательный контур",
+            "В анкете выбран профиль КВОИКИ. Включение конкретных объектов в официальный перечень и границы применимости подтверждаются документально.",
+            "Нужно подтвердить ответственного по ИБ, мониторинг событий, план реагирования, устранение уязвимостей, восстановление и взаимодействие с ОЦИБ/НКЦИБ.",
+        ),
+    }
+    title, applicability, expectations = profiles.get(industry, (
+        "Регуляторные требования определяются отраслью, данными и ролью информационных систем",
+        f"Выбран профиль «{industry or 'Другое'}». Базово применяются требования по защите персональных данных; дополнительные нормы требуют подтверждения.",
+        "Нужно подтвердить состав регулируемых данных и систем, владельцев контролей, управление доступом, реагирование и восстановление.",
+    ))
+    legal_ids = regulatory_profile.get("legal_ids", [])
+    anchor_priority = [
+        "KVOIKI_MONITORING", "UNIFIED_832", "BANK_IS", "FINANCE_IS",
+        "MEDICAL_DATA", "INFORMATIZATION", "KVOIKI_529", "PD_RULES", "PD_LAW",
+    ]
+    anchors = [
+        REGULATORY_CATALOG[item_id]["short"]
+        for item_id in anchor_priority
+        if item_id in legal_ids and item_id in REGULATORY_CATALOG
+    ][:4]
+    return {
+        "title": title,
+        "applicability": applicability,
+        "expectations": expectations,
+        "implementation": "Конкретное основание указано рядом с каждой мерой на следующих слайдах. Норма определяет требуемый контроль, а продукт выбирается после архитектурной проработки.",
+        "anchors": "; ".join(anchors),
+    }
+
+
+def presentation_legal_basis(semantic_key, regulatory_profile):
+    legal_ids = set(regulatory_profile.get("legal_ids", [])) if regulatory_profile else set()
+    priority_by_key = {
+        "siem_soc": ["KVOIKI_MONITORING", "UNIFIED_832", "BANK_IS", "FINANCE_IS", "INFORMATIZATION"],
+        "it_monitoring": ["KVOIKI_MONITORING", "UNIFIED_832", "BANK_IS", "INFORMATIZATION"],
+        "patch": ["KVOIKI_MONITORING", "UNIFIED_832", "BANK_IS", "FINANCE_IS"],
+        "backup": ["UNIFIED_832", "BANK_IS", "FINANCE_IS", "MEDICAL_DATA", "INFORMATIZATION"],
+        "mfa": ["UNIFIED_832", "BANK_IS", "FINANCE_IS", "MEDICAL_DATA", "PD_RULES"],
+        "pam": ["UNIFIED_832", "BANK_IS", "FINANCE_IS", "PD_RULES"],
+    }
+    default_priority = [
+        "UNIFIED_832", "KVOIKI_MONITORING", "BANK_IS", "FINANCE_IS",
+        "MEDICAL_DATA", "INFORMATIZATION", "PD_RULES", "PD_LAW", "KVOIKI_529",
+    ]
+    selected = [
+        item_id
+        for item_id in priority_by_key.get(semantic_key, default_priority)
+        if item_id in legal_ids and item_id in REGULATORY_CATALOG
+    ][:2]
+    return "; ".join(REGULATORY_CATALOG[item_id]["short"] for item_id in selected)
+
+
 def presentation_action_text(value, limit=165):
     def complete_sentence(sentence):
         sentence = str(sentence or "").strip(" .;-")
@@ -7549,8 +7635,10 @@ def presentation_recommendation_entry(item, regulatory_profile=None):
     ]
     if legal_ids:
         legal = "; ".join(REGULATORY_CATALOG[value]["short"] for value in legal_ids[:2])
-    elif regulatory_profile and regulatory_profile.get("laws"):
-        legal = regulatory_profile["laws"][0]["short"]
+    elif regulatory_profile:
+        legal = presentation_legal_basis(semantic_key, regulatory_profile)
+        if not legal:
+            legal = "Применимость подтверждается с учетом отрасли и роли организации"
     else:
         legal = "Применимость подтверждается с учетом отрасли и роли организации"
 
@@ -7624,6 +7712,10 @@ def presentation_focus_items(context, business_systems):
 def build_audit_presentation_replacements(c_info, results, final_score, it_maturity_score):
     context = build_context(results, c_info)
     regulatory_profile = industry_regulatory_profile(c_info.get("Сфера деятельности", ""))
+    regulatory_summary = presentation_regulatory_summary(
+        c_info.get("Сфера деятельности", ""),
+        regulatory_profile,
+    )
     domain_scores = calculate_domain_scores(results)
     rule_risks = generate_rule_based_risks(results, context)
     risk_sources = st.session_state.get("last_report_risk_sources") or rule_risks
@@ -7793,6 +7885,11 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         "SEC_LEVEL": get_maturity_level(final_score)[0],
         "IT_LEVEL": get_maturity_level(it_maturity_score)[0],
         "FRAMEWORKS": presentation_text(", ".join(regulatory_profile.get("frameworks", [])), 160),
+        "REG_TITLE": presentation_text(regulatory_summary["title"], 150),
+        "REG_APPLICABILITY": presentation_text(regulatory_summary["applicability"], 260),
+        "REG_EXPECTATIONS": presentation_text(regulatory_summary["expectations"], 260),
+        "REG_IMPLEMENTATION": presentation_text(regulatory_summary["implementation"], 260),
+        "REG_ANCHORS": presentation_text(regulatory_summary["anchors"], 220),
     }
     for index, (title, text) in enumerate(focus_items, start=1):
         replacements[f"FOCUS_{index}_TITLE"] = presentation_text(title, 42)
@@ -7854,9 +7951,25 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         replacements[f"REC_{index}_FILL"] = entry["fill_color"]
         replacements[f"REC_{index}_TEXT"] = entry["text_color"]
 
+    for index, entry in enumerate(recommendation_items[:4], start=1):
+        replacements[f"OUTCOME_{index}_TITLE"] = presentation_text(entry["title"], 70)
+        replacements[f"OUTCOME_{index}_FROM"] = presentation_text(entry["evidence"], 145)
+        replacements[f"OUTCOME_{index}_TO"] = presentation_text(entry["metric"], 125)
+
+    roadmap_results = {
+        "0-30": "Владельцы, приоритеты и критичные доступы подтверждены",
+        "31-60": "Пилоты завершены, критерии выбора и регламенты согласованы",
+        "61-90": "Решения масштабированы, остаточные риски повторно оценены",
+    }
+    for entry in recommendation_items:
+        phase = roadmap_phase_by_key.get(entry["key"])
+        if phase and roadmap_results[phase].startswith(("Владельцы", "Пилоты", "Решения")):
+            roadmap_results[phase] = entry["metric"]
+
     for phase_index, phase in enumerate(("0-30", "31-60", "61-90"), start=1):
         replacements[f"ROADMAP_{phase_index}_1"] = roadmap_by_phase[phase][0]
         replacements[f"ROADMAP_{phase_index}_2"] = roadmap_by_phase[phase][1]
+        replacements[f"ROADMAP_{phase_index}_RESULT"] = presentation_text(roadmap_results[phase], 120)
     return replacements
 
 

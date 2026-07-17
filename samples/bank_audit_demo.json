@@ -1,0 +1,265 @@
+{
+  "schema": "khalil-audit-draft-v1",
+  "saved_at": "2026-07-17T19:04:51",
+  "state": {
+    "cicd_f": true,
+    "enable_security": true,
+    "wifi_toggle": true,
+    "virt_srv": 45,
+    "client_industry_select": "Финтех / Банки",
+    "swl2_cnt": 8,
+    "ngfw_chk": true,
+    "is_chk_hrm": false,
+    "vn_backup": "Veeam Backup & Replication",
+    "mdr": false,
+    "router_cnt": 2,
+    "client_company_name": "Demo Bank Kazakhstan",
+    "wf_type_sel": "Wi-Fi 6/6E (802.11ax)",
+    "name_acc": "1C Бухгалтерия",
+    "sast": false,
+    "note_1_4": "Основное хранилище гибридное, есть snapshot, отдельного DR-site пока нет.",
+    "is_chk_erp": true,
+    "ztna": false,
+    "dist_vendor": "Huawei",
+    "casb": false,
+    "nac": false,
+    "iam": false,
+    "core_vendor": "Cisco",
+    "wc_vendor": "UniFi Cloud Key",
+    "is_chk_sed": false,
+    "presentation_status": "ok",
+    "ai_model_used": "",
+    "dlp": true,
+    "is_chk_sd": true,
+    "ver_crm": "Cloud",
+    "dast": false,
+    "name_erp": "1C ERP",
+    "fsrv_Linux": 20,
+    "langs_f": [
+      "JavaScript/TypeScript",
+      "Python"
+    ],
+    "mail_system": "Microsoft 365",
+    "phys_srv": 10,
+    "acc_vendor": "MikroTik",
+    "web_frontend": [
+      "Nginx",
+      "Cloudflare"
+    ],
+    "hybrid_st": true,
+    "swl3_cnt": 2,
+    "generation_state": "finalized",
+    "swl2_chk": true,
+    "edr": true,
+    "net_dist": true,
+    "is_chk_wms": false,
+    "ids": false,
+    "back_net_speed": 100,
+    "cnt_hdd": 24,
+    "last_report_risk_sources": [
+      {
+        "level": "Критический",
+        "risk": "Устаревшие операционные системы требуют миграции или изоляции",
+        "description": "В анкете указаны устаревшие ОС: АРМ - 2, серверы - 0. Такие системы не получают полноценные исправления безопасности и не должны рассматриваться как обычные рабочие места.",
+        "impact": "Уязвимости устаревших ОС повышают риск компрометации, невозможности установки актуальных агентов защиты и остановки связанных бизнес-процессов.",
+        "recommendation": "Составить реестр устаревших ОС; подготовить план миграции на поддерживаемые версии Microsoft Windows/Windows Server; если часть систем нельзя обновить быстро, временно изолировать их и контролировать уязвимости до вывода из эксплуатации.",
+        "vendors": [
+          "Microsoft",
+          "Qualys",
+          "Tenable",
+          "Rapid7"
+        ],
+        "area": "ИТ/ИБ",
+        "source": "Базовые правила"
+      },
+      {
+        "level": "Высокий",
+        "risk": "Критичные доступы не защищены многофакторной аутентификацией",
+        "description": "В анкете не указана MFA для администраторов, почты, VPN/удаленного доступа и критичных бизнес-систем.",
+        "impact": "Компрометация одного пароля может дать атакующему доступ к корпоративной почте, административным консолям или бизнес-приложениям.",
+        "recommendation": "Включить MFA сначала для администраторов, почты и удаленного доступа; затем распространить на ERP/CRM и критичные облачные сервисы; контролировать исключения и ежемесячно выгружать отчет по пользователям без MFA.",
+        "vendors": [
+          "Fortinet",
+          "Microsoft",
+          "Cisco"
+        ],
+        "area": "ИТ/ИБ",
+        "source": "Базовые правила"
+      },
+      {
+        "level": "Высокий",
+        "risk": "Защита рабочих мест не обеспечивает полноценное обнаружение и реагирование",
+        "description": "В инфраструктуре указано 120 АРМ, при этом EDR/XDR/MDR не описаны. Базовый EPP снижает риск массового malware, но не закрывает расследование сложных атак и lateral movement.",
+        "impact": "Инцидент на рабочей станции может дольше оставаться незамеченным, распространяться на учетные записи и серверы, а расследование будет зависеть от ручного сбора данных.",
+        "recommendation": "Проверить фактическое покрытие EPP и актуальность агентов; выбрать пилот EDR/MDR для критичных групп пользователей и серверов; внедрить регламент реагирования с метриками MTTD/MTTR и контрольной проверкой сценариев ransomware.",
+        "vendors": [
+          "Fortinet",
+          "Check Point",
+          "CrowdStrike",
+          "Trend Micro"
+        ],
+        "area": "ИТ/ИБ",
+        "source": "Базовые правила"
+      },
+      {
+        "level": "Высокий",
+        "risk": "Публичные веб-сервисы требуют специализированной защиты приложений",
+        "description": "В анкете указаны интернет-магазин и личный кабинет, но WAF-защита и прикладные правила контроля атак не описаны.",
+        "impact": "Публичные приложения остаются под риском OWASP-атак, бот-активности, утечки данных и нарушения доступности клиентских сервисов.",
+        "recommendation": "Провести экспресс-оценку web-периметра; проверить текущие Cloudflare-политики; включить WAF/CDN или FortiWeb/F5/Imperva для публичных ресурсов с профилем под приложение.",
+        "vendors": [
+          "Cloudflare",
+          "Fortinet",
+          "F5",
+          "Imperva"
+        ],
+        "area": "ИТ/ИБ",
+        "source": "Базовые правила"
+      },
+      {
+        "level": "Высокий",
+        "risk": "Привилегированные учетные записи не выделены в отдельный контур контроля",
+        "description": "В инфраструктуре указано 22 серверов и критичные бизнес-системы, но PAM или сопоставимый контроль административных доступов не описан.",
+        "impact": "Компрометация одной администраторской учетной записи может привести к изменению конфигураций, отключению защитных средств или доступу к критичным данным.",
+        "recommendation": "Провести инвентаризацию привилегированных учетных записей; внедрить vault и контроль сессий для критичных систем; настроить регулярный пересмотр прав и запрет постоянных локальных админов.",
+        "vendors": [
+          "CyberArk",
+          "Fudo",
+          "Netwrix"
+        ],
+        "area": "ИТ/ИБ",
+        "source": "Базовые правила"
+      },
+      {
+        "level": "Высокий",
+        "risk": "Управление обновлениями не выглядит централизованным",
+        "description": "Для парка 120 АРМ и 22 серверов не описан управляемый процесс patch management и контроль устранения критичных CVE.",
+        "impact": "Известные уязвимости могут оставаться открытыми дольше допустимого окна, повышая риск компрометации через типовые exploit-сценарии.",
+        "recommendation": "Ввести ежемесячный цикл обновлений; отдельно контролировать критичные CVE с SLA; формировать отчет по покрытию АРМ, серверов и исключений после каждого окна обновлений.",
+        "vendors": [
+          "Qualys",
+          "Tenable",
+          "Rapid7",
+          "Ivanti"
+        ],
+        "area": "ИТ/ИБ",
+        "source": "Базовые правила"
+      },
+      {
+        "level": "Средний",
+        "risk": "Мониторинг событий ИБ не покрывает критичные источники",
+        "description": "Не описан централизованный сбор и анализ событий от NGFW, серверов, учетных записей, endpoint-защиты, почты и публичных сервисов.",
+        "impact": "Атаки и нарушения политик могут обнаруживаться поздно, а расследование будет затруднено из-за разрозненных журналов.",
+        "recommendation": "Начать с минимального SOC/MSSP-scope: NGFW, AD/учетные записи, серверы, EPP/EDR, backup и почта; настроить 8-12 базовых сценариев корреляции; ежемесячно разбирать инциденты и качество источников логов.",
+        "vendors": [
+          "Fortinet",
+          "IBM",
+          "Splunk"
+        ],
+        "area": "ИТ/ИБ",
+        "source": "Базовые правила"
+      }
+    ],
+    "telegram_status": "ok",
+    "dev_cnt_f": 8,
+    "cnt_ssd": 8,
+    "ms_srv_list": [
+      "Windows Server 2019",
+      "Windows Server 2022",
+      "Linux"
+    ],
+    "routing_sel": [
+      "Статическая",
+      "OSPF"
+    ],
+    "fv_cnt_VMware": 3,
+    "arm_Windows 10": 70,
+    "note_web": "Публичный интернет-магазин и личный кабинет клиентов.",
+    "ddos": false,
+    "vuln": false,
+    "client_contact_role": "Директор по информационным технологиям",
+    "email_pre": "security.audit",
+    "waf": true,
+    "raid_list": [
+      "RAID 10",
+      "RAID 6"
+    ],
+    "storage_toggle": true,
+    "client_contact_name": "Алексей Садыков",
+    "arm_Windows 11": 280,
+    "server_toggle": true,
+    "last_report_skipped_conflicts": [],
+    "fsrv_Windows Server 2019": 15,
+    "arm_Windows XP/Vista/7/8": 0,
+    "is_chk_bi": false,
+    "client_phone_number": "7770001122",
+    "total_arm": 350,
+    "swl3_chk": true,
+    "client_custom_email_mode": false,
+    "note_1_2": "Есть основной офис, склад и несколько торговых точек.",
+    "ngfw_v": "Fortinet FortiGate",
+    "patch": true,
+    "dev_toggle": true,
+    "mfa": true,
+    "net_acc": true,
+    "epp": true,
+    "note_1_1": "Часть рабочих мест планируется обновить до Windows 11 в течение года.",
+    "client_city": "Алматы",
+    "soar": false,
+    "net_toggle": true,
+    "web_hosting": "Облако KZ",
+    "net_core": true,
+    "ai_audit_narrative": {},
+    "site_field": "https://demo-bank.kz",
+    "wifi_ctrl": true,
+    "web_toggle": true,
+    "selected_os_arm": [
+      "Windows 10",
+      "Windows 11"
+    ],
+    "mail_sec": true,
+    "router_chk": true,
+    "note_1_3": "Виртуализация используется для ERP, CRM, файловых сервисов и веб-компонентов.",
+    "epp_v": "Check Point Harmony Endpoint",
+    "note_dev": "Внутренняя команда поддерживает интеграции, личный кабинет и аналитические сервисы.",
+    "ver_erp": "2.5",
+    "xdr": false,
+    "main_net_speed": 500,
+    "nad": false,
+    "ver_sd": "10",
+    "back_net_type": "4G/5G",
+    "name_crm": "Bitrix24",
+    "is_chk_acc": true,
+    "is_toggle": true,
+    "siem": true,
+    "main_net_type": "Оптика",
+    "allflash_st": false,
+    "client_phone_code": [
+      "🇰🇿 +7",
+      "+7"
+    ],
+    "st_media": [
+      "HDD (NL-SAS / SATA)",
+      "SSD (SATA / SAS)"
+    ],
+    "ver_acc": "3.0",
+    "note_1_5": "Критичные системы: ERP, CRM, бухгалтерия, почта Microsoft 365.",
+    "ai_last_error": "Gemini не дал пригодный ответ. gemini-2.5-flash: JSON parse error: Expecting ',' delimiter: line 7 column 61 (char 933) | gemini-2.5-flash-lite: HTTP 503 UNAVAILABLE: This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later. | gemini-2.5-flash: JSON parse error: Expecting ',' delimiter: line 36 column 6 (char 5236) | gemini-2.5-flash-lite: JSON parse error: Expecting ',' delimiter: line 148 column 305 (char 16018) | gemini-2.5-flash: ИИ дал только 5 пригодных пунктов из минимально ожидаемых 6. | gemini-2.5-flash-lite: ИИ дал слишком короткие рекомендации; включены экспертные правила.",
+    "is_chk_crm": true,
+    "ap_cnt": 14,
+    "virt_sys_list": [
+      "VMware"
+    ],
+    "ib_backup": true,
+    "name_sd": "GLPI",
+    "pam": false,
+    "fsrv_Windows Server 2022": 20,
+    "edr_v": "Check Point Harmony Endpoint EDR",
+    "mfa_v": "Cisco Duo",
+    "dlp_v": "Safetica",
+    "mail_v": "Check Point Harmony Email & Collaboration",
+    "waf_v": "Cloudflare WAF",
+    "siem_v": "R-Vision SIEM",
+    "patch_v": "ManageEngine Endpoint Central"
+  }
+}

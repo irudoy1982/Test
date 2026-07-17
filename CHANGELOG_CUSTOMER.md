@@ -29,6 +29,10 @@ Planned customer-visible improvement:
 - Expanded the sector list with banking, insurance, healthcare, public and quasi-public sectors, critical infrastructure, telecom, utilities, transport, and industrial environments.
 - Rebuilt the presentation as a 13-slide decision narrative with confirmed strengths, a consistent severity palette, regulatory context, evidence-based recommendations, and measurable outcomes.
 - Improved compatibility with previously saved questionnaires when selectable values are renamed or expanded.
+- Separated the executive audit conclusion from measurable 90-day target outcomes to remove repeated presentation content.
+- Replaced the regulatory catalogue slide with a sector-specific explanation of applicability and linked legal grounds to practical measures.
+- Reworked the 90-day roadmap into a timeline with actions and a measurable result for every phase.
+- Redesigned the presentation cover with a modern infrastructure image and a lighter executive layout.
 
 ## v12.0.0
 
