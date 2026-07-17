@@ -130,7 +130,7 @@ function addRecommendationCards(slide, startIndex, cfg) {
       bold: true,
       color: cfg.colors.dark,
     });
-    addText(slide, "Факт анкеты", x + 144, y + 58, 120, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
+    addText(slide, "Основание приоритета", x + 144, y + 58, 180, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
     addText(slide, `{{REC_${number}_EVIDENCE}}`, x + 144, y + 78, 470, 46, {
       fontSize: 13,
       color: cfg.colors.muted,
@@ -190,30 +190,30 @@ async function buildTemplate(cfg) {
       fontSize: 20,
       color: cfg.colors.muted,
     });
-    addRect(slide, 72, 500, 198, 104, "#FFFFFF", "rounded-xl", { style: "solid", fill: cfg.colors.rule, width: 1 });
+    addRect(slide, 72, 500, 198, 104, "#C10001", "rounded-xl", { style: "solid", fill: cfg.colors.rule, width: 1 });
     addText(slide, "Зрелость ИТ", 88, 518, 166, 24, {
       fontSize: 14,
       bold: true,
-      color: cfg.colors.muted,
+      color: "#C20001",
       alignment: "center",
     });
     addText(slide, "{{IT_SCORE}}%", 88, 548, 166, 42, {
       fontSize: 32,
       bold: true,
-      color: cfg.colors.dark,
+      color: "#C20001",
       alignment: "center",
     });
-    addRect(slide, 286, 500, 198, 104, "#FFFFFF", "rounded-xl", { style: "solid", fill: cfg.colors.rule, width: 1 });
+    addRect(slide, 286, 500, 198, 104, "#C10002", "rounded-xl", { style: "solid", fill: cfg.colors.rule, width: 1 });
     addText(slide, "Зрелость ИБ", 302, 518, 166, 24, {
       fontSize: 14,
       bold: true,
-      color: cfg.colors.muted,
+      color: "#C20002",
       alignment: "center",
     });
     addText(slide, "{{SCORE}}%", 302, 548, 166, 42, {
       fontSize: 32,
       bold: true,
-      color: cfg.colors.accent,
+      color: "#C20002",
       alignment: "center",
     });
     addText(slide, "{{DATE}}", 520, 552, 174, 30, {
@@ -308,12 +308,12 @@ async function buildTemplate(cfg) {
     addRect(slide, 0, 0, W, H, "#FFFFFF", "none");
     await addHeader(slide, cfg, "Аудит в одном экране", 2);
     addText(slide, "{{SUMMARY_TITLE}}", 58, 150, 720, 96, { fontSize: 29, bold: true, color: cfg.colors.dark });
-    addRect(slide, 840, 148, 158, 126, cfg.colors.dark, "rounded-lg");
-    addText(slide, "ЗРЕЛОСТЬ ИТ", 858, 170, 122, 20, { fontSize: 12, bold: true, color: "#FFFFFF", alignment: "center" });
-    addText(slide, "{{IT_SCORE}}%", 858, 201, 122, 46, { fontSize: 34, bold: true, color: "#FFFFFF", alignment: "center" });
-    addRect(slide, 1018, 148, 158, 126, cfg.colors.accent, "rounded-lg");
-    addText(slide, "ЗРЕЛОСТЬ ИБ", 1036, 170, 122, 20, { fontSize: 12, bold: true, color: "#FFFFFF", alignment: "center" });
-    addText(slide, "{{SCORE}}%", 1036, 201, 122, 46, { fontSize: 34, bold: true, color: "#FFFFFF", alignment: "center" });
+    addRect(slide, 840, 148, 158, 126, "#C10001", "rounded-lg");
+    addText(slide, "ЗРЕЛОСТЬ ИТ", 858, 170, 122, 20, { fontSize: 12, bold: true, color: "#C20001", alignment: "center" });
+    addText(slide, "{{IT_SCORE}}%", 858, 201, 122, 46, { fontSize: 34, bold: true, color: "#C20001", alignment: "center" });
+    addRect(slide, 1018, 148, 158, 126, "#C10002", "rounded-lg");
+    addText(slide, "ЗРЕЛОСТЬ ИБ", 1036, 170, 122, 20, { fontSize: 12, bold: true, color: "#C20002", alignment: "center" });
+    addText(slide, "{{SCORE}}%", 1036, 201, 122, 46, { fontSize: 34, bold: true, color: "#C20002", alignment: "center" });
     addText(slide, "Ключевые наблюдения", 58, 306, 300, 30, { fontSize: 19, bold: true, color: cfg.colors.accent });
     addBulletRows(slide, ["{{SUMMARY_1}}", "{{SUMMARY_2}}", "{{SUMMARY_3}}"], cfg, 356, 92);
   }
@@ -418,10 +418,13 @@ async function buildTemplate(cfg) {
       addText(slide, title, x, 292, 326, 54, { fontSize: 20, bold: true, color: cfg.colors.dark });
       addText(slide, text, x, 360, 326, 126, { fontSize: 16, color: cfg.colors.muted });
     });
-    addRect(slide, 58, 546, 1118, 84, cfg.colors.soft, "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
-    addText(slide, "Нормативные опоры", 82, 563, 180, 22, { fontSize: 12, bold: true, color: cfg.colors.accent });
-    addText(slide, "{{REG_ANCHORS}}", 82, 590, 1070, 26, { fontSize: 14, bold: true, color: cfg.colors.dark });
-    addText(slide, "Границы применимости подтверждаются по официальному статусу организации и конкретных информационных систем.", 58, 646, 1118, 24, { fontSize: 12, color: cfg.colors.muted });
+    addRect(slide, 58, 536, 1118, 60, cfg.colors.soft, "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
+    addText(slide, "Нормы Республики Казахстан", 82, 548, 230, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
+    addText(slide, "{{REG_ANCHORS}}", 82, 569, 1070, 18, { fontSize: 12, bold: true, color: cfg.colors.dark });
+    addRect(slide, 58, 606, 1118, 58, "#FFFFFF", "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
+    addText(slide, "Стандарты при подтверждении применимости", 82, 617, 330, 18, { fontSize: 11, bold: true, color: cfg.colors.accent });
+    addText(slide, "{{FRAMEWORKS}}", 82, 638, 1070, 18, { fontSize: 12, bold: true, color: cfg.colors.dark });
+    addText(slide, "PCI DSS и GDPR применяются только при наличии соответствующих данных и операций.", 58, 671, 1118, 16, { fontSize: 10, color: cfg.colors.muted });
   }
 
   // 7-10. Detailed recommendations
@@ -462,7 +465,7 @@ async function buildTemplate(cfg) {
       ["31–60 дней", "ПИЛОТЫ И РЕГЛАМЕНТЫ", "{{ROADMAP_2_1}}", "{{ROADMAP_2_2}}", "{{ROADMAP_2_RESULT}}"],
       ["61–90 дней", "МАСШТАБИРОВАНИЕ И КОНТРОЛЬ", "{{ROADMAP_3_1}}", "{{ROADMAP_3_2}}", "{{ROADMAP_3_RESULT}}"],
     ];
-    addText(slide, "Каждый этап заканчивается проверяемым результатом, а не только перечнем задач", 58, 142, 1118, 34, { fontSize: 18, color: cfg.colors.muted });
+    addText(slide, "Сначала 20% первоочередных мер, которые закрывают основную долю подтвержденных рисков.", 58, 142, 1118, 34, { fontSize: 18, color: cfg.colors.muted });
     addRect(slide, 150, 226, 920, 5, cfg.colors.rule, "none");
     phases.forEach(([phase, label, one, two, result], i) => {
       const x = 58 + i * 382;
@@ -476,7 +479,7 @@ async function buildTemplate(cfg) {
       addText(slide, "02", x + 10, 438, 34, 24, { fontSize: 13, bold: true, color: cfg.colors.accent });
       addText(slide, two, x + 52, 432, 292, 86, { fontSize: 15, color: cfg.colors.dark });
       addRect(slide, x + 10, 542, 334, 80, cfg.colors.soft, "rounded-lg", { style: "solid", fill: cfg.colors.rule, width: 1 });
-      addText(slide, "РЕЗУЛЬТАТ ЭТАПА", x + 26, 555, 302, 18, { fontSize: 10, bold: true, color: cfg.colors.accent });
+      addText(slide, "ЧТО ДАСТ ЭТАП", x + 26, 555, 302, 18, { fontSize: 10, bold: true, color: cfg.colors.accent });
       addText(slide, result, x + 26, 579, 302, 34, { fontSize: 13, bold: true, color: cfg.colors.dark });
       if (i < 2) addRect(slide, x + 369, 276, 1, 346, cfg.colors.rule, "none");
     });

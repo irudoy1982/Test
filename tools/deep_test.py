@@ -388,6 +388,7 @@ def test_presentation_template_rendering() -> None:
         assert_true(founded_year in rendered_xml, f"{brand}: founding year is missing")
         assert_true(foreign_brand not in rendered_xml, f"{brand}: foreign brand data leaked into presentation")
         assert_true("{{" not in rendered_xml, f"{brand}: unresolved presentation placeholders")
+        assert_true("C10001" not in rendered_xml and "C10002" not in rendered_xml, f"{brand}: maturity colors were not rendered")
         assert_true("Тест &amp; проверка" in rendered_xml, f"{brand}: XML escaping failed")
 
 
@@ -460,6 +461,41 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
     assert_true("сегментац" not in network_risk["impact"].lower(), "Network performance slide must not invent missing segmentation")
 
 
+def test_it_maturity_measures_controls_not_infrastructure_size() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace: dict[str, object] = {}
+    exec(extract_function_source(module_text, "calculate_it_maturity_score"), namespace)
+    score = namespace["calculate_it_maturity_score"](
+        420, ["Windows 10", "Windows 11"], 420,
+        True, 1000, 200, ["OSPF"], 14, "FortiGate",
+        True, 4, 38, ["VMware vSphere"], "Veeam",
+        True, ["HDD", "SSD"], 24, 16, ["RAID 10"],
+        True, True, True, 12, ["Python"], True,
+    )
+    assert_true(score <= 95, f"Questionnaire-only IT maturity cannot be 100%, got {score}")
+
+
+def test_presentation_evidence_and_maturity_palette() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {"re": re}
+    for name in ("presentation_text", "presentation_action_text", "presentation_maturity_style", "presentation_evidence_for_key"):
+        exec(extract_function_source(module_text, name), namespace)
+
+    evidence = namespace["presentation_evidence_for_key"](
+        "itam",
+        {"MFA": "Нет"},
+        {"users": 120, "servers": 22},
+        {"description": "Компрометация учетной записи"},
+    )
+    assert_true("компрометац" not in evidence.lower(), f"ITAM evidence is semantically wrong: {evidence}")
+    assert_true("реестр" in evidence.lower(), f"ITAM evidence must state the actual data gap: {evidence}")
+
+    palette = namespace["presentation_maturity_style"]
+    assert_true(palette(20)[0] == "#D92D20", "Low maturity must be red")
+    assert_true(palette(55)[0] == "#F4B400", "Mid maturity must be yellow")
+    assert_true(palette(85)[0] == "#13877C", "High maturity must be green")
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
@@ -477,6 +513,8 @@ def main() -> None:
         test_presentation_template_rendering,
         test_presentation_text_is_self_contained,
         test_presentation_actions_are_complete_and_deduplicated,
+        test_it_maturity_measures_controls_not_infrastructure_size,
+        test_presentation_evidence_and_maturity_palette,
     ]
     for test in tests:
         test()

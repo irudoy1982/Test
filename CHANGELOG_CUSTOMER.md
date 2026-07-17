@@ -33,6 +33,11 @@ Planned customer-visible improvement:
 - Replaced the regulatory catalogue slide with a sector-specific explanation of applicability and linked legal grounds to practical measures.
 - Reworked the 90-day roadmap into a timeline with actions and a measurable result for every phase.
 - Redesigned the presentation cover with a modern infrastructure image and a lighter executive layout.
+- Recalibrated IT maturity so the score reflects management and resilience controls rather than the size of the equipment fleet.
+- Added a unified maturity color scale from red through yellow to green on the executive slides.
+- Strengthened presentation quality checks: every shown recommendation is tied to a concrete questionnaire basis and a measurable result.
+- Added clearer conditional industry standards, including PCI DSS and GDPR where their applicability is confirmed.
+- Refined the 90-day roadmap to show the practical result of each stage.
 
 ## v12.0.0
 

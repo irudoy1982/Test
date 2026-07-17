@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.12-dev"
+APP_VERSION = "12.X3-dev"
 
 
 def get_app_instance_label():
@@ -876,10 +876,10 @@ INDUSTRY_REGULATORY_IDS = {
 
 
 INDUSTRY_FRAMEWORKS = {
-    "Финтех / Банки": ["PCI DSS (если обрабатываются карточные данные)", "ISO/IEC 27001"],
-    "Страхование": ["ISO/IEC 27001", "NIST CSF"],
-    "Ритейл / E-commerce": ["PCI DSS (если обрабатываются карточные данные)", "OWASP ASVS", "ISO/IEC 27001"],
-    "Здравоохранение / Медицинская организация": ["ISO/IEC 27001", "ISO 27799"],
+    "Финтех / Банки": ["ISO/IEC 27001", "PCI DSS (при обработке карточных данных)", "GDPR (при обработке данных субъектов ЕЭЗ)"],
+    "Страхование": ["ISO/IEC 27001", "NIST CSF", "GDPR (при обработке данных субъектов ЕЭЗ)"],
+    "Ритейл / E-commerce": ["OWASP ASVS", "PCI DSS (при обработке карточных данных)", "GDPR (при обработке данных субъектов ЕЭЗ)", "ISO/IEC 27001"],
+    "Здравоохранение / Медицинская организация": ["ISO/IEC 27001", "ISO 27799", "GDPR (при обработке данных субъектов ЕЭЗ)"],
     "Госсектор": ["СТ РК ISO/IEC 27002", "ISO/IEC 27001"],
     "Квазигосударственный сектор": ["СТ РК ISO/IEC 27002", "ISO/IEC 27001"],
     "КВОИКИ / Критическая инфраструктура": ["ISO/IEC 27001", "NIST CSF", "CIS Controls"],
@@ -895,11 +895,15 @@ INDUSTRY_FRAMEWORKS = {
 
 def industry_regulatory_profile(industry):
     legal_ids = INDUSTRY_REGULATORY_IDS.get(industry, ["PD_LAW", "PD_RULES"])
+    frameworks = list(INDUSTRY_FRAMEWORKS.get(industry, ["ISO/IEC 27001", "CIS Controls"]))
+    gdpr_note = "GDPR (при обработке данных субъектов ЕЭЗ)"
+    if gdpr_note not in frameworks:
+        frameworks.append(gdpr_note)
     return {
         "industry": industry or "Другое",
         "legal_ids": legal_ids,
         "laws": [REGULATORY_CATALOG[item] for item in legal_ids if item in REGULATORY_CATALOG],
-        "frameworks": INDUSTRY_FRAMEWORKS.get(industry, ["ISO/IEC 27001", "CIS Controls"]),
+        "frameworks": frameworks,
     }
 
 
@@ -4569,74 +4573,62 @@ def calculate_it_maturity_score(
     sel_langs,
     cicd_active,
 ):
-    maturity_score = 0
+    earned = 0.0
+    available = 20.0
 
+    # Размер парка задает сложность эксплуатации, но сам по себе не является зрелостью.
     if total_arm > 0:
-        maturity_score += 6
-        if selected_os_arm and sum_os_arm == total_arm:
-            maturity_score += 5
-        if total_arm >= 10:
-            maturity_score += 4
-        if total_arm >= 50:
-            maturity_score += 5
-        if total_arm >= 250:
-            maturity_score += 5
+        earned += 4
+    if selected_os_arm and sum_os_arm == total_arm:
+        earned += 10
+    legacy_markers = ("xp", "vista", "windows 7", "windows 8")
+    if selected_os_arm and not any(
+        marker in str(os_name).lower()
+        for os_name in selected_os_arm
+        for marker in legacy_markers
+    ):
+        earned += 6
 
     if net_active:
-        if main_speed > 0:
-            maturity_score += 4
-        if main_speed >= 100:
-            maturity_score += 3
-        if back_speed > 0:
-            maturity_score += 4
-        if selected_routing:
-            maturity_score += 4
-        if ap_cnt > 0:
-            maturity_score += 2
-        if str(ngfw_vendor).strip().lower() not in {"", "нет", "no", "none"}:
-            maturity_score += 5
+        available += 24
+        earned += 4 if main_speed > 0 else 0
+        earned += 6 if back_speed > 0 else 0
+        earned += 5 if selected_routing else 0
+        earned += 3 if ap_cnt > 0 else 0
+        earned += 6 if str(ngfw_vendor).strip().lower() not in {"", "нет", "no", "none"} else 0
 
     if server_active:
-        server_total = phys_count + virt_count
-        if phys_count > 0:
-            maturity_score += 4
-        if virt_count > 0:
-            maturity_score += 5
-        if server_total >= 5:
-            maturity_score += 3
-        if selected_virt_sys and virt_count > 0:
-            maturity_score += 4
-        if str(backup_vendor).strip().lower() not in {"", "нет", "no", "none"}:
-            maturity_score += 4
+        available += 24
+        earned += 5 if (phys_count + virt_count) > 0 else 0
+        earned += 5 if virt_count > 0 and selected_virt_sys else 0
+        earned += 10 if str(backup_vendor).strip().lower() not in {"", "нет", "no", "none"} else 0
+        earned += 4 if phys_count > 0 and virt_count > 0 else 0
 
     if storage_active:
-        storage_disks = cnt_hdd + cnt_ssd
-        if storage_disks > 0:
-            maturity_score += 3
-        if st_media_sel:
-            maturity_score += 3
-        if cnt_ssd > 0:
-            maturity_score += 2
-        if raid_selected:
-            maturity_score += 4
+        available += 14
+        earned += 3 if (cnt_hdd + cnt_ssd) > 0 else 0
+        earned += 3 if st_media_sel else 0
+        earned += 6 if raid_selected else 0
+        earned += 2 if cnt_ssd > 0 else 0
 
     if systems_active:
-        maturity_score += 6
+        available += 6
+        earned += 4
 
     if web_active:
-        maturity_score += 4
+        available += 4
+        earned += 2
 
     if dev_active:
-        if dev_count > 0:
-            maturity_score += 4
-        if dev_count >= 10:
-            maturity_score += 3
-        if sel_langs:
-            maturity_score += 3
-        if cicd_active:
-            maturity_score += 3
+        available += 8
+        earned += 2 if dev_count > 0 else 0
+        earned += 2 if sel_langs else 0
+        earned += 4 if cicd_active else 0
 
-    return min(100, maturity_score)
+    score = round((earned / available) * 100) if available else 0
+    # Анкета не подтверждает ITSM, capacity management и регулярность DR-тестов,
+    # поэтому оптимальность выше 95% по ее данным доказать нельзя.
+    return min(95, max(0, score))
 
 
 def build_context(results, client_info):
@@ -6857,6 +6849,8 @@ def network_segmentation_evidence(results):
 
 def neutralize_company_scale_language(value):
     text = str(value or "")
+    it_score_fill, it_score_text = presentation_maturity_style(it_maturity_score)
+    security_score_fill, security_score_text = presentation_maturity_style(final_score)
     replacements = {
         "маленькая компания": "компания с указанным ИТ-контуром",
         "малая компания": "компания с указанным ИТ-контуром",
@@ -7204,6 +7198,10 @@ def build_report_risk_set(c_info, results, context):
             "vendors": item.get("vendors", []),
             "area": item.get("_ai_area", "ИТ/ИБ"),
             "source": risk_source_label(item.get("_source")),
+            "legal_ids": item.get("legal_ids", []),
+            "frameworks": item.get("frameworks", []),
+            "evidence": item.get("evidence", []),
+            "success_metric": item.get("success_metric", ""),
         }
         for item in report_risks
     ]
@@ -7456,6 +7454,48 @@ def presentation_action_text(value, limit=165):
     return " ".join(selected) or complete_sentence(presentation_text(text, limit))
 
 
+def presentation_maturity_style(score):
+    """Return a clear red-yellow-green maturity scale for customer-facing slides."""
+    value = max(0, min(100, int(score or 0)))
+    if value < 40:
+        return "#D92D20", "#FFFFFF"
+    if value < 70:
+        return "#F4B400", "#1F2937"
+    return "#13877C", "#FFFFFF"
+
+
+def presentation_evidence_for_key(semantic_key, results, context, item):
+    """Use one questionnaire-grounded reason per recommendation card."""
+    users = int(context.get("users", 0) or 0)
+    servers = int(context.get("servers", 0) or 0)
+    legacy_arm = int(results.get("ОС АРМ (Windows XP/Vista/7/8)", 0) or 0)
+    legacy_servers = int(results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0) or 0)
+    values = {
+        "mfa": f"В анкете MFA: {results.get('MFA', 'Нет')}. Критичные доступы требуют подтвержденного покрытия вторым фактором.",
+        "legacy_os": f"В анкете указаны устаревшие ОС: {legacy_arm} АРМ и {legacy_servers} серверов.",
+        "siem_soc": f"В анкете SIEM: {results.get('SIEM', 'Нет')}. Централизованный контроль событий для критичных источников не подтвержден.",
+        "patch": f"В анкете Patch Management: {results.get('Patch Management', 'Нет')}. Для {users} АРМ и {servers} серверов нужен управляемый цикл обновлений.",
+        "endpoint_detection": (
+            f"В анкете EPP: {results.get('EPP', 'Нет')}; "
+            f"EDR/XDR/MDR: {results.get('EDR', 'Нет')}/{results.get('XDR', 'Нет')}/{results.get('MDR', 'Нет')}."
+        ),
+        "backup": f"В анкете резервное копирование: {results.get('Резервное копирование', 'Нет')}. RTO/RPO и результаты тестового восстановления не зафиксированы.",
+        "web_waf": f"Публичные сервисы: {'есть' if context.get('has_public_web') else 'не указаны'}; WAF: {results.get('WAF', 'Нет')}.",
+        "pam": f"В анкете PAM: {results.get('PAM', 'Нет')}; серверный контур: {servers} серверов.",
+        "mail": f"Почтовая система: {results.get('1.5.1. Почтовая система', 'не указана')}; Mail Security: {results.get('Mail Security', 'Нет')}.",
+        "appsec": f"Разработка: {'есть' if context.get('has_development') else 'не указана'}; SAST/DAST: {results.get('SAST', 'Нет')}/{results.get('DAST', 'Нет')}.",
+        "network_performance": f"Основной канал: {results.get('Интернет канал (осн)', 'не указан')}; резервный: {results.get('Резервный канал', 'Нет')}; маршрутизация: {results.get('Маршрутизация', 'Нет')}.",
+        "segmentation": "В анкете не приведены схема VLAN/VRF, ACL и матрица межсегментных потоков; OSPF сам по себе не подтверждает сегментацию.",
+        "itam": "В анкете не подтверждены единый реестр ПО, лицензий, владельцев активов и сроки поддержки.",
+        "change_management": "В анкете не подтверждены единый процесс согласования изменений, тестирования и плана отката.",
+        "it_monitoring": "В анкете не подтверждены единые метрики доступности, производительности и емкости для критичных сервисов.",
+        "virtualization": f"В анкете виртуальных серверов: {results.get('Серверы (вирт)', 0)}; HA/DRS и резервы ресурсов не описаны.",
+        "storage": "В анкете указаны СХД и RAID, но latency/IOPS, утилизация и запас емкости не раскрыты.",
+        "dr": "В анкете не подтверждены согласованные RTO/RPO и результаты регулярного тестового восстановления.",
+    }
+    return presentation_action_text(values.get(semantic_key) or item.get("description") or item.get("impact"), 165)
+
+
 def presentation_recommendation_key(item):
     normalized = {
         "risk": item.get("risk") or item.get("domain") or "",
@@ -7587,7 +7627,7 @@ def presentation_severity_style(level):
     return normalized, *styles.get(normalized, styles["MEDIUM"])
 
 
-def presentation_recommendation_entry(item, regulatory_profile=None):
+def presentation_recommendation_entry(item, regulatory_profile=None, results=None, context=None):
     normalized = dict(item)
     normalized["risk"] = item.get("risk") or item.get("domain") or "Рекомендация"
     normalized["recommendation"] = item.get("recommendation") or item.get("action") or item.get("description")
@@ -7621,13 +7661,17 @@ def presentation_recommendation_entry(item, regulatory_profile=None):
     else:
         vendor_limit = 5 if semantic_key == "web_waf" else 4
         vendors = ", ".join(split_portfolio_list(vendors)[:vendor_limit])
+    if semantic_key in {"patch", "itam"} and "hcl" not in str(vendors).lower():
+        vendors = ", ".join([*split_portfolio_list(vendors), "HCL BigFix"])
     vendors = presentation_text(vendors, 92)
     evidence_values = item.get("evidence", [])
     if not isinstance(evidence_values, list):
         evidence_values = [evidence_values] if evidence_values else []
     evidence = "; ".join(str(value).strip() for value in evidence_values if str(value).strip())
-    if not evidence:
-        evidence = item.get("description") or item.get("impact") or "Требуется подтвердить фактическое состояние контроля"
+    if results is not None and context is not None:
+        evidence = presentation_evidence_for_key(semantic_key, results, context, item)
+    elif not evidence:
+        evidence = item.get("description") or item.get("impact") or "Основание приоритета требует уточнения"
 
     legal_ids = [
         value for value in item.get("legal_ids", [])
@@ -7650,7 +7694,7 @@ def presentation_recommendation_entry(item, regulatory_profile=None):
         "action": action,
         "solution": solution,
         "vendors": vendors,
-        "evidence": presentation_text(evidence, 165),
+        "evidence": presentation_action_text(evidence, 165),
         "legal": presentation_text(legal, 130),
         "metric": presentation_text(item.get("success_metric") or presentation_success_metric(semantic_key), 125),
         "fill_color": fill_color,
@@ -7718,7 +7762,10 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
     )
     domain_scores = calculate_domain_scores(results)
     rule_risks = generate_rule_based_risks(results, context)
-    risk_sources = st.session_state.get("last_report_risk_sources") or rule_risks
+    ai_risk_sources = st.session_state.get("last_report_risk_sources", [])
+    # AI creates the narrative, while deterministic rules add only evidence-backed
+    # gaps that the model may have omitted. Both sources are deduplicated below.
+    risk_sources = [*ai_risk_sources, *rule_risks]
     ai_narrative = sanitize_ai_audit_narrative(
         st.session_state.get("ai_audit_narrative", {}),
         results,
@@ -7759,7 +7806,13 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
     focus_items = presentation_focus_items(context, business_systems)
 
     normalized_risks = []
-    for item in risk_sources:
+    for source_item in risk_sources:
+        if not isinstance(source_item, dict):
+            continue
+        if risk_conflicts_with_answers(source_item, results):
+            continue
+        item = professionalize_risk_item(source_item, results, context)
+        item = align_report_vendors(item, results, context)
         if not isinstance(item, dict):
             continue
         normalized_risks.append({
@@ -7792,7 +7845,12 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
     recommendation_keys = set()
 
     def add_recommendation(item):
-        entry = presentation_recommendation_entry(item, regulatory_profile)
+        entry = presentation_recommendation_entry(
+            item,
+            regulatory_profile,
+            results=results,
+            context=context,
+        )
         key = entry["key"] or re.sub(r"\s+", " ", entry["title"].lower())
         if key in recommendation_keys:
             return
@@ -7804,12 +7862,11 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
     for item in roadmap_items:
         add_recommendation(item)
 
-    recommendation_fallback = [
-        {"level": "MEDIUM", "risk": "Проверка полноты архитектуры", "description": "Анкета не подтверждает состояние части контролей.", "recommendation": "Провести рабочую сессию и подтвердить архитектуру, владельцев и действующие регламенты.", "evidence": ["В анкете недостаточно данных для однозначного вывода"], "vendors": []},
-    ]
-    for item in recommendation_fallback:
-        if not recommendation_items:
-            add_recommendation(item)
+    if len(recommendation_items) < 8:
+        raise ValueError(
+            "Недостаточно подтвержденных рекомендаций для клиентской презентации: "
+            f"получено {len(recommendation_items)} из 8."
+        )
 
     roadmap_by_phase = {
         "0-30": [],
@@ -7856,10 +7913,6 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
                 break
             roadmap_by_phase[phase].append(item)
 
-    decisions = build_management_decisions(results, context)
-    while len(decisions) < 4:
-        decisions.append("Согласовать владельца, срок и измеримый критерий результата для следующего этапа.")
-
     enabled_controls, _ = security_control_snapshot(results)
     strengths = [presentation_text(item, 105) for item in enabled_controls[:4]]
     if context.get("has_backup"):
@@ -7875,6 +7928,10 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         "CITY": presentation_text(c_info.get("Город", ""), 28),
         "SCORE": str(int(final_score)),
         "IT_SCORE": str(int(it_maturity_score)),
+        "IT_SCORE_FILL": it_score_fill,
+        "IT_SCORE_TEXT": it_score_text,
+        "SCORE_FILL": security_score_fill,
+        "SCORE_TEXT": security_score_text,
         "DATE": datetime.now().strftime("%d.%m.%Y"),
         "SUMMARY_TITLE": presentation_text(summary_title, 120),
         "USERS": str(context.get("users", 0)),
@@ -7884,7 +7941,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         "PROFILE": presentation_text(f"{profile_title}. {profile_text}", 240),
         "SEC_LEVEL": get_maturity_level(final_score)[0],
         "IT_LEVEL": get_maturity_level(it_maturity_score)[0],
-        "FRAMEWORKS": presentation_text(", ".join(regulatory_profile.get("frameworks", [])), 160),
+        "FRAMEWORKS": presentation_text(", ".join(regulatory_profile.get("frameworks", [])), 220),
         "REG_TITLE": presentation_text(regulatory_summary["title"], 150),
         "REG_APPLICABILITY": presentation_text(regulatory_summary["applicability"], 260),
         "REG_EXPECTATIONS": presentation_text(regulatory_summary["expectations"], 260),
@@ -7912,13 +7969,17 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         replacements[f"LAW_{index}_STATUS"] = presentation_text(law.get("status", ""), 48)
 
     for index in range(6):
-        replacements[f"SUMMARY_{index + 1}"] = summary_items[index] if index < len(summary_items) else "Уточнить приоритеты и владельцев на рабочей сессии."
-        risk = normalized_risks[index] if index < len(normalized_risks) else {
-            "level": "Средний",
-            "risk": "Требуется дополнительная проверка",
-            "impact": "Для точной оценки необходимо подтвердить фактическую архитектуру и действующие процессы.",
-            "recommendation": "Провести рабочую сессию и подтвердить фактическое состояние контроля.",
-        }
+        replacements[f"SUMMARY_{index + 1}"] = summary_items[index] if index < len(summary_items) else "Приоритеты определены по подтвержденным данным анкеты."
+        if index < len(normalized_risks):
+            risk = normalized_risks[index]
+        else:
+            entry = recommendation_items[index]
+            risk = {
+                "level": entry["level"],
+                "risk": entry["title"],
+                "impact": entry["evidence"],
+                "recommendation": entry["action"],
+            }
         risk_entry = presentation_risk_entry(risk)
         replacements[f"RISK_{index + 1}_LEVEL"] = risk_entry["level"]
         replacements[f"RISK_{index + 1}_TITLE"] = risk_entry["title"]
@@ -7927,17 +7988,11 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         replacements[f"RISK_{index + 1}_FILL"] = risk_entry["fill_color"]
         replacements[f"RISK_{index + 1}_TEXT"] = risk_entry["text_color"]
         if index < 4:
-            replacements[f"DECISION_{index + 1}"] = presentation_text(decisions[index], 205)
-
-    while len(recommendation_items) < 8:
-        recommendation_items.append(presentation_recommendation_entry({
-            "level": "LOW",
-            "risk": f"Область для верификации {len(recommendation_items) + 1}",
-            "description": "Анкета не содержит достаточных данных для подтверждения отдельного разрыва.",
-            "recommendation": "Подтвердить фактическое состояние контроля на рабочей сессии до выбора решения.",
-            "evidence": ["Вывод не подтвержден ответами анкеты"],
-            "vendors": [],
-        }, regulatory_profile))
+            entry = recommendation_items[index]
+            replacements[f"DECISION_{index + 1}"] = presentation_text(
+                f"Утвердить направление «{entry['title']}» и результат: {entry['metric']}",
+                205,
+            )
 
     for index, entry in enumerate(recommendation_items[:8], start=1):
         replacements[f"REC_{index}_LEVEL"] = entry["level"]
@@ -7995,6 +8050,10 @@ def render_audit_presentation_template(template_path, replacements):
                 for index in range(1, 9):
                     xml_text = xml_text.replace(f"B1000{index}", replacements.get(f"REC_{index}_FILL", "#F4B400").lstrip("#"))
                     xml_text = xml_text.replace(f"B2000{index}", replacements.get(f"REC_{index}_TEXT", "#1F2937").lstrip("#"))
+                xml_text = xml_text.replace("C10001", replacements.get("IT_SCORE_FILL", "#13877C").lstrip("#"))
+                xml_text = xml_text.replace("C20001", replacements.get("IT_SCORE_TEXT", "#FFFFFF").lstrip("#"))
+                xml_text = xml_text.replace("C10002", replacements.get("SCORE_FILL", "#13877C").lstrip("#"))
+                xml_text = xml_text.replace("C20002", replacements.get("SCORE_TEXT", "#FFFFFF").lstrip("#"))
                 content = xml_text.encode("utf-8")
             target.writestr(item, content)
 
@@ -9683,13 +9742,22 @@ if st.session_state.generation_state == "heavy_ai":
             )
             st.session_state.report_shortened_last = False
             if not ai_report_ready:
+                ai_failure_detail = st.session_state.get(
+                    "ai_last_error",
+                    "AI analysis did not return recommendations",
+                )
                 st.session_state.telegram_status = send_internal_telegram_message(
                     build_telegram_ai_failure_text(
                         client_info,
                         f_score,
-                        st.session_state.get("ai_last_error", "AI analysis did not return recommendations")
+                        ai_failure_detail,
                     )
                 )
+                st.session_state.cached_report_bytes = None
+                st.session_state.cached_sales_report_bytes = None
+                st.session_state.cached_presentation_bytes = None
+                st.session_state.presentation_status = "error"
+                raise RuntimeError("AI quality gate rejected the customer presentation")
 
             sales_report_bytes, telegram_sales = make_internal_sales_excel(
                 client_info,
