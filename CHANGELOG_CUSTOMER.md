@@ -20,6 +20,7 @@ Planned customer-visible improvement:
 - Improved the 90-day plan so later phases continue the identified priorities instead of showing generic actions.
 - Simplified customer delivery to one management presentation.
 - Added an early company profile slide explaining the audit team's capabilities and delivery scope.
+- Made the company's delivered IT project track record more prominent.
 
 ## v12.0.0
 
