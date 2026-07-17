@@ -375,7 +375,8 @@ def test_presentation_template_rendering() -> None:
                 if name.startswith("ppt/slides/slide") and name.endswith(".xml")
             ]
             rendered_xml = "\n".join(archive.read(name).decode("utf-8") for name in slide_names)
-        assert_true(len(slide_names) == 8, f"{brand}: expected 8 slides, got {len(slide_names)}")
+        assert_true(len(slide_names) == 9, f"{brand}: expected 9 slides, got {len(slide_names)}")
+        assert_true("Кто стоит за аудитом" in rendered_xml, f"{brand}: company profile slide is missing")
         assert_true("{{" not in rendered_xml, f"{brand}: unresolved presentation placeholders")
         assert_true("Тест &amp; проверка" in rendered_xml, f"{brand}: XML escaping failed")
 

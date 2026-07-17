@@ -19,6 +19,7 @@ Planned customer-visible improvement:
 - Limited recommended manufacturers to the maintained solution portfolio.
 - Improved the 90-day plan so later phases continue the identified priorities instead of showing generic actions.
 - Simplified customer delivery to one management presentation.
+- Added an early company profile slide explaining the audit team's capabilities and delivery scope.
 
 ## v12.0.0
 

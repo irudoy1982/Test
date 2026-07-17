@@ -219,11 +219,87 @@ async function buildTemplate(cfg) {
     });
   }
 
-  // 2. Executive summary
+  // 2. Company profile
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Главный вывод аудита", 2);
+    await addHeader(slide, cfg, "Кто стоит за аудитом", 2);
+
+    addText(slide, cfg.companyName, 58, 150, 520, 46, {
+      fontSize: 25,
+      bold: true,
+      color: cfg.colors.accent,
+    });
+    addText(slide, cfg.companySummary, 58, 205, 520, 92, {
+      fontSize: 18,
+      color: cfg.colors.dark,
+    });
+    addText(slide, "От аудита и проектирования - до внедрения, поддержки и развития.", 58, 322, 520, 62, {
+      fontSize: 20,
+      bold: true,
+      color: cfg.colors.dark,
+    });
+
+    const stats = [
+      ["2019", "год основания"],
+      ["70+", "реализованных проектов"],
+      ["40+", "технологических партнеров"],
+    ];
+    stats.forEach(([value, label], i) => {
+      const x = 58 + i * 178;
+      addText(slide, value, x, 432, 148, 46, {
+        fontSize: 31,
+        bold: true,
+        color: i === 0 ? cfg.colors.accent : cfg.colors.dark,
+      });
+      addText(slide, label, x, 481, 148, 48, {
+        fontSize: 13,
+        color: cfg.colors.muted,
+      });
+    });
+    addRect(slide, 58, 558, 520, 58, cfg.colors.soft, "rounded-lg", {
+      style: "solid",
+      fill: cfg.colors.rule,
+      width: 1,
+    });
+    addText(slide, "Одна команда отвечает за архитектуру, безопасность и практическую реализацию.", 78, 572, 480, 30, {
+      fontSize: 15,
+      bold: true,
+      color: cfg.colors.dark,
+      alignment: "center",
+    });
+
+    const directions = [
+      ["01", "Информационная безопасность", "Аудит, проектирование защиты, внедрение, поддержка и обучение."],
+      ["02", "Системная интеграция", "Сетевая, серверная и вычислительная инфраструктура под ключ."],
+      ["03", "Автоматизация процессов", "СЭД, low-code, ESM/BPM и цифровые решения для бизнеса."],
+      ["04", "Сопровождение и развитие", "Рабочие сессии, внедрение, поддержка и передача знаний команде."],
+    ];
+    directions.forEach(([number, title, text], i) => {
+      const y = 150 + i * 119;
+      addText(slide, number, 632, y + 4, 44, 28, {
+        fontSize: 16,
+        bold: true,
+        color: cfg.colors.accent,
+      });
+      addText(slide, title, 690, y, 486, 30, {
+        fontSize: 19,
+        bold: true,
+        color: cfg.colors.dark,
+      });
+      addText(slide, text, 690, y + 36, 486, 52, {
+        fontSize: 15,
+        color: cfg.colors.muted,
+      });
+      if (i < directions.length - 1) addRect(slide, 690, y + 103, 486, 1, cfg.colors.rule, "none");
+    });
+  }
+
+  // 3. Executive summary
+  {
+    const slide = deck.slides.add();
+    slide.background.fill = "#FFFFFF";
+    await addHeader(slide, cfg, "Главный вывод аудита", 3);
     addText(slide, "{{SUMMARY_TITLE}}", 58, 146, 1118, 72, {
       fontSize: 28,
       bold: true,
@@ -232,11 +308,11 @@ async function buildTemplate(cfg) {
     addBulletRows(slide, ["{{SUMMARY_1}}", "{{SUMMARY_2}}", "{{SUMMARY_3}}", "{{SUMMARY_4}}"], cfg, 246, 100);
   }
 
-  // 3. Infrastructure profile
+  // 4. Infrastructure profile
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Масштаб инфраструктуры задает три приоритета", 3);
+    await addHeader(slide, cfg, "Масштаб инфраструктуры задает три приоритета", 4);
     const metrics = [
       ["{{USERS}}", "рабочих мест"],
       ["{{SERVERS}}", "серверов"],
@@ -280,11 +356,11 @@ async function buildTemplate(cfg) {
     }
   }
 
-  // 4. Risks
+  // 5. Risks
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Четыре риска требуют управленческого внимания", 4);
+    await addHeader(slide, cfg, "Четыре риска требуют управленческого внимания", 5);
     const severityColors = ["#B42318", "#D9480F", "#E67700", cfg.colors.accent];
     for (let i = 0; i < 4; i += 1) {
       const y = 146 + i * 128;
@@ -318,27 +394,27 @@ async function buildTemplate(cfg) {
     }
   }
 
-  // 5. Priority recommendations
+  // 6. Priority recommendations
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Рекомендации: первоочередные меры", 5);
+    await addHeader(slide, cfg, "Рекомендации: первоочередные меры", 6);
     addRecommendationCards(slide, 1, cfg);
   }
 
-  // 6. Next recommendations
+  // 7. Next recommendations
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Рекомендации: следующий этап", 6);
+    await addHeader(slide, cfg, "Рекомендации: следующий этап", 7);
     addRecommendationCards(slide, 5, cfg);
   }
 
-  // 7. Roadmap
+  // 8. Roadmap
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "План на 90 дней переводит выводы в действия", 7);
+    await addHeader(slide, cfg, "План на 90 дней переводит выводы в действия", 8);
     const phases = [
       ["0–30 дней", "{{ROADMAP_1_1}}", "{{ROADMAP_1_2}}"],
       ["31–60 дней", "{{ROADMAP_2_1}}", "{{ROADMAP_2_2}}"],
@@ -366,11 +442,11 @@ async function buildTemplate(cfg) {
     });
   }
 
-  // 8. Decisions
+  // 9. Decisions
   {
     const slide = deck.slides.add();
     slide.background.fill = "#FFFFFF";
-    await addHeader(slide, cfg, "Зафиксируйте решения и следующий шаг", 8);
+    await addHeader(slide, cfg, "Зафиксируйте решения и следующий шаг", 9);
     const decisions = ["{{DECISION_1}}", "{{DECISION_2}}", "{{DECISION_3}}", "{{DECISION_4}}"];
     decisions.forEach((item, i) => {
       const y = 164 + i * 112;
@@ -431,6 +507,8 @@ async function main() {
     {
       key: "khalil",
       brand: "Khalil",
+      companyName: "ТОО «Khalil Trade»",
+      companySummary: "Системный интегратор и поставщик ИТ-решений для государственных и корпоративных организаций.",
       logo: path.join(STATIC, "presentation_khalil_logo.png"),
       cover: path.join(STATIC, "presentation_khalil_cover.png"),
       qr: path.join(STATIC, "presentation_khalil_qr.png"),
@@ -447,6 +525,8 @@ async function main() {
     {
       key: "btg",
       brand: "BTG",
+      companyName: "ТОО «Bolashak Tamer Group»",
+      companySummary: "Системный интегратор и поставщик ИТ-решений для государственных и корпоративных организаций.",
       logo: path.join(STATIC, "presentation_btg_logo.png"),
       cover: path.join(STATIC, "presentation_btg_cover.png"),
       qr: path.join(STATIC, "presentation_btg_qr.png"),
