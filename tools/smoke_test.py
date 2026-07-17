@@ -206,7 +206,7 @@ def check_static_hooks() -> None:
     assert_true("generation_error_message" in text, "Persistent generation error state is missing")
     assert_true("def render_generation_failure_state" in text, "Stable generation failure screen is missing")
     assert_true('st.spinner("Производится глубокий анализ рисков...")' not in text, "Native spinner must not survive a failed generation")
-    assert_true('min_items=5' in text and 'min_security_items=2' in text, "Groq quality gate must allow expert-rule supplementation")
+    assert_true('min_items=3' in text and 'min_security_items=1' in text, "Groq quality gate must allow expert-rule supplementation")
 
 
 def check_presentation_templates() -> None:

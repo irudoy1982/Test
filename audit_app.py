@@ -603,13 +603,14 @@ def ai_quality_gate(items, min_items=6, min_security_items=3, min_it_items=3):
     it_count = 0
     weak_text_count = 0
     for item in prepared:
+        item_area = str(item.get("area", item.get("_ai_area", ""))).strip().upper()
         combined = " ".join(
             str(item.get(field, ""))
             for field in ("risk", "description", "impact", "recommendation")
         ).lower()
-        if any(marker in combined for marker in security_markers):
+        if item_area == "ИБ" or any(marker in combined for marker in security_markers):
             security_count += 1
-        if any(marker in combined for marker in it_markers):
+        if item_area == "ИТ" or any(marker in combined for marker in it_markers):
             it_count += 1
         if len(str(item.get("recommendation", "")).strip()) < 90:
             weak_text_count += 1
@@ -2031,9 +2032,9 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             if provider_label == "Groq":
                 prepared_payload, quality_error = ai_quality_gate(
                     normalized_payload,
-                    min_items=5,
-                    min_security_items=2,
-                    min_it_items=2,
+                    min_items=3,
+                    min_security_items=1,
+                    min_it_items=1,
                 )
             else:
                 prepared_payload, quality_error = ai_quality_gate(normalized_payload)
@@ -2053,7 +2054,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
         def call_groq_once():
             groq_prompt = f"""
 Ты senior-аудитор ИТ и ИБ. Проанализируй только факты обезличенной анкеты.
-Верни ровно 7 законченных рекомендаций: 3 по ИТ и 4 по ИБ.
+Верни ровно 9 законченных рекомендаций: 4 по ИТ и 5 по ИБ.
 
 Верни только валидный JSON-объект с корневым массивом "risks".
 Каждый элемент risks должен содержать поля:
@@ -2068,6 +2069,7 @@ vendors (массив строк), legal_ids (массив строк), framewor
 - дай три шага через точку с запятой: быстрый шаг, проектный шаг, контроль результата;
 - добавь измеримый success_metric;
 - не объявляй контроль отсутствующим, если он есть в блоке "Уже внедрено";
+- перед выдачей ответа удали любой пункт, который предлагает внедрить уже включенный контроль;
 - не превращай каждый отсутствующий продукт в отдельный риск;
 - не путай MFA с PAM, управление уязвимостями с SIEM, DLP с сегментацией;
 - OSPF/BGP не доказывают наличие или отсутствие сегментации;
