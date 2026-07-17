@@ -202,7 +202,7 @@ def check_static_hooks() -> None:
     assert_true("Недостаточно подтвержденных рекомендаций для клиентской презентации" not in text, "Fixed recommendation threshold must stay removed")
     assert_true("Область для верификации" not in text, "Verification placeholder must not be emitted")
     assert_true("groq_prompt = f\"\"\"" in text, "Compact Groq prompt is missing")
-    assert_true('"max_completion_tokens": 4200' in text, "Groq token budget is not capped below the free-tier TPM limit")
+    assert_true('"max_completion_tokens": 3400' in text, "Groq token budget is not capped below the free-tier TPM limit")
     assert_true('"response_format": {"type": "json_object"}' not in text, "Groq must use the local tolerant JSON parser")
     assert_true("generation_error_message" in text, "Persistent generation error state is missing")
     assert_true("def render_generation_failure_state" in text, "Stable generation failure screen is missing")
@@ -210,6 +210,9 @@ def check_static_hooks() -> None:
     assert_true('min_items=1' in text and 'min_security_items=0' in text, "Groq quality gate must accept any confirmed recommendation count")
     assert_true("explicit_no_findings" in text, "A valid zero-recommendation AI result must be accepted")
     assert_true("if prepared_payload is not None:" in text, "Empty successful AI results must not be mistaken for failures")
+    assert_true('"executive_summary": 2' in text and '"roadmap": 6' in text, "AI presentation narrative quality gate is missing")
+    assert_true('if str(item.get("source", "")).strip().lower() == "ии"' in text, "Customer presentation must use AI-authored risks only")
+    assert_true("Сервис формирования экспертного заключения временно недоступен" in text, "Customer-safe generation error is missing")
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")
     assert_true("partial_recommendation_slide" in text, "Odd recommendation counts must use a single-card final slide")
     assert_true("recover_complete_risk_objects(response_text)" in text, "Malformed AI JSON recovery is missing")
@@ -234,6 +237,49 @@ def check_partial_ai_json_recovery() -> None:
     recovered = namespace["recover_complete_risk_objects"](malformed)
     assert_true(recovered is not None, "Malformed AI JSON was not recovered")
     assert_true(len(recovered["risks"]) == 2, "Valid AI recommendations around a broken item were lost")
+
+
+def check_presentation_fact_guards() -> None:
+    app_tree = ast.parse(read_text(APP))
+    function_names = {
+        "is_enabled",
+        "risk_semantic_key",
+        "control_confirmed_in_results",
+        "risk_conflicts_with_answers",
+    }
+    nodes_by_name = {
+        node.name: node
+        for node in app_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in function_names
+    }
+    namespace = {"re": re}
+    ordered_nodes = [nodes_by_name[name] for name in (
+        "is_enabled",
+        "risk_semantic_key",
+        "control_confirmed_in_results",
+        "risk_conflicts_with_answers",
+    )]
+    exec(compile(ast.Module(body=ordered_nodes, type_ignores=[]), str(APP), "exec"), namespace)
+    conflicts = namespace["risk_conflicts_with_answers"]
+
+    assert_true(
+        conflicts(
+            {"risk": "Устаревшие операционные системы требуют миграции"},
+            {"ОС АРМ (Windows XP/Vista/7/8)": 0, "ОС Сервера (Windows Server 2008/2012 R2)": 0},
+        ),
+        "Zero legacy OS counts must block a legacy OS recommendation",
+    )
+    assert_true(
+        conflicts({"risk": "Endpoint detection требует усиления EDR"}, {"EDR": "Check Point Harmony EDR"}),
+        "Existing EDR must block an endpoint detection recommendation",
+    )
+    assert_true(
+        conflicts(
+            {"risk": "Публичным приложениям требуется WAF"},
+            {"WAF": "Нет", "Примечание к разделу ИБ": "WAF есть и настроен на публичном контуре"},
+        ),
+        "A confirmed WAF in questionnaire notes must block a WAF recommendation",
+    )
 
 
 def check_presentation_templates() -> None:
@@ -327,6 +373,10 @@ def check_dynamic_presentation_range() -> None:
         result = renderer(template, replacements)
         with zipfile.ZipFile(io.BytesIO(result), "r") as archive:
             presentation = archive.read("ppt/presentation.xml").decode("utf-8")
+            content_types = archive.read("[Content_Types].xml").decode("utf-8")
+            presentation_rels = archive.read("ppt/_rels/presentation.xml.rels").decode("utf-8")
+            assert_true("<ns0:Types" not in content_types, "Content types XML uses a non-standard namespace prefix")
+            assert_true("<ns0:Relationships" not in presentation_rels, "Presentation relationships use a non-standard namespace prefix")
             active_slide_count = presentation.count("<p:sldId ")
             expected_slide_count = 13 - 4 + ((recommendation_count + 1) // 2)
             if recommendation_count == 0:
@@ -369,6 +419,7 @@ def main() -> None:
         check_portfolio,
         check_static_hooks,
         check_partial_ai_json_recovery,
+        check_presentation_fact_guards,
         check_presentation_templates,
         check_dynamic_presentation_range,
         check_sample_drafts,
