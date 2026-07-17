@@ -296,7 +296,7 @@ def build_telegram_ai_failure_text(client_info, final_score, ai_error):
         safe_error = safe_error[:1800] + "..."
 
     return (
-        "ℹ️ Gemini временно недоступен; отчет собран экспертным движком Khalil Audit\n"
+        "❌ Отчет заказчику не сформирован: Gemini временно недоступен\n"
         f"📌 Приложение: {get_app_instance_label()}\n"
         f"🏢 Компания: {client_info.get('Наименование компании', '-')}\n"
         f"📍 Город: {client_info.get('Город', '-')}\n"
@@ -9707,6 +9707,7 @@ if st.session_state.generation_state == "preparing":
 
 # --- СЦЕНАРИЙ 2: ЗАПУСК ТЯЖЕЛОГО ИИ И СБОРКИ EXCEL ---
 if st.session_state.generation_state == "heavy_ai":
+    ai_failure_notified = False
     if st.session_state.generation_attempt_started_at is None:
         st.session_state.generation_attempt_started_at = time.time()
     elif time.time() - st.session_state.generation_attempt_started_at > 300:
@@ -9766,6 +9767,7 @@ if st.session_state.generation_state == "heavy_ai":
                         ai_failure_detail,
                     )
                 )
+                ai_failure_notified = True
                 st.session_state.cached_report_bytes = None
                 st.session_state.cached_sales_report_bytes = None
                 st.session_state.cached_presentation_bytes = None
@@ -9797,13 +9799,14 @@ if st.session_state.generation_state == "heavy_ai":
                 )
                 raise RuntimeError("Не удалось сформировать клиентскую презентацию") from presentation_exc
         except Exception as exc:
-            st.session_state.telegram_status = send_internal_telegram_message(
-                build_telegram_generation_error_text(
-                    client_info,
-                    preview_score,
-                    redact_secret(exc, TOKEN)
+            if not ai_failure_notified:
+                st.session_state.telegram_status = send_internal_telegram_message(
+                    build_telegram_generation_error_text(
+                        client_info,
+                        preview_score,
+                        redact_secret(exc, TOKEN)
+                    )
                 )
-            )
             st.session_state.generation_state = "idle"
             st.session_state.generation_attempt_started_at = None
             st.error("Не удалось сформировать презентацию. Попробуйте повторить позже.")
