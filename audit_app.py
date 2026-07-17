@@ -274,6 +274,7 @@ def telegram_send_node(token, method, fields, files=None, timeout_seconds=10):
 
 
 def build_telegram_lead_text(client_info, final_score, sales_digest):
+    ai_provider = str(st.session_state.get("ai_provider_used", "Не определен")).strip() or "Не определен"
     return (
         "🚨 Новый запрос на аудит!\n"
         f"📌 Приложение: {get_app_instance_label()}\n"
@@ -286,6 +287,7 @@ def build_telegram_lead_text(client_info, final_score, sales_digest):
         f"👤 Контакт: {client_info.get('ФИО контактного лица', '-')}\n"
         f"💼 Должность: {client_info.get('Должность', '-')}\n"
         f"📊 Уровень зрелости: {final_score}%\n\n"
+        f"🤖 Анализ: {ai_provider}\n\n"
         f"💡 Что предложить первым:\n{sales_digest}"
     )
 
@@ -296,7 +298,7 @@ def build_telegram_ai_failure_text(client_info, final_score, ai_error):
         safe_error = safe_error[:1800] + "..."
 
     return (
-        "❌ Отчет заказчику не сформирован: Gemini временно недоступен\n"
+        "❌ Отчет заказчику не сформирован: ИИ-анализ временно недоступен\n"
         f"📌 Приложение: {get_app_instance_label()}\n"
         f"🏢 Компания: {client_info.get('Наименование компании', '-')}\n"
         f"📍 Город: {client_info.get('Город', '-')}\n"
@@ -1332,12 +1334,15 @@ def ai_generate_risks_and_recs(c_info, results):
     import streamlit as st
 
     api_key = get_app_secret("GEMINI_API_KEY")
+    groq_api_key = get_app_secret("GROQ_API_KEY")
 
-    if not api_key:
+    if not api_key and not groq_api_key:
         return []
 
     try:
         model_name = get_app_secret("GEMINI_MODEL", "gemini-2.5-flash")
+        groq_model = get_app_secret("GROQ_MODEL", "openai/gpt-oss-120b")
+        groq_timeout = int(get_app_secret("GROQ_TIMEOUT_SECONDS", 55))
         ai_timeout = int(get_app_secret("GEMINI_TIMEOUT_SECONDS", 45))
         fallback_models = str(get_app_secret(
             "GEMINI_FALLBACK_MODELS",
@@ -1996,62 +2001,219 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 })
             return rows
 
+        def accept_ai_payload(parsed_payload, provider_label, model_label, errors):
+            ai_narrative = normalize_ai_audit_narrative(parsed_payload)
+            normalized_payload = normalize_ai_risks_payload(parsed_payload)
+            normalized_payload, skipped_ai_items = filter_ai_risks_by_answers(
+                normalized_payload,
+                results,
+            )
+            if skipped_ai_items:
+                errors.append(
+                    f"{provider_label}: отброшены противоречивые пункты: "
+                    + "; ".join(skipped_ai_items[:5])
+                )
+
+            prepared_payload, quality_error = ai_quality_gate(normalized_payload)
+            if not prepared_payload:
+                errors.append(
+                    f"{provider_label}: "
+                    f"{quality_error or 'нет пригодных законченных рекомендаций'}"
+                )
+                return None
+
+            st.session_state.ai_last_error = ""
+            st.session_state.ai_model_used = model_label
+            st.session_state.ai_provider_used = provider_label
+            st.session_state.ai_audit_narrative = ai_narrative
+            return prepared_payload
+
+        def call_groq_once():
+            groq_schema = {
+                "type": "object",
+                "properties": {
+                    "risks": {
+                        "type": "array",
+                        "minItems": 6,
+                        "maxItems": 12,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "level": {
+                                    "type": "string",
+                                    "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                                },
+                                "risk": {"type": "string"},
+                                "description": {"type": "string"},
+                                "impact": {"type": "string"},
+                                "recommendation": {"type": "string"},
+                                "evidence": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "success_metric": {"type": "string"},
+                                "vendors": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "legal_ids": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "frameworks": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            "required": [
+                                "level", "risk", "description", "impact",
+                                "recommendation", "evidence", "success_metric",
+                                "vendors", "legal_ids", "frameworks",
+                            ],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["risks"],
+                "additionalProperties": False,
+            }
+            groq_payload = {
+                "model": groq_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Ты senior-аудитор ИТ и ИБ. Анализируй только факты "
+                            "обезличенной анкеты, не выдумывай отсутствующие проблемы "
+                            "и возвращай только данные по заданной JSON-схеме."
+                        ),
+                    },
+                    {"role": "user", "content": compact_prompt},
+                ],
+                "temperature": 0.05,
+                "max_completion_tokens": 6144,
+                "reasoning_effort": "low",
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "audit_risk_analysis",
+                        "strict": True,
+                        "schema": groq_schema,
+                    },
+                },
+            }
+            groq_url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {groq_api_key}"}
+
+            if os.name != "nt":
+                import requests
+
+                def groq_post(verify):
+                    return requests.post(
+                        groq_url,
+                        headers=headers,
+                        json=groq_payload,
+                        timeout=groq_timeout,
+                        verify=verify,
+                    )
+
+                try:
+                    response = groq_post(REQUEST_VERIFY)
+                except requests.exceptions.SSLError:
+                    response = groq_post(False)
+                if not response.ok:
+                    try:
+                        detail = response.json().get("error", {}).get("message", response.text)
+                    except Exception:
+                        detail = response.text
+                    raise RuntimeError(f"HTTP {response.status_code}: {str(detail)[:1200]}")
+                response_payload = response.json()
+            else:
+                response_payload = node_fetch_json(
+                    groq_url,
+                    {
+                        "url": groq_url,
+                        "method": "POST",
+                        "headers": headers,
+                        "body": groq_payload,
+                        "timeoutMs": groq_timeout * 1000,
+                    },
+                    timeout_seconds=groq_timeout,
+                )
+
+            response_text = (
+                response_payload.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            if not str(response_text).strip():
+                raise RuntimeError("Groq вернул пустой ответ")
+            return parse_ai_response_text(str(response_text))
+
         ai_errors = []
         payload_attempts = (
             ("json", fallback_payload),
             ("json", minimal_payload),
             ("line", line_payload),
         )
+        stop_gemini = False
 
-        for response_format, request_payload in payload_attempts:
-            for active_model in model_candidates:
-                try:
-                    response_payload, response_text = call_gemini_with_retries(
-                        request_payload,
-                        active_model
-                    )
-
+        if api_key:
+            for response_format, request_payload in payload_attempts:
+                if stop_gemini:
+                    break
+                for active_model in model_candidates:
                     try:
+                        response_payload, response_text = call_gemini_with_retries(
+                            request_payload,
+                            active_model,
+                        )
                         parsed_payload = (
                             parse_line_response(response_text)
                             if response_format == "line"
                             else parse_ai_response_text(response_text)
                         )
-                    except json.JSONDecodeError as exc:
-                        ai_errors.append(f"{active_model}: JSON parse error: {exc}")
-                        continue
-
-                    ai_narrative = normalize_ai_audit_narrative(parsed_payload)
-                    normalized_payload = normalize_ai_risks_payload(parsed_payload)
-                    normalized_payload, skipped_ai_items = filter_ai_risks_by_answers(
-                        normalized_payload,
-                        results
-                    )
-                    if skipped_ai_items:
-                        ai_errors.append(
-                            f"{active_model}: отброшены противоречивые пункты: "
-                            + "; ".join(skipped_ai_items[:5])
+                        prepared_payload = accept_ai_payload(
+                            parsed_payload,
+                            "Gemini",
+                            active_model,
+                            ai_errors,
                         )
-                    prepared_payload, quality_error = ai_quality_gate(normalized_payload)
-                    if prepared_payload:
-                        st.session_state.ai_last_error = ""
-                        st.session_state.ai_model_used = active_model
-                        st.session_state.ai_audit_narrative = ai_narrative
-                        return prepared_payload
+                        if prepared_payload:
+                            return prepared_payload
+                        stop_gemini = True
+                        break
+                    except Exception as exc:
+                        safe_error = redact_secret(exc, api_key)
+                        ai_errors.append(f"Gemini/{active_model}: {safe_error}")
+                        stop_gemini = True
+                        break
 
-                    ai_errors.append(f"{active_model}: {quality_error or 'нет пригодных законченных рекомендаций'}")
-                except Exception as exc:
-                    safe_error = redact_secret(exc, api_key)
-                    if is_gemini_quota_exhausted(safe_error):
-                        raise RuntimeError(
-                            f"{active_model}: {safe_error}"
-                        ) from exc
-                    ai_errors.append(f"{active_model}: {safe_error}")
+        if groq_api_key:
+            try:
+                parsed_payload = call_groq_once()
+                prepared_payload = accept_ai_payload(
+                    parsed_payload,
+                    "Groq",
+                    groq_model,
+                    ai_errors,
+                )
+                if prepared_payload:
+                    return prepared_payload
+            except Exception as exc:
+                ai_errors.append(
+                    f"Groq/{groq_model}: {redact_secret(exc, groq_api_key)}"
+                )
 
-        raise ValueError("Gemini не дал пригодный ответ. " + " | ".join(ai_errors[-6:]))
+        raise ValueError(
+            "ИИ-провайдеры не дали пригодный ответ. " + " | ".join(ai_errors[-8:])
+        )
 
     except Exception as e:
-        st.session_state.ai_last_error = redact_secret(e, api_key)
+        safe_error = redact_secret(e, api_key)
+        safe_error = redact_secret(safe_error, groq_api_key)
+        st.session_state.ai_last_error = safe_error
+        st.session_state.ai_provider_used = "Нет ответа"
         st.session_state.ai_audit_narrative = {}
         return []
 
@@ -9745,6 +9907,7 @@ if st.session_state.generation_state == "heavy_ai":
 
             st.session_state.ai_last_error = ""
             st.session_state.ai_model_used = ""
+            st.session_state.ai_provider_used = ""
             st.session_state.ai_used_in_last_report = False
             st.session_state.ai_audit_narrative = {}
 
