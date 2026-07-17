@@ -379,6 +379,33 @@ def test_presentation_text_is_self_contained() -> None:
     assert_true(len(shortened) <= 80 and shortened.endswith("."), "Long text was not shortened to a complete phrase")
 
 
+def test_presentation_actions_are_complete_and_deduplicated() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {"re": re}
+    for name in ("presentation_text", "presentation_action_text", "risk_semantic_key", "presentation_recommendation_key"):
+        exec(extract_function_source(module_text, name), namespace)
+
+    clean_action = namespace["presentation_action_text"]
+    action = clean_action(
+        "1. Провести аудит текущей конфигурации маршрутизации и сетевой топологии. "
+        "2. Подготовить целевую архитектуру и план модернизации. "
+        "3. Согласовать этапы внедрения.",
+        120,
+    )
+    assert_true(action.endswith("."), f"Presentation action is incomplete: {action}")
+    assert_true(not re.search(r"\b\d+\.\s*$", action), f"Presentation action ends with a dangling number: {action}")
+
+    recommendation_key = namespace["presentation_recommendation_key"]
+    generic_mfa = recommendation_key({"domain": "ИБ", "action": "Внедрить MFA для критичных и удаленных доступов."})
+    explicit_mfa = recommendation_key({"risk": "Отсутствует многофакторная аутентификация"})
+    assert_true(generic_mfa == explicit_mfa == "mfa", "MFA recommendations are not deduplicated semantically")
+    software_lifecycle = recommendation_key({
+        "risk": "Проблемы с управлением жизненным циклом программного обеспечения",
+        "recommendation": "Вести реестр версий и обновлений.",
+    })
+    assert_true(software_lifecycle == "itam", "Software lifecycle recommendation should map to ITAM, not AppSec or patching")
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
@@ -395,6 +422,7 @@ def main() -> None:
         test_sales_sheet_navigation_layout,
         test_presentation_template_rendering,
         test_presentation_text_is_self_contained,
+        test_presentation_actions_are_complete_and_deduplicated,
     ]
     for test in tests:
         test()

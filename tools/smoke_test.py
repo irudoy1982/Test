@@ -40,7 +40,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.2-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.3-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -111,14 +111,15 @@ def check_presentation_templates() -> None:
         "{{IT_SCORE}}",
         "{{SUMMARY_1}}",
         "{{RISK_1_TITLE}}",
-        "{{IT_1_TITLE}}",
-        "{{IT_1_ACTION}}",
-        "{{IT_1_SOLUTION}}",
-        "{{IT_1_VENDORS}}",
-        "{{SEC_1_TITLE}}",
-        "{{SEC_1_ACTION}}",
-        "{{SEC_1_SOLUTION}}",
-        "{{SEC_1_VENDORS}}",
+        "{{RISK_1_RECOMMENDATION}}",
+        "{{FOCUS_1_TITLE}}",
+        "{{FOCUS_1_TEXT}}",
+        "{{REC_1_TITLE}}",
+        "{{REC_1_ACTION}}",
+        "{{REC_1_SOLUTION}}",
+        "{{REC_1_VENDORS}}",
+        "{{REC_8_TITLE}}",
+        "{{REC_8_ACTION}}",
         "{{ROADMAP_1_1}}",
         "{{DECISION_1}}",
     }

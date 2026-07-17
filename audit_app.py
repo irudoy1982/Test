@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.2-dev"
+APP_VERSION = "12.3-dev"
 
 
 def get_app_instance_label():
@@ -4996,6 +4996,8 @@ def solution_categories_for_report_item(item):
         "dr": "Disaster Recovery; RTO/RPO-планирование",
         "appsec": "SAST / DAST / SCA",
         "business_systems": "Обследование бизнес-систем; интеграционный аудит",
+        "network_performance": "Аудит сетевой архитектуры; NMS / Network Performance Monitoring",
+        "itam": "ITAM / SAM / управление лицензиями",
     }
     return categories_by_key.get(key, "Уточнить класс решения по результатам пресейла")
 
@@ -5033,6 +5035,8 @@ def portfolio_manufacturers_for_report_item(item):
         "storage": (["Storage", "Backup"], [], []),
         "dr": (["Backup", "DR"], [], []),
         "appsec": (["SAST", "DAST", "SCA", "VM"], ["Qualys", "Checkmarx", "HCL AppScan"], []),
+        "network_performance": (["Network Equipment", "Monitoring", "NMS"], ["Cisco", "Fortinet", "ManageEngine", "Broadcom"], []),
+        "itam": (["ITAM", "ITSM"], ["ManageEngine", "Ivanti"], []),
     }
 
     if key in category_map:
@@ -6384,6 +6388,8 @@ def risk_semantic_key(item):
         ("mfa", ("mfa", "многофактор", "2fa", "двухфактор")),
         ("legacy_os", ("legacy", "устаревш", "windows xp", "windows vista", "windows 7", "windows 8", "2008", "2012 r2")),
         ("siem_soc", ("siem", "soc", "мониторинг событий", "централизованный мониторинг")),
+        ("network_performance", ("масштабируемость сетевой", "производительность сетевой", "сетевая топология", "конфигурации маршрутизации")),
+        ("itam", ("программными активами", "жизненным циклом", "управление активами", "лицензи", "инвентаризац")),
         ("patch", ("patch", "обновлен", "cve", "уязвим")),
         ("endpoint_detection", ("edr", "xdr", "endpoint", "рабочих мест", "lateral movement")),
         ("backup", ("backup", "резерв", "immutable", "ransomware")),
@@ -6912,32 +6918,113 @@ def presentation_brand_key():
     return "btg" if "btg" in get_app_instance_label().lower() else "khalil"
 
 
-def presentation_recommendation(item, limit=205):
-    risk = presentation_text(item.get("risk") or item.get("domain") or "Рекомендация", 82)
-    recommendation = presentation_text(
-        item.get("recommendation") or item.get("action") or item.get("description"),
-        limit,
-    )
-    return presentation_text(f"{risk}. {recommendation}", limit)
+def presentation_action_text(value, limit=165):
+    def complete_sentence(sentence):
+        sentence = str(sentence or "").strip()
+        if sentence and sentence[-1] not in ".!?":
+            sentence += "."
+        return sentence
+
+    text = presentation_text(value, 10000)
+    text = re.sub(r"\s+\d+\.\s*$", "", text).strip()
+    numbered_parts = [
+        part.strip(" .;-")
+        for part in re.split(r"(?:^|\s)\d+\.\s*", text)
+        if part.strip(" .;-")
+    ]
+    if len(numbered_parts) <= 1:
+        return complete_sentence(presentation_text(text, limit))
+
+    selected = []
+    for part in numbered_parts:
+        sentence = complete_sentence(presentation_text(part, limit))
+        candidate = " ".join([*selected, sentence])
+        if selected and len(candidate) > limit:
+            break
+        selected.append(sentence)
+        if len(candidate) >= limit * 0.72:
+            break
+    return " ".join(selected) or complete_sentence(presentation_text(text, limit))
+
+
+def presentation_recommendation_key(item):
+    normalized = {
+        "risk": item.get("risk") or item.get("domain") or "",
+        "description": item.get("description") or "",
+        "impact": item.get("impact") or "",
+        "recommendation": item.get("recommendation") or item.get("action") or "",
+    }
+    return risk_semantic_key(normalized)
 
 
 def presentation_recommendation_entry(item):
-    title = presentation_text(item.get("risk") or item.get("domain") or "Рекомендация", 78)
-    action = presentation_text(
-        item.get("recommendation") or item.get("action") or item.get("description"),
-        150,
-    )
-    solution = presentation_text(solution_categories_for_report_item(item), 95)
-    vendors = portfolio_manufacturers_for_report_item(item)
+    normalized = dict(item)
+    normalized["risk"] = item.get("risk") or item.get("domain") or "Рекомендация"
+    normalized["recommendation"] = item.get("recommendation") or item.get("action") or item.get("description")
+    semantic_key = presentation_recommendation_key(normalized)
+    generic_titles = {"ит", "иб", "ит/иб", "рекомендация"}
+    title_by_key = {
+        "mfa": "Многофакторная аутентификация",
+        "legacy_os": "Обновление устаревших операционных систем",
+        "siem_soc": "Мониторинг событий и реагирование",
+        "patch": "Управление уязвимостями и обновлениями",
+        "endpoint_detection": "Защита конечных точек",
+        "backup": "Резервное копирование и восстановление",
+        "web_waf": "Защита публичных веб-сервисов",
+        "pam": "Контроль привилегированных доступов",
+        "network_performance": "Управляемость и производительность сети",
+        "itam": "Управление программными активами",
+    }
+    raw_title = str(normalized["risk"] or "Рекомендация").strip()
+    if raw_title.lower() in generic_titles:
+        raw_title = title_by_key.get(semantic_key, "Практическая мера улучшения")
+    title = presentation_text(raw_title, 72)
+    action = presentation_action_text(normalized["recommendation"], 165)
+    solution = presentation_text(solution_categories_for_report_item(normalized), 88)
+    vendors = portfolio_manufacturers_for_report_item(normalized)
     if "матрице" in str(vendors).lower() or "нет подходящего" in str(vendors).lower():
         vendors = "Подбор после уточнения требований"
     vendors = presentation_text(vendors, 92)
     return {
+        "key": semantic_key,
         "title": title,
         "action": action,
         "solution": solution,
         "vendors": vendors,
     }
+
+
+def presentation_focus_items(context, business_systems):
+    users = int(context.get("users", 0) or 0)
+    servers = int(context.get("servers", 0) or 0)
+    continuity_scope = []
+    if servers:
+        continuity_scope.append(f"{servers} серверов")
+    if business_systems:
+        continuity_scope.append(f"{business_systems} бизнес-систем")
+    continuity_subject = " и ".join(continuity_scope) or "Критичные сервисы"
+
+    focus = [
+        (
+            "Непрерывность сервисов",
+            f"{continuity_subject} требуют согласованных RTO/RPO и регулярной проверки восстановления.",
+        ),
+        (
+            "Управляемость среды",
+            f"{users} рабочих мест и серверный контур требуют единого контроля обновлений, изменений и конфигураций.",
+        ),
+    ]
+    if context.get("has_public_web"):
+        focus.append((
+            "Цифровой периметр",
+            "Публичные сервисы требуют проверки WAF/DDoS, внешних доступов и мониторинга событий.",
+        ))
+    else:
+        focus.append((
+            "Контроль доступа",
+            "Критичные и удаленные доступы требуют MFA, учета привилегий и регулярного пересмотра прав.",
+        ))
+    return focus
 
 
 def build_audit_presentation_replacements(c_info, results, final_score, it_maturity_score):
@@ -6978,11 +7065,11 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         summary_title = "Защитный контур сформирован; следующий резерв — устойчивость и измеримость"
 
     profile_title, profile_text = infrastructure_profile(context)
-    it_assets_text, it_focus_text = it_context_summary(results, context)
     business_systems = sum(
         bool(context.get(key))
         for key in ("has_erp", "has_crm", "has_accounting", "has_hrm", "has_document_flow", "has_mail")
     )
+    focus_items = presentation_focus_items(context, business_systems)
 
     normalized_risks = []
     for item in risk_sources:
@@ -6998,47 +7085,36 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         })
     normalized_risks = normalized_risks[:12]
 
-    it_items = []
-    security_items = []
+    recommendation_items = []
+    recommendation_keys = set()
+
+    def add_recommendation(item):
+        entry = presentation_recommendation_entry(item)
+        key = entry["key"] or re.sub(r"\s+", " ", entry["title"].lower())
+        if key in recommendation_keys:
+            return
+        recommendation_items.append(entry)
+        recommendation_keys.add(key)
+
     for item in normalized_risks:
-        area = str(item.get("area", "")).upper()
-        target = it_items if "ИТ" in area and "ИБ" not in area else security_items
-        entry = presentation_recommendation_entry(item)
-        if entry["title"] not in {existing["title"] for existing in target}:
-            target.append(entry)
-
+        add_recommendation(item)
     for item in roadmap_items:
-        domain = str(item.get("domain", "")).lower()
-        entry = presentation_recommendation_entry(item)
-        security_terms = ("безопас", "защит", "доступ", "уязв", "soc", "siem", "endpoint", "почт", "web")
-        target = security_items if any(term in domain for term in security_terms) else it_items
-        if entry["title"] not in {existing["title"] for existing in target}:
-            target.append(entry)
+        add_recommendation(item)
 
-    it_fallback = [
+    recommendation_fallback = [
         {"risk": "Мониторинг инфраструктуры", "recommendation": "Определить пороги, владельцев и регулярный обзор доступности и емкости.", "vendors": ["IT Monitoring"]},
         {"risk": "Управление изменениями", "recommendation": "Фиксировать изменения, окна обслуживания, результат и порядок отката.", "vendors": ["ITSM/CMDB"]},
         {"risk": "Резервное копирование", "recommendation": "Согласовать RTO/RPO и регулярно подтверждать восстановление критичных сервисов.", "vendors": ["Backup"]},
         {"risk": "Управление активами", "recommendation": "Поддерживать единый реестр оборудования, систем, владельцев и жизненного цикла.", "vendors": ["ITSM/ITAM"]},
-    ]
-    security_fallback = [
         {"risk": "Контроль доступа", "recommendation": "Проверить критичные учетные записи, MFA, исключения и привилегии.", "vendors": ["MFA"]},
         {"risk": "Защита конечных точек", "recommendation": "Контролировать покрытие агентов, телеметрию и сценарии реагирования.", "vendors": ["EDR/XDR"]},
         {"risk": "Управление уязвимостями", "recommendation": "Ввести регулярное сканирование, SLA устранения и контроль исключений.", "vendors": ["VM"]},
         {"risk": "Мониторинг событий", "recommendation": "Определить минимальный набор источников и регламент разбора инцидентов.", "vendors": ["SIEM/SOC"]},
     ]
-    for item in it_fallback:
-        if len(it_items) >= 4:
+    for item in recommendation_fallback:
+        if len(recommendation_items) >= 8:
             break
-        entry = presentation_recommendation_entry(item)
-        if entry["title"] not in {existing["title"] for existing in it_items}:
-            it_items.append(entry)
-    for item in security_fallback:
-        if len(security_items) >= 4:
-            break
-        entry = presentation_recommendation_entry(item)
-        if entry["title"] not in {existing["title"] for existing in security_items}:
-            security_items.append(entry)
+        add_recommendation(item)
 
     roadmap_by_phase = {
         "0-30": [],
@@ -7050,7 +7126,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         phase_key = next((key for key in roadmap_by_phase if key in phase), None)
         if not phase_key:
             continue
-        action = presentation_text(item.get("action") or item.get("recommendation"), 170)
+        action = presentation_action_text(item.get("action") or item.get("recommendation"), 170)
         if action not in roadmap_by_phase[phase_key]:
             roadmap_by_phase[phase_key].append(action)
 
@@ -7082,25 +7158,33 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         "PUBLIC": "Есть" if context.get("has_public_web") else "Нет",
         "BUSINESS": str(business_systems),
         "PROFILE": presentation_text(f"{profile_title}. {profile_text}", 240),
-        "PROFILE_IMPLICATION": presentation_text(f"{it_assets_text} {it_focus_text}", 330),
     }
+    for index, (title, text) in enumerate(focus_items, start=1):
+        replacements[f"FOCUS_{index}_TITLE"] = presentation_text(title, 42)
+        replacements[f"FOCUS_{index}_TEXT"] = presentation_text(text, 145)
+
     for index in range(4):
         replacements[f"SUMMARY_{index + 1}"] = summary_items[index] if index < len(summary_items) else "Уточнить приоритеты и владельцев на рабочей сессии."
         risk = normalized_risks[index] if index < len(normalized_risks) else {
             "level": "Средний",
             "risk": "Требуется дополнительная проверка",
             "impact": "Для точной оценки необходимо подтвердить фактическую архитектуру и действующие процессы.",
+            "recommendation": "Провести рабочую сессию и подтвердить фактическое состояние контроля.",
         }
         replacements[f"RISK_{index + 1}_LEVEL"] = presentation_text(risk["level"], 16).upper()
         replacements[f"RISK_{index + 1}_TITLE"] = presentation_text(risk["risk"], 72)
-        replacements[f"RISK_{index + 1}_IMPACT"] = presentation_text(risk["impact"], 190)
-        for prefix, entries in (("IT", it_items), ("SEC", security_items)):
-            entry = entries[index]
-            replacements[f"{prefix}_{index + 1}_TITLE"] = entry["title"]
-            replacements[f"{prefix}_{index + 1}_ACTION"] = entry["action"]
-            replacements[f"{prefix}_{index + 1}_SOLUTION"] = entry["solution"]
-            replacements[f"{prefix}_{index + 1}_VENDORS"] = entry["vendors"]
+        replacements[f"RISK_{index + 1}_IMPACT"] = presentation_text(risk["impact"], 145)
+        replacements[f"RISK_{index + 1}_RECOMMENDATION"] = presentation_action_text(
+            risk.get("recommendation"),
+            125,
+        )
         replacements[f"DECISION_{index + 1}"] = presentation_text(decisions[index], 205)
+
+    for index, entry in enumerate(recommendation_items[:8], start=1):
+        replacements[f"REC_{index}_TITLE"] = entry["title"]
+        replacements[f"REC_{index}_ACTION"] = entry["action"]
+        replacements[f"REC_{index}_SOLUTION"] = entry["solution"]
+        replacements[f"REC_{index}_VENDORS"] = entry["vendors"]
 
     for phase_index, phase in enumerate(("0-30", "31-60", "61-90"), start=1):
         replacements[f"ROADMAP_{phase_index}_1"] = roadmap_by_phase[phase][0]

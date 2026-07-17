@@ -12,6 +12,9 @@ Planned customer-visible improvement:
 - Added separate IT and information security maturity indicators to the presentation cover.
 - Added solution classes and relevant manufacturers to presentation recommendations.
 - Added a clearer final action slide with company contacts.
+- Reworked the infrastructure slide to explain the operational priorities created by the customer's environment.
+- Added a recommended action to every key risk in the presentation.
+- Unified the recommendation slides, removed semantic duplicates, and ensured that actions are shown as complete statements.
 
 ## v12.0.0
 
