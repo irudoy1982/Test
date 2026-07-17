@@ -107,6 +107,10 @@ def check_selectbox_contract() -> None:
         "web_hosting",
     }
     assert_true(set(selectboxes) == expected_keys, "Draft selectbox contract is incomplete")
+    assert_true(
+        len(re.findall(r"\.selectbox\(", text)) == len(expected_keys),
+        "A form selectbox is missing from the draft compatibility contract",
+    )
     assert_true("net_types = NETWORK_TYPE_OPTIONS" in text, "Network selectboxes do not use the shared contract")
     assert_true("country_codes = COUNTRY_CODE_OPTIONS" in text, "Country selectbox does not use the shared contract")
 
