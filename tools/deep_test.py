@@ -358,8 +358,8 @@ def test_presentation_template_rendering() -> None:
     render = namespace["render_audit_presentation_template"]
 
     brand_identity = {
-        "khalil": ("ТОО «Khalil Trade»", "info@khalilgroup.kz", "+7 706 701 48 35", "Bolashak Tamer Group"),
-        "btg": ("ТОО «Bolashak Tamer Group»", "info@btgroup.kz", "+7 706 700 48 35", "Khalil Trade"),
+        "khalil": ("ТОО «Khalil Trade»", "info@khalilgroup.kz", "+7 706 701 48 35", "2020", "Bolashak Tamer Group"),
+        "btg": ("ТОО «Bolashak Tamer Group»", "info@btgroup.kz", "+7 706 700 48 35", "2019", "Khalil Trade"),
     }
     for brand in ("khalil", "btg"):
         template = ROOT / "static" / f"audit_presentation_{brand}.pptx"
@@ -381,9 +381,10 @@ def test_presentation_template_rendering() -> None:
             rendered_xml = "\n".join(archive.read(name).decode("utf-8") for name in slide_names)
         assert_true(len(slide_names) == 9, f"{brand}: expected 9 slides, got {len(slide_names)}")
         assert_true("Кто стоит за аудитом" in rendered_xml, f"{brand}: company profile slide is missing")
-        company_name, email, phone, foreign_brand = brand_identity[brand]
+        company_name, email, phone, founded_year, foreign_brand = brand_identity[brand]
         assert_true(company_name in rendered_xml, f"{brand}: company name is missing")
         assert_true(email in rendered_xml and phone in rendered_xml, f"{brand}: contact details are missing")
+        assert_true(founded_year in rendered_xml, f"{brand}: founding year is missing")
         assert_true(foreign_brand not in rendered_xml, f"{brand}: foreign brand data leaked into presentation")
         assert_true("{{" not in rendered_xml, f"{brand}: unresolved presentation placeholders")
         assert_true("Тест &amp; проверка" in rendered_xml, f"{brand}: XML escaping failed")

@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.6-dev"
+APP_VERSION = "12.7-dev"
 
 
 def get_app_instance_label():
@@ -2477,6 +2477,40 @@ def inject_audit_design():
         height: 96px !important;
         min-height: 96px !important;
         margin: 0 !important;
+    }
+
+    .st-key-presentation_download [data-testid="stDownloadButton"] button {
+        min-height: 54px;
+        background: #ffffff;
+        color: var(--audit-accent);
+        border: 1px solid var(--audit-accent);
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 760;
+        box-shadow: 0 8px 20px rgba(15, 118, 110, 0.12);
+        transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+    }
+
+    .st-key-presentation_download [data-testid="stDownloadButton"] button:hover {
+        background: var(--audit-accent-soft);
+        color: #0b5f59;
+        border-color: #0b5f59;
+        box-shadow: 0 10px 24px rgba(15, 118, 110, 0.18);
+        transform: translateY(-1px);
+    }
+
+    .st-key-presentation_download [data-testid="stDownloadButton"] button:active {
+        transform: translateY(0);
+        box-shadow: 0 5px 12px rgba(15, 118, 110, 0.14);
+    }
+
+    .st-key-presentation_download [data-testid="stDownloadButton"] button p::before {
+        content: "↓";
+        display: inline-block;
+        margin-right: 10px;
+        font-size: 20px;
+        line-height: 1;
+        vertical-align: -1px;
     }
 
     @media (max-width: 900px) {
@@ -9166,11 +9200,12 @@ if st.session_state.generation_state == "finalized":
     brand_file_label = "BTG" if presentation_brand_key() == "btg" else "Khalil"
     if st.session_state.cached_presentation_bytes:
         st.download_button(
-            label="Скачать презентацию аудита (PPTX)",
+            label="Скачать заключение по аудиту",
             data=st.session_state.cached_presentation_bytes,
             file_name=f"Audit_Presentation_{brand_file_label}_{client_info['Наименование компании']}.pptx",
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            type="primary",
+            key="presentation_download",
+            type="secondary",
             use_container_width=True,
         )
     elif st.session_state.presentation_status == "error":

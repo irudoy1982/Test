@@ -21,6 +21,7 @@ Planned customer-visible improvement:
 - Simplified customer delivery to one management presentation.
 - Added an early company profile slide explaining the audit team's capabilities and delivery scope.
 - Made the company's delivered IT project track record more prominent.
+- Refined company founding facts and improved the audit conclusion download experience.
 
 ## v12.0.0
 

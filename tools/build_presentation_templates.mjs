@@ -241,8 +241,8 @@ async function buildTemplate(cfg) {
     });
 
     const stats = [
-      ["2019", "год основания"],
-      ["70+", "крупных ИТ-проектов"],
+      [cfg.foundedYear, "год основания"],
+      ["70+", "крупных проектов"],
       ["40+", "технологических партнеров"],
     ];
     stats.forEach(([value, label], i) => {
@@ -507,6 +507,7 @@ async function main() {
     {
       key: "khalil",
       brand: "Khalil",
+      foundedYear: "2020",
       companyName: "ТОО «Khalil Trade»",
       companySummary: "Системный интегратор и поставщик ИТ-решений для государственных и корпоративных организаций.",
       logo: path.join(STATIC, "presentation_khalil_logo.png"),
@@ -525,6 +526,7 @@ async function main() {
     {
       key: "btg",
       brand: "BTG",
+      foundedYear: "2019",
       companyName: "ТОО «Bolashak Tamer Group»",
       companySummary: "Системный интегратор и поставщик ИТ-решений для государственных и корпоративных организаций.",
       logo: path.join(STATIC, "presentation_btg_logo.png"),
