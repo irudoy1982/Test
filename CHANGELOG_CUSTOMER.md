@@ -24,6 +24,7 @@ Planned customer-visible improvement:
 - Refined company founding facts and improved the audit conclusion download experience.
 - Polished the final audit conclusion action for a clearer, more focused download.
 - Centered the final download action and improved its responsive behavior.
+- Centered and refined the presentation generation action so the primary next step is clear and visually consistent.
 
 ## v12.0.0
 

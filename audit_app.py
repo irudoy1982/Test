@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.9-dev"
+APP_VERSION = "12.10-dev"
 
 
 def get_app_instance_label():
@@ -2543,6 +2543,80 @@ def inject_audit_design():
         background: rgba(255, 255, 255, 0.16);
         font-size: 18px;
         font-weight: 700;
+        line-height: 1;
+    }
+
+    .st-key-presentation_generate,
+    div[data-testid="stElementContainer"]:has(.st-key-presentation_generate) {
+        width: min(460px, 100%) !important;
+        max-width: 460px !important;
+        margin: 22px auto 18px auto !important;
+        box-sizing: border-box;
+    }
+
+    .st-key-presentation_generate [data-testid="stButton"] {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .st-key-presentation_generate [data-testid="stButton"] button {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 58px;
+        box-sizing: border-box;
+        background: var(--audit-accent);
+        color: #ffffff;
+        border: 1px solid var(--audit-accent);
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 760;
+        box-shadow: 0 12px 28px rgba(15, 118, 110, 0.24);
+        transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+    }
+
+    .st-key-presentation_generate [data-testid="stButton"] button:hover {
+        background: #0b5f59;
+        color: #ffffff;
+        border-color: #0b5f59;
+        box-shadow: 0 15px 34px rgba(15, 118, 110, 0.30);
+        transform: translateY(-2px);
+    }
+
+    .st-key-presentation_generate [data-testid="stButton"] button:active {
+        transform: translateY(0);
+        box-shadow: 0 7px 16px rgba(15, 118, 110, 0.20);
+    }
+
+    .st-key-presentation_generate [data-testid="stButton"] button:focus-visible {
+        outline: 3px solid rgba(15, 118, 110, 0.24);
+        outline-offset: 3px;
+    }
+
+    .st-key-presentation_generate [data-testid="stButton"] button:disabled {
+        background: #d8e0e7;
+        color: #6b7280;
+        border-color: #d8e0e7;
+        box-shadow: none;
+        transform: none;
+    }
+
+    .st-key-presentation_generate [data-testid="stButton"] button p {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .st-key-presentation_generate [data-testid="stButton"] button p::before {
+        content: "→";
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.16);
+        font-size: 18px;
         line-height: 1;
     }
 
@@ -8957,7 +9031,13 @@ st.markdown("""
 </a>.
 """, unsafe_allow_html=True)
 if st.session_state.generation_state == "idle":
-    if st.button("Сформировать презентацию аудита", disabled=len(validation_errors) > 0, type="primary"):
+    if st.button(
+        "Сформировать презентацию аудита",
+        disabled=len(validation_errors) > 0,
+        key="presentation_generate",
+        type="primary",
+        use_container_width=False,
+    ):
         st.session_state.telegram_generation_started_sent = False
         st.session_state.generation_state = "preparing"
         st.rerun()
