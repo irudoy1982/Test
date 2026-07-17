@@ -368,6 +368,16 @@ def test_presentation_template_rendering() -> None:
         assert_true("Тест &amp; проверка" in rendered_xml, f"{brand}: XML escaping failed")
 
 
+def test_presentation_text_is_self_contained() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {"re": re}
+    exec(extract_function_source(module_text, "presentation_text"), namespace)
+    clean = namespace["presentation_text"]
+    assert_true(clean("Нормальный русский текст") == "Нормальный русский текст", "Normal text was changed")
+    assert_true(clean("  Строка   с пробелами. ") == "Строка с пробелами", "Whitespace cleanup failed")
+    assert_true(clean("Очень длинная рекомендация " * 20, 80).endswith("…"), "Long text was not shortened")
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
@@ -383,6 +393,7 @@ def main() -> None:
         test_customer_and_sales_language_avoids_size_labels,
         test_sales_sheet_navigation_layout,
         test_presentation_template_rendering,
+        test_presentation_text_is_self_contained,
     ]
     for test in tests:
         test()

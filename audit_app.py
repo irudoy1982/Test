@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12-dev"
+APP_VERSION = "12.1-dev"
 
 
 def get_app_instance_label():
@@ -6884,8 +6884,18 @@ def build_management_decisions(results, context):
 
 # --- Презентация по результатам аудита ---
 def presentation_text(value, limit=180):
-    text = repair_mojibake(value or "")
-    text = re.sub(r"\s+", " ", str(text)).strip(" .;-")
+    text = str(value or "")
+    suspicious = sum(text.count(marker) for marker in ("Р", "С", "Ð", "Ñ"))
+    if suspicious >= 3:
+        try:
+            repaired = text.encode("cp1251").decode("utf-8")
+            original_badness = sum(text.count(marker) for marker in ("Р", "С", "Ð", "Ñ"))
+            repaired_badness = sum(repaired.count(marker) for marker in ("Р", "С", "Ð", "Ñ"))
+            if repaired_badness < original_badness:
+                text = repaired
+        except UnicodeError:
+            pass
+    text = re.sub(r"\s+", " ", text).strip(" .;-")
     if not text:
         return "Не указано"
     if len(text) <= limit:
