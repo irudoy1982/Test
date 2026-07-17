@@ -210,6 +210,28 @@ def check_static_hooks() -> None:
     assert_true('min_items=3' in text and 'min_security_items=0' in text, "Groq quality gate must allow expert-rule supplementation")
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")
     assert_true("partial_recommendation_slide" in text, "Odd recommendation counts must use a single-card final slide")
+    assert_true("recover_complete_risk_objects(response_text)" in text, "Malformed AI JSON recovery is missing")
+
+
+def check_partial_ai_json_recovery() -> None:
+    app_tree = ast.parse(read_text(APP))
+    recovery_node = next(
+        node
+        for node in app_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "recover_complete_risk_objects"
+    )
+    namespace = {"json": json, "re": re}
+    exec(compile(ast.Module(body=[recovery_node], type_ignores=[]), str(APP), "exec"), namespace)
+    malformed = """{
+      "risks": [
+        {"level":"HIGH","risk":"Первый подтвержденный риск","recommendation":"Выполнить полный первый комплекс мер и проверить измеримый результат."},
+        {"level":"LOW","risk": },
+        {"level":"MEDIUM","risk":"Второй подтвержденный риск","recommendation":"Выполнить полный второй комплекс мер и проверить измеримый результат."}
+      ]
+    }"""
+    recovered = namespace["recover_complete_risk_objects"](malformed)
+    assert_true(recovered is not None, "Malformed AI JSON was not recovered")
+    assert_true(len(recovered["risks"]) == 2, "Valid AI recommendations around a broken item were lost")
 
 
 def check_presentation_templates() -> None:
@@ -344,6 +366,7 @@ def main() -> None:
         check_selectbox_contract,
         check_portfolio,
         check_static_hooks,
+        check_partial_ai_json_recovery,
         check_presentation_templates,
         check_dynamic_presentation_range,
         check_sample_drafts,

@@ -583,6 +583,58 @@ def prepare_ai_risks_for_report(items, min_items=1):
     return prepared if len(prepared) >= min_items else []
 
 
+def recover_complete_risk_objects(response_text):
+    """Recover valid top-level risk objects from a partially malformed AI response."""
+    text = str(response_text or "")
+    risks_match = re.search(r'"risks"\s*:\s*\[', text, flags=re.IGNORECASE)
+    if risks_match:
+        array_start = text.find("[", risks_match.start())
+    else:
+        array_start = text.find("[")
+    if array_start < 0:
+        return None
+
+    recovered = []
+    object_start = None
+    object_depth = 0
+    in_string = False
+    escaped = False
+    for position in range(array_start + 1, len(text)):
+        char = text[position]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            if object_depth == 0:
+                object_start = position
+            object_depth += 1
+            continue
+        if char != "}" or object_depth == 0:
+            continue
+        object_depth -= 1
+        if object_depth != 0 or object_start is None:
+            continue
+        candidate = text[object_start:position + 1]
+        try:
+            item = json.loads(candidate)
+        except json.JSONDecodeError:
+            object_start = None
+            continue
+        if isinstance(item, dict):
+            recovered.append(item)
+        object_start = None
+
+    return {"risks": recovered} if recovered else None
+
+
 def ai_quality_gate(items, min_items=6, min_security_items=3, min_it_items=3):
     prepared = prepare_ai_risks_for_report(items, min_items=1)
     if len(prepared) < min_items:
@@ -1991,6 +2043,9 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                     return json.loads(variant)
                 except json.JSONDecodeError as exc:
                     last_error = exc
+            recovered_payload = recover_complete_risk_objects(response_text)
+            if recovered_payload:
+                return recovered_payload
             raise last_error
 
         def parse_line_response(response_text):
@@ -2054,7 +2109,9 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
         def call_groq_once():
             groq_prompt = f"""
 Ты senior-аудитор ИТ и ИБ. Проанализируй только факты обезличенной анкеты.
-Верни ровно 9 законченных рекомендаций: 4 по ИТ и 5 по ИБ.
+Верни до 9 законченных подтвержденных рекомендаций по ИТ и ИБ. Не добавляй
+искусственные пункты ради количества. Если ответ не помещается, сократи число
+пунктов, но обязательно заверши JSON и каждую выданную рекомендацию.
 
 Верни только валидный JSON-объект с корневым массивом "risks".
 Каждый элемент risks должен содержать поля:
