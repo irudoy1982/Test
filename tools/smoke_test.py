@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.18-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.19-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -215,6 +215,8 @@ def check_static_hooks() -> None:
     assert_true("Сервис формирования экспертного заключения временно недоступен" in text, "Customer-safe generation error is missing")
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")
     assert_true("partial_recommendation_slide" in text, "Odd recommendation counts must use a single-card final slide")
+    assert_true("if roadmap_key not in recommendation_keys:" in text, "Roadmap must exclude topics without a confirmed recommendation")
+    assert_true("def staged_roadmap_action" in text, "Roadmap must provide assessment, pilot, and rollout stages")
     assert_true("recover_complete_risk_objects(response_text)" in text, "Malformed AI JSON recovery is missing")
 
 
@@ -617,6 +619,18 @@ def check_customer_output_normalization() -> None:
     assert_true(
         len(pam_scale) <= 140 and pam_scale.endswith("SIEM."),
         "Scaled PAM roadmap must remain complete within the presentation text budget",
+    )
+    nac_roadmap = namespace["sanitize_customer_roadmap_text"](
+        "Внедрить выбранный NAC, настроить 1X, интегрировать с AD и R-Vision SIEM."
+    )
+    assert_true(
+        "802.1X" in nac_roadmap and "r-vision" not in nac_roadmap.lower(),
+        "NAC roadmap must use the correct protocol name and remain vendor-neutral",
+    )
+    pam_productless = namespace["sanitize_customer_roadmap_text"]("Развернуть PAM (без продукта).")
+    assert_true(
+        "без продукта" not in pam_productless.lower() and "пилот pam" in pam_productless.lower(),
+        "Productless PAM placeholder leaked into the customer roadmap",
     )
     vm_roadmap = namespace["sanitize_customer_roadmap_text"](
         "Запустить базовый скан уязвимостей серверов с помощью OpenVAS."

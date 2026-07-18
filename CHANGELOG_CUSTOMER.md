@@ -46,6 +46,7 @@ Planned customer-visible improvement:
 - Improved recommendation consistency so network admission, identity lifecycle, and privileged access are described as separate, evidence-based initiatives.
 - Refined presentation risk cards to prevent long titles from overlapping impact text.
 - Fixed presentation generation for recommendations produced by the expert analysis service.
+- Aligned the 90-day plan with confirmed recommendations, removed manufacturer names, and clarified assessment, pilot, and rollout stages.
 
 ## v12.0.0
 

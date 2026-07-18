@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.18-dev"
+APP_VERSION = "12.19-dev"
 
 
 def get_app_instance_label():
@@ -1253,6 +1253,30 @@ def sanitize_customer_roadmap_text(value):
     text = expand_regulatory_references(value).strip()
     lowered = text.lower()
 
+    if "nac" in lowered or "network access control" in lowered:
+        if any(marker in lowered for marker in ("требован", "оценить", "обслед", "аудит", "выбрать решение")):
+            return (
+                "Описать типы подключений и требования к NAC; согласовать пилотный контур, "
+                "сценарии 802.1X, профилирования и изоляции устройств."
+            )
+        if any(marker in lowered for marker in ("внедр", "развер", "пилот", "настро")):
+            return (
+                "Провести пилот NAC на Wi-Fi и одном проводном сегменте; проверить 802.1X, "
+                "профилирование, контроль соответствия и изоляцию устройств."
+            )
+
+    if "edr" in lowered or "xdr" in lowered:
+        return (
+            "Провести пилот EDR/XDR на согласованной группе конечных точек и серверов; "
+            "проверить покрытие, телеметрию, сценарии реагирования и передачу событий в SIEM."
+        )
+
+    if "soar" in lowered:
+        return (
+            "После стабилизации SIEM выбрать повторяемые сценарии реагирования и провести пилот "
+            "SOAR с контролем времени обработки и доли ручных операций."
+        )
+
     if "dlp" in lowered and any(marker in lowered for marker in ("закупить", "выбрать поставщика")):
         if "пилот" in lowered or "закупить" in lowered:
             return (
@@ -1275,7 +1299,10 @@ def sanitize_customer_roadmap_text(value):
         )
 
     if "pam" in lowered or "привилегирован" in lowered:
-        if any(marker in lowered for marker in ("рабочую группу", "собрать требования", "выбрать пилот")):
+        if any(marker in lowered for marker in (
+            "рабочую группу", "собрать требования", "выбрать пилот", "аудит", "инвентар",
+            "список ролей", "список привилегирован",
+        )):
             return (
                 "Сформировать рабочую группу, инвентаризировать привилегированные доступы ко всем "
                 "критичным системам и выбрать пилотный сценарий PAM."
@@ -1290,6 +1317,10 @@ def sanitize_customer_roadmap_text(value):
                 "Расширить PAM на критичные системы, сетевое оборудование, базы данных и "
                 "административные консоли; передавать события в SIEM."
             )
+        return (
+            "Провести пилот PAM на согласованном критичном контуре; проверить vault, контроль "
+            "сессий, аварийный доступ и передачу событий в SIEM."
+        )
 
     if "скан" in lowered and "уязв" in lowered:
         return (
@@ -1308,7 +1339,7 @@ def sanitize_customer_roadmap_text(value):
         "Cisco ISE", "CyberArk", "Veeam Backup", "Veeam", "Fortinet", "Check Point",
         "Huawei", "IBM", "Splunk", "ManageEngine", "Broadcom", "Forcepoint",
         "OpenVAS", "R-Vision", "R Vision", "Qualys", "Tenable", "Rapid7",
-        "Zabbix", "Prometheus", "Microsoft", "Windows Server",
+        "Zabbix", "Prometheus", "Microsoft", "Windows Server", "Duo",
     }
     try:
         vendor_names.update(load_detailed_vendor_names())
@@ -1325,6 +1356,8 @@ def sanitize_customer_roadmap_text(value):
         flags=re.IGNORECASE,
     )
     text = re.sub(r"\(\s*\)", "", text)
+    text = re.sub(r"\s*\([^)]*без\s+продукт[^)]*\)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<![\d.])\b1X\b", "802.1X", text, flags=re.IGNORECASE)
     text = re.sub(r"\s{2,}", " ", text)
     text = re.sub(r"\s+([,.;:])", r"\1", text)
     return text.strip(" .,-") + ("." if text.strip(" .,-") else "")
@@ -8806,38 +8839,51 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
             sanitize_customer_roadmap_text(item.get("action") or item.get("recommendation")),
             120,
         )
-        result = presentation_action_text(
-            sanitize_customer_roadmap_text(item.get("result") or "Результат подтверждается измеримым критерием."),
-            90,
-        )
+        roadmap_key = risk_semantic_key({"risk": action, "recommendation": action})
+        if roadmap_key not in recommendation_keys:
+            continue
+        result = presentation_action_text(presentation_success_metric(roadmap_key), 90)
         if action not in [entry["action"] for entry in roadmap_by_phase[phase_key]]:
             roadmap_by_phase[phase_key].append({"action": action, "result": result})
 
-    roadmap_phase_by_key = {
-        "mfa": "0-30",
-        "iam": "31-60",
-        "legacy_os": "0-30",
-        "change_management": "31-60",
-        "network_performance": "31-60",
-        "endpoint_detection": "31-60",
-        "web_waf": "31-60",
-        "it_monitoring": "61-90",
-        "siem_soc": "61-90",
-        "backup": "61-90",
-        "patch": "61-90",
-        "pam": "31-60",
-        "nac": "61-90",
-    }
-    for entry in recommendation_items:
-        phase = roadmap_phase_by_key.get(entry["key"])
-        if not phase or len(roadmap_by_phase[phase]) >= 2:
-            continue
-        action = presentation_action_text(sanitize_customer_roadmap_text(entry["action"]), 120)
-        if action not in [item["action"] for item in roadmap_by_phase[phase]]:
-            roadmap_by_phase[phase].append({
-                "action": action,
-                "result": presentation_action_text(entry["metric"], 90),
-            })
+    def staged_roadmap_action(entry, phase):
+        key = entry["key"]
+        title = entry["title"].lower()
+        specific = {
+            "pam": {
+                "0-30": "Инвентаризировать привилегированные доступы, определить критичные системы и границы пилота PAM.",
+                "31-60": "Провести пилот PAM; проверить vault, контроль сессий, аварийный доступ и передачу событий в SIEM.",
+                "61-90": "Расширить PAM на подтвержденный критичный контур и ввести регулярный пересмотр привилегий.",
+            },
+            "nac": {
+                "0-30": "Описать типы подключений, требования к NAC и пилотный контур для проводной и беспроводной сети.",
+                "31-60": "Провести пилот NAC; проверить 802.1X, профилирование, контроль соответствия и изоляцию устройств.",
+                "61-90": "Расширить подтвержденные политики NAC и включить контроль качества допуска устройств.",
+            },
+            "iam": {
+                "0-30": "Описать прием, перевод и увольнение, владельцев ролей и требования к интеграциям IAM.",
+                "31-60": "Провести PoC IAM на выбранных подразделениях и критичных бизнес-системах.",
+                "61-90": "Масштабировать подтвержденные процессы IAM и ввести контроль SLA создания и отзыва прав.",
+            },
+        }
+        if key in specific:
+            return specific[key][phase]
+        if phase == "0-30":
+            return f"Подтвердить текущее состояние по теме «{title}», согласовать требования, владельца и границы пилота."
+        if phase == "31-60":
+            return sanitize_customer_roadmap_text(entry["action"])
+        return f"Масштабировать подтвержденную меру «{title}» и включить регулярный контроль результата."
+
+    for phase in ("0-30", "31-60", "61-90"):
+        for entry in recommendation_items:
+            if len(roadmap_by_phase[phase]) >= 2:
+                break
+            action = presentation_action_text(staged_roadmap_action(entry, phase), 120)
+            if action not in [item["action"] for item in roadmap_by_phase[phase]]:
+                roadmap_by_phase[phase].append({
+                    "action": action,
+                    "result": presentation_action_text(entry["metric"], 90),
+                })
 
     enabled_controls, _ = security_control_snapshot(results)
     strengths = [presentation_text(item, 105) for item in enabled_controls[:4]]
