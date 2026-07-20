@@ -26,6 +26,7 @@ Planned customer-visible improvement:
 - Centered the final download action and improved its responsive behavior.
 - Centered and refined the presentation generation action so the primary next step is clear and visually consistent.
 - Refined IT and information security maturity estimates so operational gaps, resilience, capacity, and evidence quality affect the displayed score.
+- Strengthened report completeness so explicitly confirmed IT gaps are carried into the recommendations and 90-day plan.
 - Added sector-aware Kazakhstan regulatory context and clearer separation between legal obligations and recommended standards.
 - Expanded the sector list with banking, insurance, healthcare, public and quasi-public sectors, critical infrastructure, telecom, utilities, transport, and industrial environments.
 - Rebuilt the presentation as a 13-slide decision narrative with confirmed strengths, a consistent severity palette, regulatory context, evidence-based recommendations, and measurable outcomes.

@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.21-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.22-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -213,6 +213,8 @@ def check_static_hooks() -> None:
     assert_true('"executive_summary": 2' in text and '"roadmap": 6' in text, "AI presentation narrative completeness check is missing")
     assert_true("часть презентационного материала будет дополнена" in text, "Partial AI narrative must preserve useful recommendations")
     assert_true("call_groq_once(focus_it=True)" in text, "Fact-safe IT-focused Groq retry is missing")
+    assert_true("confirmed_it_gap_topics(results)" in text, "Confirmed IT-gap detector is missing")
+    assert_true("ai_it_gap_coverage(" in text, "AI IT-gap coverage gate is missing")
     assert_true('if str(item.get("source", "")).strip().lower() == "ии"' in text, "Customer presentation must use AI-authored risks only")
     assert_true("Сервис формирования экспертного заключения временно недоступен" in text, "Customer-safe generation error is missing")
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")

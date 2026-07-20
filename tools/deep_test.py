@@ -531,6 +531,54 @@ def test_security_maturity_is_normalized_and_evidence_capped() -> None:
     assert_true(partial_score == 31, f"Security score must be normalized by available weight, got {partial_score}")
 
 
+def test_confirmed_it_gaps_must_be_covered_by_ai() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    labels = {
+        key: key
+        for key in (
+            "network_performance", "virtualization", "storage", "it_monitoring",
+            "itam", "change_management", "dr",
+        )
+    }
+    namespace = {
+        "re": re,
+        "safe_int": lambda value: int(value or 0),
+        "IT_GAP_LABELS": labels,
+    }
+    exec(extract_function_source(module_text, "confirmed_it_gap_topics"), namespace)
+    results = {
+        "_user_count": 650,
+        "WiFi Точки": 12,
+        "_main_speed": 1000,
+        "_back_speed": 50,
+        "WiFi Контроллер": "Нет",
+        "1.1. Примечание": "Единый CMDB отсутствует.",
+        "1.2. Примечание": "Wi-Fi перегружен, резервный канал слабый, мониторинг без единой панели.",
+        "1.3. Примечание": "Capacity planning не формализован; RTO/RPO не согласованы, восстановление тестируется нерегулярно.",
+        "1.4. Примечание": "СХД заполнена на 84%, прогноз исчерпания не утвержден.",
+        "1.5. Примечание": "Изменения согласуются в чатах, календарь изменений отсутствует.",
+    }
+    expected = namespace["confirmed_it_gap_topics"](results)
+    assert_true(
+        set(expected) == set(labels),
+        f"Not all explicit IT gaps were detected: {sorted(expected)}",
+    )
+
+    namespace["risk_semantic_key"] = None
+    exec(extract_function_source(module_text, "risk_semantic_key"), namespace)
+    exec(extract_function_source(module_text, "ai_it_gap_coverage"), namespace)
+    ai_items = [
+        {"risk": "Перегруженная Wi-Fi сеть и слабый резервный канал"},
+        {"risk": "Capacity planning виртуализации не формализован"},
+        {"risk": "СХД требует контроля емкости и производительности"},
+        {"risk": "Эксплуатационный мониторинг работает без единой панели"},
+        {"risk": "CMDB и учет активов требуют централизации"},
+    ]
+    matched, missing = namespace["ai_it_gap_coverage"](ai_items, expected)
+    assert_true(len(matched) == 5, f"Expected five covered IT gaps, got {matched}")
+    assert_true(set(missing) == {"change_management", "dr"}, f"Unexpected missing IT gaps: {missing}")
+
+
 def test_ai_presentation_recommendation_path() -> None:
     module_text = APP.read_text(encoding="utf-8")
     namespace = {
@@ -601,6 +649,7 @@ def main() -> None:
         test_ai_presentation_recommendation_path,
         test_it_maturity_measures_controls_not_infrastructure_size,
         test_security_maturity_is_normalized_and_evidence_capped,
+        test_confirmed_it_gaps_must_be_covered_by_ai,
         test_presentation_evidence_and_maturity_palette,
     ]
     for test in tests:
