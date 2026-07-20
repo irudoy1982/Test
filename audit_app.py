@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.22-dev"
+APP_VERSION = "12.23-dev"
 
 
 def get_app_instance_label():
@@ -913,6 +913,12 @@ IT_GAP_LABELS = {
 
 def confirmed_it_gap_topics(results):
     """Return only IT gaps explicitly supported by structured answers or notes."""
+    def result_int(value):
+        try:
+            return int(float(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
     gaps = {}
     notes = " ".join(
         str(value or "")
@@ -920,10 +926,10 @@ def confirmed_it_gap_topics(results):
         if "примечан" in str(key).lower()
     ).lower()
 
-    users = safe_int(results.get("_user_count"))
-    access_points = safe_int(results.get("WiFi Точки"))
-    main_speed = safe_int(results.get("_main_speed"))
-    backup_speed = safe_int(results.get("_back_speed"))
+    users = result_int(results.get("_user_count"))
+    access_points = result_int(results.get("WiFi Точки"))
+    main_speed = result_int(results.get("_main_speed"))
+    backup_speed = result_int(results.get("_back_speed"))
     wifi_controller = str(results.get("WiFi Контроллер", "Нет")).strip().lower()
     overloaded_wifi = users > 0 and access_points > 0 and users / access_points > 30
     weak_backup = main_speed > 0 and (backup_speed <= 0 or backup_speed / main_speed < 0.25)
@@ -2877,13 +2883,15 @@ vendors (массив строк), legal_ids (массив строк), framewor
             ("json", minimal_payload),
             ("line", line_payload),
         )
-        stop_gemini = False
-
+        gemini_attempt_count = 0
         if api_key:
             for response_format, request_payload in payload_attempts:
-                if stop_gemini:
+                if gemini_attempt_count >= 2:
                     break
                 for active_model in model_candidates:
+                    if gemini_attempt_count >= 2:
+                        break
+                    gemini_attempt_count += 1
                     try:
                         response_payload, response_text = call_gemini_with_retries(
                             request_payload,
@@ -2902,13 +2910,9 @@ vendors (массив строк), legal_ids (массив строк), framewor
                         )
                         if prepared_payload is not None:
                             return prepared_payload
-                        stop_gemini = True
-                        break
                     except Exception as exc:
                         safe_error = redact_secret(exc, api_key)
                         ai_errors.append(f"Gemini/{active_model}: {safe_error}")
-                        stop_gemini = True
-                        break
 
         if groq_api_key:
             try:

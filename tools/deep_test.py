@@ -542,7 +542,6 @@ def test_confirmed_it_gaps_must_be_covered_by_ai() -> None:
     }
     namespace = {
         "re": re,
-        "safe_int": lambda value: int(value or 0),
         "IT_GAP_LABELS": labels,
     }
     exec(extract_function_source(module_text, "confirmed_it_gap_topics"), namespace)
