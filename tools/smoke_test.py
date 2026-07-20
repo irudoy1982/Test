@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.24-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.25-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -220,7 +220,10 @@ def check_static_hooks() -> None:
     assert_true("minimum_ai_items" in text, "Gemini quality threshold must adapt to confirmed gaps")
     assert_true("call_groq_with_rate_limit_retry" in text, "Groq rate-limit retry is missing")
     assert_true("retry_seconds + 1.0" in text, "Groq retry must respect the provider delay")
-    assert_true('if str(item.get("source", "")).strip().lower() == "ии"' in text, "Customer presentation must use AI-authored risks only")
+    assert_true(
+        'risk_sources = list(st.session_state.get("last_report_risk_sources", []))' in text,
+        "Excel and customer presentation must use the same canonical audit set",
+    )
     assert_true("Сервис формирования экспертного заключения временно недоступен" in text, "Customer-safe generation error is missing")
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")
     assert_true("partial_recommendation_slide" in text, "Odd recommendation counts must use a single-card final slide")

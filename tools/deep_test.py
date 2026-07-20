@@ -536,7 +536,7 @@ def test_confirmed_it_gaps_must_be_covered_by_ai() -> None:
     labels = {
         key: key
         for key in (
-            "network_performance", "virtualization", "storage", "it_monitoring",
+            "wifi_capacity", "network_performance", "virtualization", "storage", "it_monitoring",
             "itam", "change_management", "dr",
         )
     }
@@ -567,15 +567,23 @@ def test_confirmed_it_gaps_must_be_covered_by_ai() -> None:
     exec(extract_function_source(module_text, "risk_semantic_key"), namespace)
     exec(extract_function_source(module_text, "ai_it_gap_coverage"), namespace)
     ai_items = [
-        {"risk": "Перегруженная Wi-Fi сеть и слабый резервный канал"},
+        {"risk": "Перегруженная Wi-Fi сеть без централизованного WLAN-контроллера"},
+        {"risk": "Слабый резервный канал не обеспечивает отказоустойчивость WAN"},
         {"risk": "Capacity planning виртуализации не формализован"},
         {"risk": "СХД требует контроля емкости и производительности"},
         {"risk": "Эксплуатационный мониторинг работает без единой панели"},
         {"risk": "CMDB и учет активов требуют централизации"},
     ]
     matched, missing = namespace["ai_it_gap_coverage"](ai_items, expected)
-    assert_true(len(matched) == 5, f"Expected five covered IT gaps, got {matched}")
+    assert_true(len(matched) == 6, f"Expected six covered IT gaps, got {matched}")
     assert_true(set(missing) == {"change_management", "dr"}, f"Unexpected missing IT gaps: {missing}")
+
+    channel_only_matched, channel_only_missing = namespace["ai_it_gap_coverage"](
+        [{"risk": "Резервный канал требует увеличения пропускной способности и проверки failover"}],
+        expected,
+    )
+    assert_true("network_performance" in channel_only_matched, "WAN recommendation must cover network resilience")
+    assert_true("wifi_capacity" in channel_only_missing, "WAN recommendation must not hide a confirmed Wi-Fi gap")
 
     combined_item = [{
         "risk": "CMDB и управление изменениями требуют формализации",

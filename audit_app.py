@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.24-dev"
+APP_VERSION = "12.25-dev"
 
 
 def get_app_instance_label():
@@ -901,7 +901,8 @@ def ai_quality_gate(items, min_items=6, min_security_items=3, min_it_items=3):
 
 
 IT_GAP_LABELS = {
-    "network_performance": "Wi-Fi, каналы связи и отказоустойчивость сети",
+    "wifi_capacity": "емкость, покрытие и централизованное управление Wi-Fi",
+    "network_performance": "каналы связи и отказоустойчивость сети",
     "virtualization": "ресурсный запас и capacity planning виртуализации",
     "storage": "емкость и производительность СХД",
     "it_monitoring": "единый мониторинг ИТ-сервисов и инфраструктуры",
@@ -937,9 +938,21 @@ def confirmed_it_gap_topics(results):
         access_points >= 4
         and wifi_controller in {"", "нет", "no", "none"}
     )
-    if overloaded_wifi or weak_backup or wifi_without_controller or any(
+    if overloaded_wifi or wifi_without_controller or any(
         marker in notes
-        for marker in ("перегруж", "нестабильный роуминг", "резервный канал", "радиообследован")
+        for marker in ("wi-fi перегруж", "wifi перегруж", "нестабильный роуминг", "радиообследован")
+    ):
+        wifi_facts = []
+        if users and access_points:
+            wifi_facts.append(f"{access_points} точек на {users} пользователей")
+        if wifi_without_controller:
+            wifi_facts.append("централизованный контроллер не указан")
+        fact_suffix = f" ({'; '.join(wifi_facts)})" if wifi_facts else ""
+        gaps["wifi_capacity"] = IT_GAP_LABELS["wifi_capacity"] + fact_suffix
+
+    if weak_backup or any(
+        marker in notes
+        for marker in ("резервный канал", "failover", "отказоустойчивость канал")
     ):
         gaps["network_performance"] = IT_GAP_LABELS["network_performance"]
 
@@ -988,9 +1001,13 @@ def confirmed_it_gap_topics(results):
 def ai_it_gap_coverage(items, expected_gaps):
     covered = set()
     coverage_markers = {
+        "wifi_capacity": (
+            "wi-fi", "wifi", "беспровод", "роуминг", "радиообслед", "точк доступа",
+            "wlan", "контроллер", "ssid",
+        ),
         "network_performance": (
-            "wi-fi", "wifi", "беспровод", "роуминг", "резервн", "канал",
-            "пропускн", "failover", "сеть",
+            "резервн", "канал", "пропускн", "failover", "отказоустойчив",
+            "маршрутиз", "wan", "sla",
         ),
         "virtualization": ("виртуал", "гипервиз", "vmware", "хост", "cpu", "ram"),
         "storage": ("схд", "storage", "raid", "iops", "latency", "емкост"),
@@ -1994,7 +2011,8 @@ def ai_generate_risks_and_recs(c_info, results):
             summary = []
             priority_markers = (
                 "арм", "ос", "сервер", "виртуал", "схд", "резерв", "backup",
-                "маршрут", "канал", "ngfw", "vpn", "epp", "edr", "xdr", "mdr",
+                "маршрут", "канал", "wi-fi", "wifi", "точк", "контроллер", "примечан",
+                "ngfw", "vpn", "epp", "edr", "xdr", "mdr",
                 "dlp", "mail", "waf", "ddos", "ids", "nac", "ztna", "iam",
                 "mfa", "pam", "siem", "soar", "уязв", "patch", "web", "разработ"
             )
@@ -2751,7 +2769,15 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 1,
                 math.ceil(len(confirmed_it_gaps) * 0.7),
             ) if confirmed_it_gaps else 0
-            if len(matched_it_gaps) < minimum_it_gap_coverage:
+            mandatory_it_gaps = {
+                key for key in ("wifi_capacity",)
+                if key in confirmed_it_gaps
+            }
+            missing_mandatory_it_gaps = mandatory_it_gaps.intersection(missing_it_gaps)
+            if (
+                len(matched_it_gaps) < minimum_it_gap_coverage
+                or missing_mandatory_it_gaps
+            ):
                 errors.append(
                     f"{provider_label}: ИТ-анализ покрыл {len(matched_it_gaps)} из "
                     f"{len(confirmed_it_gaps)} подтвержденных тем; не покрыты: "
@@ -6415,6 +6441,7 @@ def solution_categories_for_report_item(item):
         "dr": "Disaster Recovery; RTO/RPO-планирование",
         "appsec": "SAST / DAST / SCA",
         "business_systems": "Обследование бизнес-систем; интеграционный аудит",
+        "wifi_capacity": "Обследование Wi-Fi; централизованное WLAN-управление; оптимизация радиопокрытия",
         "network_performance": "Аудит сетевой архитектуры; NMS / Network Performance Monitoring",
         "itam": "ITAM / SAM / управление лицензиями",
     }
@@ -6472,6 +6499,7 @@ def portfolio_manufacturers_for_report_item(item):
         "storage": (["Storage", "Backup"], [], []),
         "dr": (["Backup", "DR"], [], []),
         "appsec": (["SAST", "DAST", "SCA", "VM"], ["Qualys", "Checkmarx", "HCL AppScan"], []),
+        "wifi_capacity": (["Network Equipment", "Wireless", "Wi-Fi"], ["Cisco", "Huawei", "Fortinet"], []),
         "network_performance": (["Network Equipment", "Monitoring", "NMS"], ["Cisco", "Fortinet", "ManageEngine", "Broadcom"], []),
         "itam": (["ITAM", "ITSM"], ["ManageEngine", "Ivanti"], []),
     }
@@ -7833,9 +7861,13 @@ def risk_semantic_key(item):
         ("nac", ("nac", "контроль подключения устройств", "контроль доступа устройств к сети", "network access control")),
         ("dlp", ("dlp", "утеч", "эксфильтрац", "data loss")),
         ("siem_soc", ("siem", "soc", "soar", "мониторинг событий", "централизованный мониторинг")),
+        ("wifi_capacity", (
+            "wi-fi", "wifi", "wlan", "беспроводн", "роуминг", "радиообслед",
+            "точек доступа", "точки доступа", "контроллер беспровод",
+        )),
         ("network_performance", (
             "масштабируемость сетевой", "производительность сетевой", "сетевая топология",
-            "конфигурации маршрутизации", "wi-fi", "wifi", "беспроводн", "роуминг",
+            "конфигурации маршрутизации",
             "резервный канал", "пропускная способность", "failover",
         )),
         ("itam", (
@@ -8695,6 +8727,11 @@ def presentation_evidence_for_key(semantic_key, results, context, item):
         "pam": f"В анкете PAM: {results.get('PAM', 'Нет')}; серверный контур: {servers} серверов.",
         "mail": f"Почтовая система: {results.get('1.5.1. Почтовая система', 'не указана')}; Mail Security: {results.get('Mail Security', 'Нет')}.",
         "appsec": f"Разработка: {'есть' if context.get('has_development') else 'не указана'}; SAST/DAST: {results.get('SAST', 'Нет')}/{results.get('DAST', 'Нет')}.",
+        "wifi_capacity": (
+            f"Пользователей: {results.get('_user_count', users)}; точек доступа: "
+            f"{results.get('WiFi Точки', 'не указано')}; Wi-Fi контроллер: "
+            f"{results.get('WiFi Контроллер', 'Нет')}."
+        ),
         "network_performance": f"Основной канал: {results.get('Интернет канал (осн)', 'не указан')}; резервный: {results.get('Резервный канал', 'Нет')}; маршрутизация: {results.get('Маршрутизация', 'Нет')}.",
         "segmentation": "В анкете не приведены схема VLAN/VRF, ACL и матрица межсегментных потоков; OSPF сам по себе не подтверждает сегментацию.",
         "nac": f"В анкете NAC: {results.get('NAC', 'Нет')}. Требуется подтвердить контроль допуска проводных, Wi-Fi и неизвестных устройств.",
@@ -8726,6 +8763,11 @@ def presentation_presales_profile(item):
             "title": "Устаревшие ОС требуют плана миграции",
             "impact": "Неподдерживаемые ОС повышают риск эксплуатации известных уязвимостей и ограничивают применение современных средств защиты.",
             "action": "Составить реестр устаревших ОС, согласовать миграцию и временно изолировать системы, которые нельзя обновить сразу.",
+        },
+        "wifi_capacity": {
+            "title": "Wi-Fi требует проверки емкости и централизованного управления",
+            "impact": "Недостаточная плотность точек доступа и отсутствие единого управления могут вызывать перегрузку, нестабильный роуминг и снижение производительности рабочих сервисов.",
+            "action": "Провести радиообследование и замеры нагрузки, определить требуемую плотность точек доступа, затем внедрить централизованное WLAN-управление и контроль качества покрытия.",
         },
         "network_performance": {
             "title": "Производительность сети требует подтверждения измерениями",
@@ -8833,6 +8875,7 @@ def presentation_success_metric(semantic_key):
         "web_waf": "Все публичные приложения защищены и проходят регулярную проверку",
         "pam": "Привилегированные учетные записи учтены и контролируются",
         "nac": "100% подключений идентифицируются; неизвестные устройства изолируются",
+        "wifi_capacity": "Покрытие и емкость Wi-Fi подтверждены радиообследованием; пиковая загрузка точек остается в целевых пределах",
         "dlp": "Политики DLP контролируют согласованные каналы передачи персональных данных",
         "segmentation": "Матрица VLAN/ACL подтверждена тестом межсегментного доступа",
         "mail": "Защитные политики применены ко всем почтовым ящикам",
@@ -8886,6 +8929,7 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
         "web_waf": "Защита публичных веб-сервисов",
         "pam": "Контроль привилегированных доступов",
         "nac": "Контроль допуска устройств к сети",
+        "wifi_capacity": "Емкость и управляемость корпоративного Wi-Fi",
         "network_performance": "Управляемость и производительность сети",
         "itam": "Управление программными активами",
         "change_management": "Управление изменениями и конфигурациями",
@@ -9016,14 +9060,9 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         regulatory_profile,
     )
     domain_scores = calculate_domain_scores(results)
-    ai_risk_sources = [
-        item
-        for item in st.session_state.get("last_report_risk_sources", [])
-        if str(item.get("source", "")).strip().lower() == "ии"
-    ]
-    # The customer deck is authored by AI. Deterministic rules validate facts and
-    # remain available to internal reports, but do not inject customer-facing risks.
-    risk_sources = ai_risk_sources
+    # Excel and PowerPoint consume one canonical, fact-checked audit set. AI remains
+    # mandatory for the customer deck, while expert rules may complete its coverage.
+    risk_sources = list(st.session_state.get("last_report_risk_sources", []))
     ai_narrative = sanitize_ai_audit_narrative(
         st.session_state.get("ai_audit_narrative", {}),
         results,
