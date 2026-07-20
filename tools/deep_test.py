@@ -260,6 +260,47 @@ def test_customer_report_separates_solutions_from_manufacturers() -> None:
     legacy_vendors = helpers["portfolio_manufacturers_for_report_item"]({"risk": "Устаревшие Windows 7 на рабочих станциях"})
     assert_true(legacy_vendors == "Microsoft", f"Legacy OS slide should recommend Microsoft only, got: {legacy_vendors}")
 
+    wan_item = {
+        "semantic_key": "network_performance",
+        "risk": "Низкая отказоустойчивость основного канала связи",
+        "description": "Основной канал 1000 Mbit/s, резервный канал 50 Mbit/s.",
+        "recommendation": "Увеличить пропускную способность резервного канала и проверить failover.",
+        "vendors": ["Veeam", "Commvault"],
+    }
+    assert_true(
+        helpers["risk_semantic_key"](wan_item) == "network_performance",
+        "Explicit canonical WAN type must not be reclassified as Backup",
+    )
+    wan_solution = helpers["solution_categories_for_report_item"](wan_item)
+    wan_vendors = helpers["portfolio_manufacturers_for_report_item"](wan_item)
+    assert_true("WAN" in wan_solution and "Backup" not in wan_solution, f"Unexpected WAN solution: {wan_solution}")
+    assert_true(
+        "Cisco" in wan_vendors or "Fortinet" in wan_vendors or "Huawei" in wan_vendors,
+        f"Network manufacturers are missing for WAN resilience: {wan_vendors}",
+    )
+    assert_true(
+        "Veeam" not in wan_vendors and "Commvault" not in wan_vendors,
+        f"Backup manufacturers leaked into WAN resilience: {wan_vendors}",
+    )
+
+    northstar_titles = {
+        "Недостаточный запас вычислительных ресурсов виртуальной среды": "virtualization",
+        "Отсутствие утвержденных RTO/RPO и плана аварийного восстановления": "dr",
+        "Недостаточная емкость и управляемость Wi-Fi сети": "wifi_capacity",
+        "Низкая отказоустойчивость основного канала связи": "network_performance",
+        "Риск исчерпания емкости и недостаточная отказоустойчивость СХД": "storage",
+        "Отсутствие формализованного процесса управления изменениями": "change_management",
+        "Отсутствие единой системы мониторинга ИТ-сервисов": "it_monitoring",
+    }
+    mapped_keys = {
+        helpers["risk_semantic_key"]({"risk": title})
+        for title in northstar_titles
+    }
+    assert_true(len(mapped_keys) == 7, f"Northstar findings collapsed into duplicate topics: {mapped_keys}")
+    for title, expected_key in northstar_titles.items():
+        actual_key = helpers["risk_semantic_key"]({"risk": title})
+        assert_true(actual_key == expected_key, f"{title}: expected {expected_key}, got {actual_key}")
+
 
 def test_segmentation_never_maps_to_dlp() -> None:
     helpers = load_portfolio_helpers()

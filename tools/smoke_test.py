@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.27-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.28-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -184,6 +184,7 @@ def check_static_hooks() -> None:
     text = read_text(APP)
     assert_true("def build_ai_first_sales_opportunities" in text, "AI-first sales helper is missing")
     assert_true("last_report_risk_sources" in text and '"vendors": item.get("vendors", [])' in text, "Risk sources do not preserve vendors")
+    assert_true('"semantic_key": risk_semantic_key(item)' in text, "Canonical findings do not preserve semantic type")
     assert_true('"area": item.get("_ai_area", "ИТ/ИБ")' in text, "Risk sources do not preserve IT/IB area")
     assert_true("build_ai_first_sales_opportunities(risk_sources, results, context)" in text, "Sales playbook does not use AI-first opportunities")
     assert_true("ensure_sales_playbook_priorities" in text, "Expert sales prioritization is missing")
@@ -232,6 +233,14 @@ def check_static_hooks() -> None:
     assert_true(
         'risk_sources = list(st.session_state.get("last_report_risk_sources", []))' in text,
         "Excel and customer presentation must use the same canonical audit set",
+    )
+    presentation_source = text.split(
+        "def build_audit_presentation_replacements", 1
+    )[1].split("def render_audit_presentation_template", 1)[0]
+    assert_true(
+        "professionalize_risk_item(item, results, context)" not in presentation_source
+        and "align_report_vendors(item, results, context)" not in presentation_source,
+        "Presentation must not reinterpret the canonical Excel findings",
     )
     assert_true("Сервис формирования экспертного заключения временно недоступен" in text, "Customer-safe generation error is missing")
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")

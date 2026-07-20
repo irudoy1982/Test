@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.27-dev"
+APP_VERSION = "12.28-dev"
 
 
 def get_app_instance_label():
@@ -6476,7 +6476,7 @@ def solution_categories_for_report_item(item):
         "appsec": "SAST / DAST / SCA",
         "business_systems": "Обследование бизнес-систем; интеграционный аудит",
         "wifi_capacity": "Обследование Wi-Fi; централизованное WLAN-управление; оптимизация радиопокрытия",
-        "network_performance": "Аудит сетевой архитектуры; NMS / Network Performance Monitoring",
+        "network_performance": "Резервирование WAN; SD-WAN; балансировка каналов; контроль SLA",
         "itam": "ITAM / SAM / управление лицензиями",
     }
     return categories_by_key.get(key, "Уточнить класс решения по результатам пресейла")
@@ -6534,7 +6534,7 @@ def portfolio_manufacturers_for_report_item(item):
         "dr": (["Backup", "DR"], [], []),
         "appsec": (["SAST", "DAST", "SCA", "VM"], ["Qualys", "Checkmarx", "HCL AppScan"], []),
         "wifi_capacity": (["Network Equipment", "Wireless", "Wi-Fi"], ["Cisco", "Huawei", "Fortinet"], []),
-        "network_performance": (["Network Equipment", "Monitoring", "NMS"], ["Cisco", "Fortinet", "ManageEngine", "Broadcom"], []),
+        "network_performance": (["Network Equipment", "SD-WAN", "Monitoring", "NMS"], ["Fortinet", "Cisco", "Huawei", "Check Point", "ManageEngine"], ["Broadcom (Symantec)"]),
         "itam": (["ITAM", "ITSM"], ["ManageEngine", "Ivanti"], []),
     }
 
@@ -7878,9 +7878,28 @@ def risk_source_label(source):
 
 
 def risk_semantic_key(item):
+    explicit_key = str(
+        item.get("semantic_key") or item.get("_semantic_key") or ""
+    ).strip()
+    if explicit_key:
+        return explicit_key
+
     title = str(item.get("risk", "")).strip().lower()
     if "сегментац" in title and not any(marker in title for marker in ("nac", "network access control")):
         return "segmentation"
+
+    title_buckets = [
+        ("wifi_capacity", ("wi-fi", "wifi", "wlan", "беспроводн", "роуминг", "точек доступа")),
+        ("network_performance", ("канал связи", "канала связи", "резервный канал", "wan", "failover")),
+        ("storage", ("схд", "storage", "дисков", "хранилищ")),
+        ("virtualization", ("виртуальн", "гипервизор", "vmware", "hyper-v")),
+        ("dr", ("rto", "rpo", "аварийн", "drp", "disaster recovery")),
+        ("it_monitoring", ("мониторинг ит", "мониторинга ит", "мониторинг инфраструктур", "наблюдаемост")),
+        ("change_management", ("управления изменениями", "управление изменениями", "change management")),
+    ]
+    for key, markers in title_buckets:
+        if any(marker in title for marker in markers):
+            return key
 
     text = " ".join(
         str(item.get(field, ""))
@@ -8439,6 +8458,8 @@ def build_report_risk_set(c_info, results, context):
         semantic_key = risk_semantic_key(item)
         if not semantic_key or semantic_key in seen_risks:
             continue
+        item = dict(item)
+        item["semantic_key"] = semantic_key
         unique_risks.append(item)
         seen_risks.add(semantic_key)
 
@@ -8479,6 +8500,7 @@ def build_report_risk_set(c_info, results, context):
             "frameworks": item.get("frameworks", []),
             "evidence": item.get("evidence", []),
             "success_metric": item.get("success_metric", ""),
+            "semantic_key": risk_semantic_key(item),
         }
         for item in report_risks
     ]
@@ -9146,11 +9168,10 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
             continue
         if risk_conflicts_with_answers(source_item, results):
             continue
-        item = enforce_audit_fact_policy(source_item, results, context)
-        item = professionalize_risk_item(item, results, context)
-        item = align_report_vendors(item, results, context)
-        if not isinstance(item, dict):
-            continue
+        # The expert XLSX and presentation consume the same already normalized
+        # finding. Re-running semantic enrichment here can change a WAN finding
+        # into Backup or an IT-monitoring finding into Virtualization.
+        item = dict(source_item)
         normalized_risks.append({
             "level": risk_level_label(item.get("level", "MEDIUM")),
             "risk": item.get("risk", "Риск"),
@@ -9163,6 +9184,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
             "evidence": item.get("evidence", []),
             "success_metric": item.get("success_metric", ""),
             "source": item.get("source", ""),
+            "semantic_key": risk_semantic_key(item),
         })
     severity_order = {"CRITICAL": 0, "КРИТИЧЕСКИЙ": 0, "HIGH": 1, "ВЫСОКИЙ": 1, "MEDIUM": 2, "СРЕДНИЙ": 2, "LOW": 3, "НИЗКИЙ": 3}
     normalized_risks.sort(key=lambda item: severity_order.get(str(item.get("level", "MEDIUM")).upper(), 2))
