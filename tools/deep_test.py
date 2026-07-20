@@ -480,6 +480,7 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
     for name in (
         "presentation_text",
         "presentation_action_text",
+        "presentation_title_text",
         "risk_level_label",
         "risk_semantic_key",
         "presentation_recommendation_key",
@@ -550,7 +551,7 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "recommendation": "Определить RTO/RPO и провести учение.",
     })
     assert_true(
-        complete_title["title"].endswith("сервисов"),
+        complete_title["title"] == "Тестирование восстановления и RTO/RPO не формализованы",
         f"Risk title was cut mid-sentence: {complete_title['title']}",
     )
     dlp_risk = namespace["presentation_risk_entry"]({
@@ -564,6 +565,78 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         dlp_risk["title"] == "Отсутствие DLP повышает риск утечки персональных данных",
         "DLP risk title must be complete and use the fact-safe presales profile",
     )
+
+
+def test_canonical_roadmap_uses_only_confirmed_findings() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {"re": re}
+    for name in (
+        "presentation_text",
+        "presentation_action_text",
+        "risk_semantic_key",
+        "presentation_success_metric",
+        "canonical_roadmap_action",
+        "build_canonical_report_roadmap",
+    ):
+        exec(extract_function_source(module_text, name), namespace)
+
+    findings = [
+        {
+            "level": "Высокий",
+            "risk": "Недостаточный ресурсный запас виртуализации и отсутствие планирования емкости",
+            "description": "Средняя загрузка памяти достигает 88-92%.",
+            "impact": "Снижается запас на отказ одного хоста.",
+            "recommendation": "Провести capacity-анализ и подготовить план расширения.",
+            "area": "ИТ",
+            "semantic_key": "virtualization",
+        },
+        {
+            "level": "Высокий",
+            "risk": "Неформализованное управление изменениями",
+            "description": "Изменения согласуются в чатах.",
+            "impact": "Повышается вероятность простоев.",
+            "recommendation": "Ввести единый процесс изменений и планы отката.",
+            "area": "ИТ",
+            "semantic_key": "change_management",
+        },
+        {
+            "level": "Средний",
+            "risk": "Ограниченная емкость и отсутствие централизованного управления Wi-Fi",
+            "description": "12 автономных точек обслуживают до 600 устройств.",
+            "impact": "Возможны перегрузка и нестабильный роуминг.",
+            "recommendation": "Провести радиообследование и пилот WLAN-контроллера.",
+            "area": "ИТ",
+            "semantic_key": "wifi_capacity",
+        },
+        {
+            "level": "Средний",
+            "risk": "Недостаточная отказоустойчивость резервного канала связи",
+            "description": "Основной канал 1000 Mbit/s, резервный 50 Mbit/s.",
+            "impact": "При отказе основного канала критичные сервисы могут деградировать.",
+            "recommendation": "Увеличить резервную полосу и проверить переключение.",
+            "area": "ИТ",
+            "semantic_key": "network_performance",
+        },
+        {
+            "level": "Средний",
+            "risk": "Не формализовано тестирование восстановления и RTO/RPO",
+            "description": "Veeam используется, но регулярные тесты не подтверждены.",
+            "impact": "Фактическое время восстановления неизвестно.",
+            "recommendation": "Провести тест восстановления и утвердить DR-runbook.",
+            "area": "ИТ/ИБ",
+            "semantic_key": "dr",
+        },
+    ]
+    roadmap = namespace["build_canonical_report_roadmap"](findings)
+    keys = [item["semantic_key"] for item in roadmap]
+    actions = " ".join(item["action"] for item in roadmap).lower()
+    assert_true(len(roadmap) == 6, f"Expected six coherent timeline positions, got {len(roadmap)}")
+    assert_true("legacy_os" not in keys and "устарев" not in actions, "Roadmap invented legacy operating systems")
+    wan = next(item for item in roadmap if item["semantic_key"] == "network_performance")
+    assert_true("wan" in wan["action"].lower() or "канал" in wan["action"].lower(), "WAN action was remapped")
+    assert_true("veeam" not in wan["action"].lower() and "backup" not in wan["action"].lower(), "Backup leaked into WAN roadmap")
+    for phase in ("0-30 дней", "31-60 дней", "61-90 дней"):
+        assert_true(sum(item["phase"] == phase for item in roadmap) == 2, f"Roadmap phase is incomplete: {phase}")
 
 
 def test_it_maturity_measures_controls_not_infrastructure_size() -> None:
@@ -686,6 +759,7 @@ def test_ai_presentation_recommendation_path() -> None:
         "presentation_presales_profile": lambda item: ("nac", {}),
         "presentation_text": lambda value, limit=None: str(value),
         "presentation_action_text": lambda value, limit=None: str(value),
+        "presentation_title_text": lambda value, limit=None: str(value),
         "solution_categories_for_report_item": lambda item: "NAC",
         "portfolio_manufacturers_for_report_item": lambda item: "Fortinet",
         "split_portfolio_list": lambda value: [part.strip() for part in str(value).split(",") if part.strip()],
@@ -762,6 +836,7 @@ def main() -> None:
         test_presentation_template_rendering,
         test_presentation_text_is_self_contained,
         test_presentation_actions_are_complete_and_deduplicated,
+        test_canonical_roadmap_uses_only_confirmed_findings,
         test_ai_presentation_recommendation_path,
         test_it_maturity_measures_controls_not_infrastructure_size,
         test_security_maturity_is_normalized_and_evidence_capped,

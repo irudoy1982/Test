@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.28-dev"
+APP_VERSION = "12.29-dev"
 
 
 def get_app_instance_label():
@@ -5043,10 +5043,19 @@ if net_active:
         st.write("Резервный канал")
         back_net_kwargs = {"key": "back_net_type", "help": "Наличие и тип независимого резервного канала."}
         if "back_net_type" not in st.session_state:
-            back_net_kwargs["index"] = 7
+            back_net_kwargs["index"] = net_types.index("Нет")
         back_type = st.selectbox("Тип (резервный)", net_types, **back_net_kwargs)
-        back_speed = st.number_input("Скорость резервного (Mbit/s)", min_value=0, step=10, key="back_net_speed")
-        data['1.2.2. Резервный канал'] = f"{back_type} ({back_speed} Mbit/s)"
+        entered_back_speed = st.number_input(
+            "Скорость резервного (Mbit/s)",
+            min_value=0,
+            step=10,
+            key="back_net_speed",
+            disabled=back_type == "Нет",
+        )
+        back_speed = 0 if back_type == "Нет" else entered_back_speed
+        data['1.2.2. Резервный канал'] = (
+            "Нет" if back_type == "Нет" else f"{back_type} ({back_speed} Mbit/s)"
+        )
 
     st.write("Логика сети")
     selected_routing = st.multiselect("Тип маршрутизации*", routing_types, key="routing_sel", help="Протоколы динамической маршрутизации, используемые в сети.")
@@ -8742,16 +8751,60 @@ def presentation_action_text(value, limit=165):
 
     selected = []
     for part in parts:
-        sentence = complete_sentence(presentation_text(part, limit))
+        sentence = complete_sentence(part)
         if not sentence:
             continue
         candidate = " ".join([*selected, sentence])
+        if len(candidate) > limit:
+            if selected:
+                break
+            clauses = [
+                clause.strip(" .;-")
+                for clause in re.split(r"[,;:]\s*", sentence)
+                if clause.strip(" .;-")
+            ]
+            compact = []
+            for clause in clauses:
+                clause_candidate = ", ".join([*compact, clause])
+                if compact and len(clause_candidate) > limit - 1:
+                    break
+                if not compact and len(clause_candidate) > limit - 1:
+                    words = clause.split()
+                    while words and len(" ".join(words)) > limit - 2:
+                        words.pop()
+                    clause_candidate = " ".join(words)
+                if clause_candidate:
+                    compact = clause_candidate.split(", ")
+            sentence = complete_sentence(", ".join(compact))
+            if not sentence:
+                continue
+            candidate = sentence
         if selected and len(candidate) > limit:
             break
         selected.append(sentence)
         if len(candidate) >= limit * 0.72:
             break
     return " ".join(selected) or complete_sentence(presentation_text(text, limit))
+
+
+def presentation_title_text(value, limit=88):
+    """Shorten a title at a semantic boundary without leaving a broken phrase."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip(" .;-:")
+    if len(text) <= limit:
+        return text
+    clauses = [part.strip(" .;-:") for part in re.split(r"[,;:]\s*", text) if part.strip(" .;-:")]
+    if clauses and len(clauses[0]) <= limit:
+        return clauses[0]
+    words = text.split()
+    incomplete_tail = {
+        "и", "или", "а", "но", "с", "со", "для", "на", "по", "в", "во",
+        "к", "из", "под", "без", "при", "после", "между", "над",
+    }
+    while words and len(" ".join(words)) > limit - 1:
+        words.pop()
+    while words and words[-1].lower().strip(".,:;()") in incomplete_tail:
+        words.pop()
+    return (" ".join(words).rstrip(" .;:-") + "…") if words else "Риск требует уточнения"
 
 
 def presentation_maturity_style(score):
@@ -8851,6 +8904,21 @@ def presentation_presales_profile(item):
             "title": "Нет единого мониторинга доступности и производительности",
             "impact": "Без централизованных метрик команда поздно замечает деградацию сервисов и не может обоснованно планировать емкость.",
             "action": "Определить критичные метрики, пороги и владельцев, затем внедрить единый контроль доступности, производительности и емкости.",
+        },
+        "virtualization": {
+            "title": "Виртуальной среде требуется подтвержденный запас ресурсов",
+            "impact": "Высокая утилизация вычислительных ресурсов снижает запас на отказ хоста, рост нагрузки и обслуживание без простоя.",
+            "action": "Провести capacity-анализ, проверить сценарий отказа хоста и утвердить план расширения вычислительных ресурсов.",
+        },
+        "storage": {
+            "title": "Емкость и производительность СХД требуют измерения",
+            "impact": "Без данных о latency, IOPS, утилизации и запасе емкости нельзя подтвердить устойчивость хранения критичных данных.",
+            "action": "Провести health-check СХД, зафиксировать базовые метрики и подготовить план развития емкости и отказоустойчивости.",
+        },
+        "dr": {
+            "title": "Тестирование восстановления и RTO/RPO не формализованы",
+            "impact": "Наличие резервных копий не подтверждает, что критичные сервисы восстановятся в согласованные сроки после инцидента.",
+            "action": "Согласовать RTO/RPO, провести контрольное восстановление и утвердить регулярные DR-учения с фиксацией результата.",
         },
         "mfa": {
             "title": "Критичные доступы не полностью защищены MFA",
@@ -8956,6 +9024,208 @@ def presentation_success_metric(semantic_key):
     return metrics.get(semantic_key, "Владелец, срок и измеримый критерий результата утверждены")
 
 
+def canonical_roadmap_action(item, phase):
+    """Build one stage-appropriate action from a confirmed audit finding."""
+    key = risk_semantic_key(item)
+    actions = {
+        "virtualization": {
+            "0-30 дней": "Провести capacity-анализ виртуальной среды, проверить запас на отказ одного хоста и прогноз роста нагрузки.",
+            "31-60 дней": "Утвердить план расширения вычислительных ресурсов по результатам capacity-анализа.",
+            "61-90 дней": "Выполнить приоритетный этап расширения и включить регулярный контроль загрузки виртуальной среды.",
+        },
+        "storage": {
+            "0-30 дней": "Провести health-check СХД и зафиксировать latency, IOPS, утилизацию и запас емкости.",
+            "31-60 дней": "Утвердить целевую архитектуру и план развития емкости и отказоустойчивости СХД.",
+            "61-90 дней": "Реализовать приоритетный этап развития СХД и включить контроль порогов емкости и производительности.",
+        },
+        "network_performance": {
+            "0-30 дней": "Замерить загрузку WAN-каналов, проверить failover и согласовать требования к резервной полосе и SLA.",
+            "31-60 дней": "Проверить целевую конфигурацию резервного канала и автоматическое переключение критичных сервисов.",
+            "61-90 дней": "Ввести регулярный тест failover, контроль доступности каналов и отчетность по SLA.",
+        },
+        "wifi_capacity": {
+            "0-30 дней": "Провести радиообследование Wi-Fi и замерить пиковую нагрузку, покрытие и качество роуминга.",
+            "31-60 дней": "Провести пилот централизованного WLAN-управления и подтвердить целевой радиоплан.",
+            "61-90 дней": "Масштабировать подтвержденную WLAN-архитектуру и контролировать загрузку, покрытие и роуминг.",
+        },
+        "change_management": {
+            "0-30 дней": "Описать текущий поток изменений, владельцев, точки согласования и причины неуспешных изменений.",
+            "31-60 дней": "Внедрить единый процесс согласования, тестирования и отката изменений с обязательной регистрацией.",
+            "61-90 дней": "Закрепить процесс управления изменениями метриками качества и регулярным разбором отклонений.",
+        },
+        "it_monitoring": {
+            "0-30 дней": "Определить критичные сервисы, метрики доступности и производительности, пороги и владельцев реакции.",
+            "31-60 дней": "Провести пилот единого ИТ-мониторинга на критичных сервисах и проверить правила оповещения.",
+            "61-90 дней": "Расширить мониторинг на целевой контур и включить регулярную отчетность по доступности и емкости.",
+        },
+        "backup": {
+            "0-30 дней": "Согласовать RTO/RPO и перечень критичных сервисов для контрольного восстановления.",
+            "31-60 дней": "Провести тест восстановления критичных сервисов и зафиксировать фактические RTO/RPO.",
+            "61-90 дней": "Утвердить регулярные тесты восстановления и контроль изолированных резервных копий.",
+        },
+        "dr": {
+            "0-30 дней": "Определить критичные сервисы, зависимости, владельцев и требования к аварийному восстановлению.",
+            "31-60 дней": "Провести ограниченное DR-учение и скорректировать runbook по фактическим результатам.",
+            "61-90 дней": "Утвердить DR-runbook, периодичность учений и контроль выполнения целевых RTO/RPO.",
+        },
+        "pam": {
+            "0-30 дней": "Инвентаризировать привилегированные доступы, критичные системы и границы пилота PAM.",
+            "31-60 дней": "Провести пилот PAM и проверить vault, контроль сессий, аварийный доступ и интеграцию с SIEM.",
+            "61-90 дней": "Расширить PAM на подтвержденный критичный контур и ввести регулярный пересмотр привилегий.",
+        },
+        "nac": {
+            "0-30 дней": "Описать типы подключений, требования к NAC и пилотный контур проводной и беспроводной сети.",
+            "31-60 дней": "Провести пилот NAC и проверить 802.1X, профилирование, соответствие и изоляцию устройств.",
+            "61-90 дней": "Расширить подтвержденные политики NAC и включить контроль качества допуска устройств.",
+        },
+        "dlp": {
+            "0-30 дней": "Определить категории данных, каналы контроля и измеримые критерии пилота DLP.",
+            "31-60 дней": "Провести ограниченный пилот DLP и скорректировать политики по фактическим результатам.",
+            "61-90 дней": "Масштабировать подтвержденные политики DLP и включить контроль инцидентов и исключений.",
+        },
+    }
+    if key in actions:
+        return actions[key][phase]
+
+    recommendation = item.get("recommendation") or item.get("action") or item.get("description") or item.get("risk")
+    if phase == "0-30 дней":
+        return presentation_action_text(
+            f"Подтвердить исходное состояние и границы меры: {recommendation}",
+            220,
+        )
+    if phase == "31-60 дней":
+        return presentation_action_text(recommendation, 220)
+    return presentation_action_text(
+        f"Масштабировать подтвержденную меру и включить контроль результата: {recommendation}",
+        220,
+    )
+
+
+def build_canonical_report_roadmap(report_risks, results=None, context=None, max_items=6):
+    """Create the Excel and PowerPoint roadmap from one fact-checked finding set."""
+    phase_order = ("0-30 дней", "31-60 дней", "61-90 дней")
+    preferred_phase = {
+        "virtualization": "0-30 дней",
+        "storage": "0-30 дней",
+        "network_performance": "0-30 дней",
+        "segmentation": "0-30 дней",
+        "change_management": "31-60 дней",
+        "wifi_capacity": "31-60 дней",
+        "patch": "31-60 дней",
+        "itam": "31-60 дней",
+        "mfa": "31-60 дней",
+        "iam": "31-60 дней",
+        "pam": "31-60 дней",
+        "nac": "31-60 дней",
+        "endpoint_detection": "31-60 дней",
+        "mail": "31-60 дней",
+        "web_waf": "31-60 дней",
+        "backup": "61-90 дней",
+        "dr": "61-90 дней",
+        "it_monitoring": "61-90 дней",
+        "siem_soc": "61-90 дней",
+        "dlp": "61-90 дней",
+        "appsec": "61-90 дней",
+    }
+    level_priority = {
+        "CRITICAL": "P1", "КРИТИЧЕСКИЙ": "P1",
+        "HIGH": "P1", "ВЫСОКИЙ": "P1",
+        "MEDIUM": "P2", "СРЕДНИЙ": "P2",
+        "LOW": "P3", "НИЗКИЙ": "P3",
+    }
+    domain_by_key = {
+        "virtualization": "ИТ-инфраструктура",
+        "storage": "Хранение данных",
+        "network_performance": "Сеть и связь",
+        "wifi_capacity": "Корпоративный Wi-Fi",
+        "change_management": "ИТ-процессы",
+        "it_monitoring": "ИТ-мониторинг",
+        "backup": "Резервное копирование",
+        "dr": "Непрерывность",
+        "pam": "Привилегированный доступ",
+        "nac": "Сетевой доступ",
+        "dlp": "Защита данных",
+    }
+    phase_counts = {phase: 0 for phase in phase_order}
+    roadmap = []
+    seen = set()
+
+    for raw_item in report_risks or []:
+        if not isinstance(raw_item, dict):
+            continue
+        item = dict(raw_item)
+        key = risk_semantic_key(item)
+        if not key or key in seen:
+            continue
+        preferred = preferred_phase.get(key, "31-60 дней")
+        preferred_index = phase_order.index(preferred)
+        candidates = [
+            *phase_order[preferred_index:],
+            *reversed(phase_order[:preferred_index]),
+        ]
+        phase = next((candidate for candidate in candidates if phase_counts[candidate] < 2), None)
+        if phase is None:
+            break
+        level = str(item.get("level", "MEDIUM")).strip().upper()
+        priority = level_priority.get(level, "P2")
+        area = str(item.get("area") or item.get("_ai_area") or "ИТ/ИБ").strip()
+        metric = item.get("success_metric") or presentation_success_metric(key)
+        rationale = item.get("impact") or item.get("description") or "Мера снижает подтвержденный риск аудита."
+        roadmap.append({
+            "phase": phase,
+            "priority": priority,
+            "domain": domain_by_key.get(key, area),
+            "action": canonical_roadmap_action(item, phase),
+            "rationale": presentation_action_text(rationale, 240),
+            "owner": "ИТ" if area.upper() == "ИТ" else ("ИБ" if area.upper() == "ИБ" else "ИТ/ИБ"),
+            "effort": "Высокая" if key in {"virtualization", "storage", "siem_soc", "pam", "iam"} else "Средняя",
+            "result": presentation_action_text(metric, 155),
+            "semantic_key": key,
+        })
+        seen.add(key)
+        phase_counts[phase] += 1
+        if len(roadmap) >= max_items:
+            break
+
+    # Keep a six-position management timeline readable when there are only five
+    # distinct findings. The continuation must advance an existing action rather
+    # than introduce an unconfirmed topic.
+    if roadmap and len(roadmap) < max_items:
+        for phase in phase_order:
+            while phase_counts[phase] < 2 and len(roadmap) < max_items:
+                candidate = next(
+                    (
+                        item for item in roadmap
+                        if item["semantic_key"] not in {
+                            existing["semantic_key"]
+                            for existing in roadmap
+                            if existing["phase"] == phase
+                        }
+                    ),
+                    None,
+                )
+                if candidate is None:
+                    break
+                source = next(
+                    item for item in report_risks
+                    if isinstance(item, dict) and risk_semantic_key(item) == candidate["semantic_key"]
+                )
+                roadmap.append({
+                    **candidate,
+                    "phase": phase,
+                    "action": canonical_roadmap_action(source, phase),
+                })
+                phase_counts[phase] += 1
+
+    return sorted(
+        roadmap,
+        key=lambda item: (
+            phase_order.index(item["phase"]),
+            {"P1": 0, "P2": 1, "P3": 2}.get(item["priority"], 9),
+        ),
+    )
+
+
 def presentation_severity_style(level):
     normalized = str(level or "MEDIUM").strip().upper()
     aliases = {
@@ -9008,7 +9278,7 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
         raw_title = profile["title"]
     elif raw_title.lower() in generic_titles:
         raw_title = title_by_key.get(semantic_key, "Практическая мера улучшения")
-    title = presentation_text(raw_title, 78)
+    title = presentation_title_text(raw_title, 88)
     action = (
         presentation_action_text(normalized["recommendation"], 190)
         if ai_authored
@@ -9027,8 +9297,10 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
     evidence_values = normalized.get("evidence", [])
     if not isinstance(evidence_values, list):
         evidence_values = [evidence_values] if evidence_values else []
-    evidence = "; ".join(str(value).strip() for value in evidence_values if str(value).strip())
-    if results is not None and context is not None and not (ai_authored and evidence):
+    evidence = normalized.get("description") or "; ".join(
+        str(value).strip() for value in evidence_values if str(value).strip()
+    )
+    if results is not None and context is not None and not evidence:
         evidence = presentation_evidence_for_key(semantic_key, results, context, item)
     elif not evidence:
         evidence = normalized.get("description") or normalized.get("impact") or "Основание приоритета требует уточнения"
@@ -9072,8 +9344,8 @@ def presentation_risk_entry(item):
     raw_level, fill_color, text_color = presentation_severity_style(normalized.get("level"))
     return {
         "level": presentation_text(risk_level_label(raw_level), 16).upper(),
-        "title": profile.get("title") or presentation_text(
-            normalized.get("risk", "Риск требует внимания"), 78
+        "title": profile.get("title") or presentation_title_text(
+            normalized.get("risk", "Риск требует внимания"), 88
         ),
         "impact": profile.get("impact") or presentation_action_text(
             normalized.get("impact") or normalized.get("description") or "Требуется уточнить влияние риска.",
@@ -9135,7 +9407,6 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         st.session_state.get("ai_audit_narrative", {}),
         results,
     )
-    roadmap_items = ai_narrative.get("roadmap", [])
     summary_items = []
     narrative_summary = [
         *ai_narrative.get("executive_summary", []),
@@ -9175,6 +9446,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         normalized_risks.append({
             "level": risk_level_label(item.get("level", "MEDIUM")),
             "risk": item.get("risk", "Риск"),
+            "description": item.get("description") or item.get("impact") or "Требуется уточнение основания",
             "impact": item.get("impact") or item.get("description") or "Требуется уточнение влияния",
             "recommendation": item.get("recommendation") or item.get("action") or "Требуется план улучшений",
             "vendors": item.get("vendors", []),
@@ -9229,117 +9501,24 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
     for item in normalized_risks:
         add_recommendation(item)
 
-    roadmap_by_phase = {
-        "0-30": [],
-        "31-60": [],
-        "61-90": [],
-    }
-    def staged_roadmap_action(entry, phase):
-        key = entry["key"]
-        title = entry["title"].lower()
-        specific = {
-            "pam": {
-                "0-30": "Инвентаризировать привилегированные доступы, определить критичные системы и границы пилота PAM.",
-                "31-60": "Провести пилот PAM; проверить vault, контроль сессий, аварийный доступ и передачу событий в SIEM.",
-                "61-90": "Расширить PAM на подтвержденный критичный контур и ввести регулярный пересмотр привилегий.",
-            },
-            "nac": {
-                "0-30": "Описать типы подключений, требования к NAC и пилотный контур для проводной и беспроводной сети.",
-                "31-60": "Провести пилот NAC; проверить 802.1X, профилирование, контроль соответствия и изоляцию устройств.",
-                "61-90": "Расширить подтвержденные политики NAC и включить контроль качества допуска устройств.",
-            },
-            "iam": {
-                "0-30": "Описать прием, перевод и увольнение, владельцев ролей и требования к интеграциям IAM.",
-                "31-60": "Провести PoC IAM на выбранных подразделениях и критичных бизнес-системах.",
-                "61-90": "Масштабировать подтвержденные процессы IAM и ввести контроль SLA создания и отзыва прав.",
-            },
-            "dlp": {
-                "0-30": "Определить категории персональных данных, каналы контроля и измеримые критерии пилота DLP.",
-                "31-60": "Провести ограниченный пилот DLP на согласованных каналах и скорректировать политики по результатам.",
-                "61-90": "Масштабировать подтвержденные политики DLP и включить регулярный контроль инцидентов и исключений.",
-            },
-            "wifi_capacity": {
-                "0-30": "Провести радиообследование Wi-Fi, замерить пиковую нагрузку, покрытие и качество роуминга.",
-                "31-60": "Проверить в пилоте централизованное WLAN-управление, радиоплан и балансировку клиентов.",
-                "61-90": "Масштабировать подтвержденную WLAN-архитектуру и контролировать загрузку, покрытие и роуминг.",
-            },
-            "network_performance": {
-                "0-30": "Замерить загрузку WAN-каналов, проверить failover и согласовать требования к резервной полосе и SLA.",
-                "31-60": "Проверить целевой резервный канал и автоматическое переключение на критичных сервисах.",
-                "61-90": "Ввести регулярный тест failover, контроль доступности каналов и отчетность по SLA.",
-            },
-            "backup": {
-                "0-30": "Согласовать RTO/RPO и перечень критичных сервисов для контрольного восстановления.",
-                "31-60": "Провести тест восстановления критичных сервисов и зафиксировать фактические RTO/RPO.",
-                "61-90": "Утвердить регулярные тесты восстановления и контроль изолированных резервных копий.",
-            },
-            "dr": {
-                "0-30": "Определить критичные сервисы, зависимости, владельцев и требования к аварийному восстановлению.",
-                "31-60": "Провести ограниченное DR-учение и скорректировать runbook по фактическим результатам.",
-                "61-90": "Утвердить DR-runbook, периодичность учений и контроль выполнения целевых RTO/RPO.",
-            },
-        }
-        if key in specific:
-            return specific[key][phase]
-        if phase == "0-30":
-            return f"Подтвердить текущее состояние по теме «{title}», согласовать требования, владельца и границы пилота."
-        if phase == "31-60":
-            return sanitize_customer_roadmap_text(entry["action"])
-        return f"Масштабировать подтвержденную меру «{title}» и включить регулярный контроль результата."
-
-    recommendation_by_key = {
-        entry["key"]: entry for entry in recommendation_items if entry.get("key")
-    }
-    roadmap_keys_by_phase = {phase: set() for phase in roadmap_by_phase}
-    roadmap_keys_used = set()
-    for item in roadmap_items:
-        phase = str(item.get("phase", ""))
-        phase_key = next((key for key in roadmap_by_phase if key in phase), None)
+    canonical_roadmap = build_canonical_report_roadmap(
+        normalized_risks,
+        results=results,
+        context=context,
+    )
+    roadmap_by_phase = {"0-30": [], "31-60": [], "61-90": []}
+    for item in canonical_roadmap:
+        phase_key = next(
+            (key for key in roadmap_by_phase if key in str(item.get("phase", ""))),
+            None,
+        )
         if not phase_key:
             continue
-        raw_action = sanitize_customer_roadmap_text(item.get("action") or item.get("recommendation"))
-        roadmap_key = risk_semantic_key({"risk": raw_action, "recommendation": raw_action})
-        entry = recommendation_by_key.get(roadmap_key)
-        if not entry or roadmap_key in roadmap_keys_used:
-            continue
         roadmap_by_phase[phase_key].append({
-            "action": presentation_action_text(staged_roadmap_action(entry, phase_key), 120),
-            "result": presentation_action_text(entry["metric"], 90),
-            "key": roadmap_key,
+            "action": presentation_action_text(item.get("action"), 145),
+            "result": presentation_action_text(item.get("result"), 110),
+            "key": item.get("semantic_key"),
         })
-        roadmap_keys_by_phase[phase_key].add(roadmap_key)
-        roadmap_keys_used.add(roadmap_key)
-
-    for phase in ("0-30", "31-60", "61-90"):
-        for entry in recommendation_items:
-            if len(roadmap_by_phase[phase]) >= 2:
-                break
-            if entry["key"] in roadmap_keys_used:
-                continue
-            action = presentation_action_text(staged_roadmap_action(entry, phase), 120)
-            roadmap_by_phase[phase].append({
-                "action": action,
-                "result": presentation_action_text(entry["metric"], 90),
-                "key": entry["key"],
-            })
-            roadmap_keys_by_phase[phase].add(entry["key"])
-            roadmap_keys_used.add(entry["key"])
-
-    # A technology may legitimately span several phases. After distributing unique
-    # priorities, complete sparse phases with the next maturity step for an existing
-    # recommendation instead of a generic placeholder.
-    for phase in ("0-30", "31-60", "61-90"):
-        for entry in recommendation_items:
-            if len(roadmap_by_phase[phase]) >= 2:
-                break
-            if entry["key"] in roadmap_keys_by_phase[phase]:
-                continue
-            roadmap_by_phase[phase].append({
-                "action": presentation_action_text(staged_roadmap_action(entry, phase), 120),
-                "result": presentation_action_text(entry["metric"], 90),
-                "key": entry["key"],
-            })
-            roadmap_keys_by_phase[phase].add(entry["key"])
 
     enabled_controls, _ = security_control_snapshot(results)
     strengths = [presentation_text(item, 105) for item in enabled_controls[:4]]
@@ -9884,16 +10063,12 @@ def make_expert_excel(c_info, results, final_score):
     report_risks, ai_used = build_report_risk_set(c_info, results, context)
     ai_narrative = st.session_state.get("ai_audit_narrative", {}) if ai_used else {}
     ai_narrative = sanitize_ai_audit_narrative(ai_narrative, results)
-    top_risks = generate_rule_based_risks(
-        results,
-        context
+    roadmap_items = build_canonical_report_roadmap(
+        report_risks,
+        results=results,
+        context=context,
     )
-    roadmap_items = ai_narrative.get("roadmap") or build_contextual_roadmap(
-        results,
-        context,
-        domain_scores,
-        top_risks
-    )
+    st.session_state.last_report_roadmap = list(roadmap_items)
     expert_conclusion = build_expert_conclusion(
         results,
         context,

@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.28-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.29-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -117,6 +117,14 @@ def check_selectbox_contract() -> None:
     )
     assert_true("net_types = NETWORK_TYPE_OPTIONS" in text, "Network selectboxes do not use the shared contract")
     assert_true("country_codes = COUNTRY_CODE_OPTIONS" in text, "Country selectbox does not use the shared contract")
+    assert_true(
+        'back_net_kwargs["index"] = net_types.index("Нет")' in text,
+        "Backup channel must default explicitly to Нет",
+    )
+    assert_true(
+        'back_speed = 0 if back_type == "Нет" else entered_back_speed' in text,
+        "Disabled backup channel must not retain a positive speed",
+    )
 
     normalizer = next(
         node
@@ -245,10 +253,16 @@ def check_static_hooks() -> None:
     assert_true("Сервис формирования экспертного заключения временно недоступен" in text, "Customer-safe generation error is missing")
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")
     assert_true("partial_recommendation_slide" in text, "Odd recommendation counts must use a single-card final slide")
-    assert_true("entry = recommendation_by_key.get(roadmap_key)" in text, "Roadmap must exclude topics without a confirmed recommendation")
-    assert_true("def staged_roadmap_action" in text, "Roadmap must provide assessment, pilot, and rollout stages")
-    assert_true("roadmap_keys_by_phase" in text, "Roadmap must deduplicate technologies within each phase")
-    assert_true("roadmap_keys_used" in text, "Roadmap must avoid repeating one technology across all phases")
+    assert_true("def build_canonical_report_roadmap" in text, "A shared fact-checked roadmap builder is missing")
+    assert_true("def canonical_roadmap_action" in text, "Roadmap must provide assessment, pilot, and rollout stages")
+    assert_true(
+        text.count("build_canonical_report_roadmap(") >= 3,
+        "Excel and presentation must consume the same canonical roadmap",
+    )
+    assert_true(
+        'roadmap_items = ai_narrative.get("roadmap")' not in text,
+        "Unverified AI roadmap must not override confirmed report findings",
+    )
     assert_true("recover_complete_risk_objects(response_text)" in text, "Malformed AI JSON recovery is missing")
 
 
