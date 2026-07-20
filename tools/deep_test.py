@@ -278,6 +278,37 @@ def test_segmentation_never_maps_to_dlp() -> None:
     assert_true("Zecurion" not in manufacturers and "Forcepoint" not in manufacturers, f"DLP vendors leaked into segmentation: {manufacturers}")
 
 
+def test_wifi_and_dr_semantics_are_stable() -> None:
+    helpers = load_portfolio_helpers()
+    wifi_item = {
+        "risk": "Перегрузка Wi‑Fi без централизованного управления",
+        "description": "12 точек доступа обслуживают 500–600 одновременных подключений.",
+        "recommendation": "Провести радиообследование и пилот WLAN-контроллера.",
+        "vendors": [],
+    }
+    assert_true(
+        helpers["risk_semantic_key"](wifi_item) == "wifi_capacity",
+        "Non-breaking Wi-Fi hyphen must not turn a WLAN gap into IT monitoring",
+    )
+    wifi_solution = helpers["solution_categories_for_report_item"](wifi_item)
+    wifi_vendors = helpers["portfolio_manufacturers_for_report_item"](wifi_item)
+    assert_true("WLAN" in wifi_solution and "Wi-Fi" in wifi_solution, f"Incorrect Wi-Fi solution: {wifi_solution}")
+    assert_true(
+        "Cisco" in wifi_vendors and "Huawei" in wifi_vendors,
+        f"Portfolio Wi-Fi manufacturers are missing: {wifi_vendors}",
+    )
+
+    dr_item = {
+        "risk": "Не описан план аварийного восстановления критичных ИТ-сервисов",
+        "description": "Нужно восстановить ERP, CRM и почту в пределах RTO/RPO.",
+        "recommendation": "Провести DR-учение и оформить runbook.",
+    }
+    assert_true(
+        helpers["risk_semantic_key"](dr_item) == "dr",
+        "A DR recommendation mentioning mail must not map to Mail Security",
+    )
+
+
 def test_ospf_is_not_segmentation_evidence() -> None:
     helpers = load_report_logic_helpers()
     results = {
@@ -658,6 +689,7 @@ def main() -> None:
         test_customer_report_context,
         test_customer_report_separates_solutions_from_manufacturers,
         test_segmentation_never_maps_to_dlp,
+        test_wifi_and_dr_semantics_are_stable,
         test_ospf_is_not_segmentation_evidence,
         test_customer_and_sales_language_avoids_size_labels,
         test_sales_sheet_navigation_layout,

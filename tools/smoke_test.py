@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.25-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.26-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -215,7 +215,11 @@ def check_static_hooks() -> None:
     assert_true("call_groq_with_rate_limit_retry(focus_it=True)" in text, "Fact-safe IT-focused Groq retry is missing")
     assert_true("confirmed_it_gap_topics(results)" in text, "Confirmed IT-gap detector is missing")
     assert_true("ai_it_gap_coverage(" in text, "AI IT-gap coverage gate is missing")
-    assert_true("gemini_attempt_count >= 2" in text, "Gemini must receive a bounded second quality attempt")
+    assert_true(
+        '("wifi_capacity", "network_performance")' in text,
+        "Confirmed Wi-Fi and WAN resilience gaps must both be mandatory",
+    )
+    assert_true("gemini_quality_attempts" in text, "Gemini must exhaust bounded quality attempts before Groq")
     assert_true("stop_gemini = True" not in text, "Gemini must not be abandoned after its first incomplete response")
     assert_true("minimum_ai_items" in text, "Gemini quality threshold must adapt to confirmed gaps")
     assert_true("call_groq_with_rate_limit_retry" in text, "Groq rate-limit retry is missing")
@@ -230,6 +234,7 @@ def check_static_hooks() -> None:
     assert_true("entry = recommendation_by_key.get(roadmap_key)" in text, "Roadmap must exclude topics without a confirmed recommendation")
     assert_true("def staged_roadmap_action" in text, "Roadmap must provide assessment, pilot, and rollout stages")
     assert_true("roadmap_keys_by_phase" in text, "Roadmap must deduplicate technologies within each phase")
+    assert_true("roadmap_keys_used" in text, "Roadmap must avoid repeating one technology across all phases")
     assert_true("recover_complete_risk_objects(response_text)" in text, "Malformed AI JSON recovery is missing")
 
 

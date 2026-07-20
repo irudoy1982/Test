@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.25-dev"
+APP_VERSION = "12.26-dev"
 
 
 def get_app_instance_label():
@@ -1978,6 +1978,7 @@ def ai_generate_risks_and_recs(c_info, results):
         groq_model = get_app_secret("GROQ_MODEL", "openai/gpt-oss-120b")
         groq_timeout = int(get_app_secret("GROQ_TIMEOUT_SECONDS", 55))
         ai_timeout = int(get_app_secret("GEMINI_TIMEOUT_SECONDS", 45))
+        gemini_quality_attempts = int(get_app_secret("GEMINI_QUALITY_ATTEMPTS", 4))
         fallback_models = str(get_app_secret(
             "GEMINI_FALLBACK_MODELS",
             "gemini-2.5-flash-lite"
@@ -2343,6 +2344,7 @@ JSON должен быть валидным: все строковые знач�
 - в roadmap не указывай производителей и названия продуктов; используй только классы технологий и управленческие действия.
 - result каждого объекта roadmap должен описывать измеримый результат именно его action, а не всей фазы целиком.
 - для новых решений соблюдай порядок: требования и критерии -> ограниченный пилот -> решение о закупке и масштабировании.
+- каждый подтвержденный ИТ-разрыв ниже оформляй самостоятельным объектом risks; не объединяй Wi-Fi с резервированием WAN-канала.
 
 Отрасль: {c_info.get("Сфера деятельности", "-")}
 
@@ -2770,7 +2772,7 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 math.ceil(len(confirmed_it_gaps) * 0.7),
             ) if confirmed_it_gaps else 0
             mandatory_it_gaps = {
-                key for key in ("wifi_capacity",)
+                key for key in ("wifi_capacity", "network_performance")
                 if key in confirmed_it_gaps
             }
             missing_mandatory_it_gaps = mandatory_it_gaps.intersection(missing_it_gaps)
@@ -2959,11 +2961,13 @@ vendors (массив строк), legal_ids (массив строк), framewor
         )
         gemini_attempt_count = 0
         if api_key:
-            for response_format, request_payload in payload_attempts:
-                if gemini_attempt_count >= 2:
+            # Exhaust the primary Gemini model and its compact recovery formats
+            # before moving to another Gemini model, and only then fall back to Groq.
+            for active_model in model_candidates:
+                if gemini_attempt_count >= gemini_quality_attempts:
                     break
-                for active_model in model_candidates:
-                    if gemini_attempt_count >= 2:
+                for response_format, request_payload in payload_attempts:
+                    if gemini_attempt_count >= gemini_quality_attempts:
                         break
                     gemini_attempt_count += 1
                     try:
@@ -7852,6 +7856,7 @@ def risk_semantic_key(item):
         str(item.get(field, ""))
         for field in ("risk", "description", "impact", "recommendation")
     ).lower()
+    text = re.sub(r"[\u2010-\u2015\u2212]", "-", text)
 
     buckets = [
         ("mfa", ("mfa", "многофактор", "2fa", "двухфактор")),
@@ -7878,13 +7883,13 @@ def risk_semantic_key(item):
         ("patch", ("patch", "обновлен", "cve", "уязвим")),
         ("endpoint_detection", ("edr", "xdr", "endpoint", "рабочих мест", "lateral movement")),
         ("backup", ("backup", "резерв", "immutable", "ransomware")),
+        ("dr", ("dr", "аварийн", "rto", "rpo", "восстановлен")),
         ("web_waf", ("waf", "web", "веб", "owasp", "публичн")),
         ("segmentation", ("сегментац", "vlan", "lateral")),
         ("mail", ("mail", "почт", "фишинг")),
         ("virtualization", ("виртуализац", "гипервизор", "vm", "хост")),
         ("storage", ("схд", "storage", "raid", "snapshot", "iops")),
         ("it_monitoring", ("эксплуатационный мониторинг", "доступности", "производительности", "capacity")),
-        ("dr", ("dr", "аварийн", "rto", "rpo", "восстановлен")),
         ("appsec", ("sast", "dast", "appsec", "разработ", "безопасность прилож")),
         ("business_systems", ("erp", "crm", "бизнес-систем")),
     ]
@@ -9180,6 +9185,26 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
                 "31-60": "Провести ограниченный пилот DLP на согласованных каналах и скорректировать политики по результатам.",
                 "61-90": "Масштабировать подтвержденные политики DLP и включить регулярный контроль инцидентов и исключений.",
             },
+            "wifi_capacity": {
+                "0-30": "Провести радиообследование Wi-Fi, замерить пиковую нагрузку, покрытие и качество роуминга.",
+                "31-60": "Проверить в пилоте централизованное WLAN-управление, радиоплан и балансировку клиентов.",
+                "61-90": "Масштабировать подтвержденную WLAN-архитектуру и контролировать загрузку, покрытие и роуминг.",
+            },
+            "network_performance": {
+                "0-30": "Замерить загрузку WAN-каналов, проверить failover и согласовать требования к резервной полосе и SLA.",
+                "31-60": "Проверить целевой резервный канал и автоматическое переключение на критичных сервисах.",
+                "61-90": "Ввести регулярный тест failover, контроль доступности каналов и отчетность по SLA.",
+            },
+            "backup": {
+                "0-30": "Согласовать RTO/RPO и перечень критичных сервисов для контрольного восстановления.",
+                "31-60": "Провести тест восстановления критичных сервисов и зафиксировать фактические RTO/RPO.",
+                "61-90": "Утвердить регулярные тесты восстановления и контроль изолированных резервных копий.",
+            },
+            "dr": {
+                "0-30": "Определить критичные сервисы, зависимости, владельцев и требования к аварийному восстановлению.",
+                "31-60": "Провести ограниченное DR-учение и скорректировать runbook по фактическим результатам.",
+                "61-90": "Утвердить DR-runbook, периодичность учений и контроль выполнения целевых RTO/RPO.",
+            },
         }
         if key in specific:
             return specific[key][phase]
@@ -9193,6 +9218,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         entry["key"]: entry for entry in recommendation_items if entry.get("key")
     }
     roadmap_keys_by_phase = {phase: set() for phase in roadmap_by_phase}
+    roadmap_keys_used = set()
     for item in roadmap_items:
         phase = str(item.get("phase", ""))
         phase_key = next((key for key in roadmap_by_phase if key in phase), None)
@@ -9201,7 +9227,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         raw_action = sanitize_customer_roadmap_text(item.get("action") or item.get("recommendation"))
         roadmap_key = risk_semantic_key({"risk": raw_action, "recommendation": raw_action})
         entry = recommendation_by_key.get(roadmap_key)
-        if not entry or roadmap_key in roadmap_keys_by_phase[phase_key]:
+        if not entry or roadmap_key in roadmap_keys_used:
             continue
         roadmap_by_phase[phase_key].append({
             "action": presentation_action_text(staged_roadmap_action(entry, phase_key), 120),
@@ -9209,12 +9235,13 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
             "key": roadmap_key,
         })
         roadmap_keys_by_phase[phase_key].add(roadmap_key)
+        roadmap_keys_used.add(roadmap_key)
 
     for phase in ("0-30", "31-60", "61-90"):
         for entry in recommendation_items:
             if len(roadmap_by_phase[phase]) >= 2:
                 break
-            if entry["key"] in roadmap_keys_by_phase[phase]:
+            if entry["key"] in roadmap_keys_used:
                 continue
             action = presentation_action_text(staged_roadmap_action(entry, phase), 120)
             roadmap_by_phase[phase].append({
@@ -9223,6 +9250,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
                 "key": entry["key"],
             })
             roadmap_keys_by_phase[phase].add(entry["key"])
+            roadmap_keys_used.add(entry["key"])
 
     enabled_controls, _ = security_control_snapshot(results)
     strengths = [presentation_text(item, 105) for item in enabled_controls[:4]]
