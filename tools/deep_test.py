@@ -502,6 +502,16 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "Known NAC findings must use the fact-safe presales title and impact",
     )
     assert_true(len(nac_risk["title"]) <= 58, "Risk-card title can overlap the impact block")
+    complete_title = namespace["presentation_risk_entry"]({
+        "level": "HIGH",
+        "risk": "Не описан план аварийного восстановления критичных сервисов",
+        "impact": "Восстановление может не уложиться в согласованное время.",
+        "recommendation": "Определить RTO/RPO и провести учение.",
+    })
+    assert_true(
+        complete_title["title"].endswith("сервисов"),
+        f"Risk title was cut mid-sentence: {complete_title['title']}",
+    )
     dlp_risk = namespace["presentation_risk_entry"]({
         "_source": "Groq",
         "level": "HIGH",
@@ -579,8 +589,8 @@ def test_confirmed_it_gaps_must_be_covered_by_ai() -> None:
     results = {
         "_user_count": 650,
         "WiFi Точки": 12,
-        "_main_speed": 1000,
-        "_back_speed": 50,
+        "_main_speed": "1000 Mbit/s",
+        "_back_speed": "50 Mbit/s",
         "WiFi Контроллер": "Нет",
         "1.1. Примечание": "Единый CMDB отсутствует.",
         "1.2. Примечание": "Wi-Fi перегружен, резервный канал слабый, мониторинг без единой панели.",
@@ -671,6 +681,21 @@ def test_presentation_evidence_and_maturity_palette() -> None:
     )
     assert_true("компрометац" not in evidence.lower(), f"ITAM evidence is semantically wrong: {evidence}")
     assert_true("реестр" in evidence.lower(), f"ITAM evidence must state the actual data gap: {evidence}")
+
+    wifi_evidence = namespace["presentation_evidence_for_key"](
+        "wifi_capacity",
+        {
+            "_user_count": 650,
+            "Wi-Fi Точки доступа": 12,
+            "Wi-Fi Контроллер": "Нет",
+        },
+        {"users": 650, "servers": 22},
+        {},
+    )
+    assert_true(
+        "650" in wifi_evidence and "12" in wifi_evidence and "Нет" in wifi_evidence,
+        f"Wi-Fi evidence lost questionnaire values: {wifi_evidence}",
+    )
 
     palette = namespace["presentation_maturity_style"]
     assert_true(palette(20)[0] == "#D92D20", "Low maturity must be red")

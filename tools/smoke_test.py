@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.26-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.27-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -220,6 +220,11 @@ def check_static_hooks() -> None:
         "Confirmed Wi-Fi and WAN resilience gaps must both be mandatory",
     )
     assert_true("gemini_quality_attempts" in text, "Gemini must exhaust bounded quality attempts before Groq")
+    assert_true("minimal_prompt = f\"\"\"" in text, "Gemini compact retry prompt is missing")
+    assert_true(
+        text.count("{confirmed_it_gaps_text}") >= 3,
+        "Every Gemini retry format must retain confirmed IT gaps",
+    )
     assert_true("stop_gemini = True" not in text, "Gemini must not be abandoned after its first incomplete response")
     assert_true("minimum_ai_items" in text, "Gemini quality threshold must adapt to confirmed gaps")
     assert_true("call_groq_with_rate_limit_retry" in text, "Groq rate-limit retry is missing")

@@ -48,6 +48,8 @@ Planned customer-visible improvement:
 - Kept technical audit depth consistent across industries by recovering confirmed recommendations from the complete analysis and roadmap, not only one response section.
 - Expanded concise technology findings into clear customer-facing risk titles without weakening questionnaire fact checks.
 - Improved recommendation consistency so network admission, identity lifecycle, and privileged access are described as separate, evidence-based initiatives.
+- Improved the executive summary, preserved complete risk wording, and made sparse 90-day plans continue the actual confirmed priorities instead of repeating generic text.
+- Strengthened WAN resilience detection when questionnaire speeds include units and improved Wi-Fi evidence shown in recommendations.
 - Refined presentation risk cards to prevent long titles from overlapping impact text.
 - Fixed presentation generation for recommendations produced by the expert analysis service.
 - Aligned the 90-day plan with confirmed recommendations, removed manufacturer names, and clarified assessment, pilot, and rollout stages.
