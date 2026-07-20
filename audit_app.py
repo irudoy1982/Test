@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.30-dev"
+APP_VERSION = "12.31-dev"
 
 
 def get_app_instance_label():
@@ -9865,6 +9865,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
 def render_audit_presentation_template(template_path, replacements):
     import zipfile
     import xml.etree.ElementTree as ET
+    import uuid
     from xml.sax.saxutils import escape
 
     recommendation_count = max(0, int(replacements.get("__RECOMMENDATION_COUNT__", 8)))
@@ -9946,13 +9947,34 @@ def render_audit_presentation_template(template_path, replacements):
         clone_xml = clone_xml.replace("B20008", f"B2{second_recommendation:04d}")
         clone_xml = clone_xml.replace(">07<", f">{first_recommendation:02d}<")
         clone_xml = clone_xml.replace(">08<", f">{second_recommendation:02d}<")
-        package_files[new_slide_path] = clone_xml.encode("utf-8")
+        clone_root = ET.fromstring(clone_xml)
+        for node in clone_root.iter():
+            if not node.tag.endswith("creationId"):
+                continue
+            if "id" in node.attrib:
+                node.set("id", "{" + str(uuid.uuid4()).upper() + "}")
+            if "val" in node.attrib:
+                node.set("val", str(uuid.uuid4().int & 0x7FFFFFFF))
+        package_files[new_slide_path] = ET.tostring(
+            clone_root,
+            encoding="utf-8",
+            xml_declaration=True,
+        )
         extra_slide_paths.append(new_slide_path)
 
         source_rels_path = "ppt/slides/_rels/slide10.xml.rels"
         if source_rels_path in package_files:
             new_rels_path = f"ppt/slides/_rels/slide{new_slide_number}.xml.rels"
-            package_files[new_rels_path] = package_files[source_rels_path]
+            clone_rels_root = ET.fromstring(package_files[source_rels_path])
+            for relationship in list(clone_rels_root):
+                if relationship.get("Type", "").endswith("/notesSlide"):
+                    clone_rels_root.remove(relationship)
+            ET.register_namespace("", relationships_ns)
+            package_files[new_rels_path] = ET.tostring(
+                clone_rels_root,
+                encoding="utf-8",
+                xml_declaration=True,
+            )
             extra_slide_paths.append(new_rels_path)
 
         new_rel_id = f"rId{next_rel_number + extra_index}"

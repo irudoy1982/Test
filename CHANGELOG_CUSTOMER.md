@@ -8,6 +8,7 @@ Keep this file focused only on customer-visible questionnaire and report changes
 Status: in development in Test.
 
 Planned customer-visible improvement:
+- Fixed PowerPoint compatibility when an audit contains more than eight recommendations.
 - Preserved questionnaire-confirmed WAN resilience and IT-monitoring findings even when an analysis response omits them.
 - Reordered the 90-day plan around immediate risk reduction, followed by pilots and controlled rollout.
 - Unified the detailed conclusion and presentation roadmap around the same confirmed findings, with complete wording and correctly ordered assessment, pilot, and rollout steps.

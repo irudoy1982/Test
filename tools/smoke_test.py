@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.30-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.31-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -770,6 +770,22 @@ def check_dynamic_presentation_range() -> None:
                 if name.startswith("ppt/slides/slide") and name.endswith(".xml")
             )
             assert_true("{{REC_" not in active_xml, f"Unresolved recommendation token at count {recommendation_count}")
+            creation_ids = re.findall(r"(?:creationId[^>]+(?:id|val)=\")([^\"]+)", active_xml)
+            assert_true(
+                len(creation_ids) == len(set(creation_ids)),
+                f"Duplicate Office creation IDs at count {recommendation_count}",
+            )
+            notes_targets = []
+            for rels_name in archive.namelist():
+                if not rels_name.startswith("ppt/slides/_rels/slide") or not rels_name.endswith(".rels"):
+                    continue
+                rels_xml = archive.read(rels_name).decode("utf-8")
+                notes_targets.extend(re.findall(r'Type="[^"]+/notesSlide"\s+Target="([^"]+)"', rels_xml))
+                notes_targets.extend(re.findall(r'Target="([^"]+)"\s+[^>]*Type="[^"]+/notesSlide"', rels_xml))
+            assert_true(
+                len(notes_targets) == len(set(notes_targets)),
+                f"Multiple slides share the same notes part at count {recommendation_count}",
+            )
 
 
 def check_sample_drafts() -> None:
