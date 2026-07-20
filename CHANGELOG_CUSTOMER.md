@@ -47,6 +47,7 @@ Planned customer-visible improvement:
 - Refined presentation risk cards to prevent long titles from overlapping impact text.
 - Fixed presentation generation for recommendations produced by the expert analysis service.
 - Aligned the 90-day plan with confirmed recommendations, removed manufacturer names, and clarified assessment, pilot, and rollout stages.
+- Corrected DLP risk wording and evidence, and removed repeated technology actions within each roadmap stage.
 
 ## v12.0.0
 

@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.19-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.20-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -215,8 +215,9 @@ def check_static_hooks() -> None:
     assert_true("Сервис формирования экспертного заключения временно недоступен" in text, "Customer-safe generation error is missing")
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")
     assert_true("partial_recommendation_slide" in text, "Odd recommendation counts must use a single-card final slide")
-    assert_true("if roadmap_key not in recommendation_keys:" in text, "Roadmap must exclude topics without a confirmed recommendation")
+    assert_true("entry = recommendation_by_key.get(roadmap_key)" in text, "Roadmap must exclude topics without a confirmed recommendation")
     assert_true("def staged_roadmap_action" in text, "Roadmap must provide assessment, pilot, and rollout stages")
+    assert_true("roadmap_keys_by_phase" in text, "Roadmap must deduplicate technologies within each phase")
     assert_true("recover_complete_risk_objects(response_text)" in text, "Malformed AI JSON recovery is missing")
 
 
@@ -468,7 +469,13 @@ def check_presentation_fact_guards() -> None:
         {"DLP": "Нет"},
         {"is_kvoiki": True, "has_personal_data": True},
     )
-    assert_true(dlp_item["level"] == "HIGH", "KVOIKI DLP gap must be high priority")
+    assert_true(
+        dlp_item["level"] == "HIGH"
+        and dlp_item["risk"].endswith("персональных данных")
+        and "DLP в анкете" in dlp_item["evidence"][0]
+        and "виртуализац" not in " ".join(dlp_item["evidence"]).lower(),
+        "KVOIKI DLP gap must have a complete title and DLP-specific evidence",
+    )
     backup_item = enforce(
         {
             "level": "HIGH",

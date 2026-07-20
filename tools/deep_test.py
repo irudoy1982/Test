@@ -471,6 +471,17 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "Known NAC findings must use the fact-safe presales title and impact",
     )
     assert_true(len(nac_risk["title"]) <= 58, "Risk-card title can overlap the impact block")
+    dlp_risk = namespace["presentation_risk_entry"]({
+        "_source": "Groq",
+        "level": "HIGH",
+        "risk": "Отсутствие DLP повышает вероятность утечки персональных",
+        "impact": "Возможны регуляторные последствия.",
+        "recommendation": "Провести пилот DLP.",
+    })
+    assert_true(
+        dlp_risk["title"] == "Отсутствие DLP повышает риск утечки персональных данных",
+        "DLP risk title must be complete and use the fact-safe presales profile",
+    )
 
 
 def test_it_maturity_measures_controls_not_infrastructure_size() -> None:
