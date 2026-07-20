@@ -577,6 +577,17 @@ def test_confirmed_it_gaps_must_be_covered_by_ai() -> None:
     assert_true(len(matched) == 5, f"Expected five covered IT gaps, got {matched}")
     assert_true(set(missing) == {"change_management", "dr"}, f"Unexpected missing IT gaps: {missing}")
 
+    combined_item = [{
+        "risk": "CMDB и управление изменениями требуют формализации",
+        "description": "Учет активов и планы отката не связаны.",
+        "recommendation": "Настроить CMDB, согласование изменений и контроль восстановления по RTO/RPO.",
+    }]
+    combined_matched, _ = namespace["ai_it_gap_coverage"](combined_item, expected)
+    assert_true(
+        {"itam", "change_management", "dr"}.issubset(combined_matched),
+        f"One complete AI recommendation must be able to cover related gaps: {combined_matched}",
+    )
+
 
 def test_ai_presentation_recommendation_path() -> None:
     module_text = APP.read_text(encoding="utf-8")

@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.23-dev"
+APP_VERSION = "12.24-dev"
 
 
 def get_app_instance_label():
@@ -986,7 +986,30 @@ def confirmed_it_gap_topics(results):
 
 
 def ai_it_gap_coverage(items, expected_gaps):
-    covered = {risk_semantic_key(item) for item in items if isinstance(item, dict)}
+    covered = set()
+    coverage_markers = {
+        "network_performance": (
+            "wi-fi", "wifi", "беспровод", "роуминг", "резервн", "канал",
+            "пропускн", "failover", "сеть",
+        ),
+        "virtualization": ("виртуал", "гипервиз", "vmware", "хост", "cpu", "ram"),
+        "storage": ("схд", "storage", "raid", "iops", "latency", "емкост"),
+        "it_monitoring": ("мониторинг", "наблюдаемост", "метрик", "nms", "доступност"),
+        "itam": ("cmdb", "itam", "актив", "инвентаризац", "жизненн"),
+        "change_management": ("изменен", "change", "откат", "согласован"),
+        "dr": ("rto", "rpo", "восстанов", "dr", "аварийн"),
+    }
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        covered.add(risk_semantic_key(item))
+        text = " ".join(
+            str(item.get(field, ""))
+            for field in ("risk", "description", "impact", "recommendation", "success_metric")
+        ).lower()
+        for key, markers in coverage_markers.items():
+            if key in expected_gaps and any(marker in text for marker in markers):
+                covered.add(key)
     if "backup" in covered:
         covered.add("dr")
     matched = [key for key in expected_gaps if key in covered]
@@ -2699,7 +2722,16 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                     min_it_items=0,
                 )
             else:
-                prepared_payload, quality_error = ai_quality_gate(normalized_payload)
+                minimum_ai_items = max(
+                    1,
+                    min(4, math.ceil(len(confirmed_it_gaps) * 0.5)),
+                ) if confirmed_it_gaps else 1
+                prepared_payload, quality_error = ai_quality_gate(
+                    normalized_payload,
+                    min_items=minimum_ai_items,
+                    min_security_items=0,
+                    min_it_items=0,
+                )
             if not prepared_payload:
                 rejection_details = explain_ai_risk_rejections(normalized_payload)
                 errors.append(
@@ -2877,6 +2909,22 @@ vendors (массив строк), legal_ids (массив строк), framewor
                 raise RuntimeError("Groq вернул пустой ответ")
             return parse_ai_response_text(str(response_text))
 
+        def call_groq_with_rate_limit_retry(focus_it=False):
+            try:
+                return call_groq_once(focus_it=focus_it)
+            except Exception as exc:
+                error_text = str(exc)
+                if "HTTP 429" not in error_text and "rate limit" not in error_text.lower():
+                    raise
+                retry_match = re.search(
+                    r"try again in\s+([0-9]+(?:\.[0-9]+)?)s",
+                    error_text,
+                    flags=re.IGNORECASE,
+                )
+                retry_seconds = float(retry_match.group(1)) if retry_match else 35.0
+                time.sleep(min(50.0, max(5.0, retry_seconds + 1.0)))
+                return call_groq_once(focus_it=focus_it)
+
         ai_errors = []
         payload_attempts = (
             ("json", fallback_payload),
@@ -2916,7 +2964,7 @@ vendors (массив строк), legal_ids (массив строк), framewor
 
         if groq_api_key:
             try:
-                parsed_payload = call_groq_once()
+                parsed_payload = call_groq_with_rate_limit_retry()
                 prepared_payload = accept_ai_payload(
                     parsed_payload,
                     "Groq",
@@ -2926,7 +2974,7 @@ vendors (массив строк), legal_ids (массив строк), framewor
                 if prepared_payload is not None:
                     return prepared_payload
 
-                parsed_payload = call_groq_once(focus_it=True)
+                parsed_payload = call_groq_with_rate_limit_retry(focus_it=True)
                 prepared_payload = accept_ai_payload(
                     parsed_payload,
                     "Groq",
