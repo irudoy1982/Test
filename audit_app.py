@@ -104,7 +104,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.20-dev"
+APP_VERSION = "12.21-dev"
 
 
 def get_app_instance_label():
@@ -2550,9 +2550,9 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 missing_narrative.append("roadmap phases<2")
             if missing_narrative:
                 errors.append(
-                    f"{provider_label}: неполный материал для презентации ({', '.join(missing_narrative)})"
+                    f"{provider_label}: часть презентационного материала будет дополнена "
+                    f"экспертным движком ({', '.join(missing_narrative)})"
                 )
-                return None
             raw_candidate_count = count_ai_risk_candidates(parsed_payload)
             normalized_payload = normalize_ai_risks_payload(parsed_payload)
             normalized_payload = augment_ai_risks_from_narrative(
@@ -2615,7 +2615,19 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
             st.session_state.ai_analysis_succeeded = True
             return prepared_payload
 
-        def call_groq_once():
+        def call_groq_once(focus_it=False):
+            focus_instruction = ""
+            if focus_it:
+                focus_instruction = """
+Предыдущий ответ был отклонен, потому что предлагал уже внедренные ИБ-контроли.
+Сформируй рекомендации ТОЛЬКО по подтвержденным ИТ-разрывам из фактов и примечаний:
+производительность и управляемость Wi-Fi, емкость каналов и failover, мониторинг,
+capacity planning серверов/виртуализации/СХД, CMDB/ITAM, change management,
+SLA, RTO/RPO, тесты восстановления и эксплуатационные процессы. Не упоминай
+внедрение DLP, SIEM, EDR/XDR, MFA, PAM, WAF, NAC, patch management и других
+контролей, если они перечислены в блоке «Уже внедрено». Не создавай ИБ-риск
+только ради баланса доменов.
+""".strip()
             groq_prompt = f"""
 Ты senior-аудитор ИТ и ИБ. Проанализируй только факты обезличенной анкеты.
 Верни от 4 до 6 законченных подтвержденных рекомендаций по ИТ и ИБ, если в блоке
@@ -2623,6 +2635,8 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
 который используется в roadmap, обязательно представь отдельным объектом в risks.
 Не добавляй искусственные пункты ради количества. Если ответ не помещается, сократи число
 пунктов, но обязательно заверши JSON и каждую выданную рекомендацию.
+
+{focus_instruction}
 
 Верни только валидный JSON-объект со следующими корневыми полями:
 - executive_summary: 3 коротких содержательных вывода для руководителя;
@@ -2783,6 +2797,16 @@ vendors (массив строк), legal_ids (массив строк), framewor
         if groq_api_key:
             try:
                 parsed_payload = call_groq_once()
+                prepared_payload = accept_ai_payload(
+                    parsed_payload,
+                    "Groq",
+                    groq_model,
+                    ai_errors,
+                )
+                if prepared_payload is not None:
+                    return prepared_payload
+
+                parsed_payload = call_groq_once(focus_it=True)
                 prepared_payload = accept_ai_payload(
                     parsed_payload,
                     "Groq",
@@ -5305,12 +5329,20 @@ def calculate_weighted_security_score(enabled, controls):
     if not enabled:
         return 0
 
-    total = 0
+    available_weight = sum(max(0, weight) for _, _, weight in controls)
+    if available_weight <= 0:
+        return 0
+
+    earned_weight = 0
     for is_enabled, vendor, weight in controls:
         if is_enabled and str(vendor).strip():
-            total += weight
+            earned_weight += max(0, weight)
 
-    return min(100, total)
+    # Анкета подтверждает наличие средств защиты, но не качество настройки,
+    # покрытие активов и эффективность реагирования. Поэтому самооценка без
+    # проверки артефактов не может означать абсолютные 100% зрелости.
+    normalized_score = round((earned_weight / available_weight) * 92)
+    return min(92, max(0, normalized_score))
 
 
 def calculate_it_maturity_score(
@@ -5339,6 +5371,9 @@ def calculate_it_maturity_score(
     dev_count,
     sel_langs,
     cicd_active,
+    wifi_enabled=False,
+    wifi_ctrl_enabled=False,
+    operational_notes=None,
 ):
     earned = 0.0
     available = 20.0
@@ -5393,9 +5428,62 @@ def calculate_it_maturity_score(
         earned += 4 if cicd_active else 0
 
     score = round((earned / available) * 100) if available else 0
-    # Анкета не подтверждает ITSM, capacity management и регулярность DR-тестов,
-    # поэтому оптимальность выше 95% по ее данным доказать нельзя.
-    return min(95, max(0, score))
+    penalty = 0
+
+    if net_active and main_speed > 0 and total_arm > 0:
+        bandwidth_per_arm = main_speed / total_arm
+        if bandwidth_per_arm < 1:
+            penalty += 5
+        elif bandwidth_per_arm < 2:
+            penalty += 2
+
+    if net_active and main_speed > 0:
+        reserve_ratio = back_speed / main_speed if back_speed > 0 else 0
+        if reserve_ratio == 0:
+            penalty += 10
+        elif reserve_ratio < 0.1:
+            penalty += 7
+        elif reserve_ratio < 0.25:
+            penalty += 4
+
+    if net_active and wifi_enabled and ap_cnt > 0 and total_arm > 0:
+        endpoints_per_ap = total_arm / ap_cnt
+        if endpoints_per_ap > 50:
+            penalty += 7
+        elif endpoints_per_ap > 30:
+            penalty += 4
+        if ap_cnt >= 4 and not wifi_ctrl_enabled:
+            penalty += 6
+
+    notes = " ".join(str(value or "") for value in (operational_notes or [])).lower()
+    if any(marker in notes for marker in (
+        "без единой панели", "не объединен в единый контур",
+        "разрозненный мониторинг", "разрозненные системы мониторинга",
+    )):
+        penalty += 4
+    if any(marker in notes for marker in (
+        "capacity planning не", "запас вычислительной мощности недостаточ",
+        "запас мощности недостаточ", "перегружена виртуализац",
+    )):
+        penalty += 4
+    if (
+        ("rto" in notes or "rpo" in notes)
+        and any(marker in notes for marker in ("не согласован", "не определен", "не утвержден"))
+    ) or ("восстанов" in notes and "нерегуляр" in notes):
+        penalty += 4
+    if any(marker in notes for marker in (
+        "cmdb отсутств", "изменения согласуются в чат",
+        "календарь изменений" , "план отката используются не",
+    )):
+        penalty += 4
+
+    storage_fill = re.search(r"(?:схд|хранилищ\w*)[^.]{0,50}(\d{2,3})\s*%", notes)
+    if storage_fill and int(storage_fill.group(1)) >= 80:
+        penalty += 4
+
+    # Наличие оборудования и ПО не равно зрелости эксплуатации. Верхняя граница
+    # отражает отсутствие проверки SLA, ITSM, capacity и DR-артефактов в анкете.
+    return min(90, max(0, score - penalty))
 
 
 def build_context(results, client_info):
@@ -10874,6 +10962,15 @@ it_maturity_score = calculate_it_maturity_score(
     dev_count,
     sel_langs,
     cicd_active,
+    wifi_enabled=wifi_enabled,
+    wifi_ctrl_enabled=wifi_ctrl_enabled,
+    operational_notes=[
+        st.session_state.get("note_1_1", ""),
+        st.session_state.get("note_1_2", ""),
+        st.session_state.get("note_1_3", ""),
+        st.session_state.get("note_1_4", ""),
+        st.session_state.get("note_1_5", ""),
+    ],
 )
 
 section_statuses = [

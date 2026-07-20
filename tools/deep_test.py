@@ -486,7 +486,7 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
 
 def test_it_maturity_measures_controls_not_infrastructure_size() -> None:
     module_text = APP.read_text(encoding="utf-8")
-    namespace: dict[str, object] = {}
+    namespace: dict[str, object] = {"re": re}
     exec(extract_function_source(module_text, "calculate_it_maturity_score"), namespace)
     score = namespace["calculate_it_maturity_score"](
         420, ["Windows 10", "Windows 11"], 420,
@@ -495,7 +495,40 @@ def test_it_maturity_measures_controls_not_infrastructure_size() -> None:
         True, ["HDD", "SSD"], 24, 16, ["RAID 10"],
         True, True, True, 12, ["Python"], True,
     )
-    assert_true(score <= 95, f"Questionnaire-only IT maturity cannot be 100%, got {score}")
+    assert_true(score <= 90, f"Questionnaire-only IT maturity cannot imply full optimization, got {score}")
+
+    degraded_score = namespace["calculate_it_maturity_score"](
+        650, ["Windows 11", "macOS"], 650,
+        True, 1000, 50, ["OSPF"], 12, "Check Point",
+        True, 8, 60, ["VMware"], "Veeam",
+        True, ["HDD", "SSD"], 36, 12, ["RAID 6", "RAID 10"],
+        True, True, False, 0, [], False,
+        wifi_enabled=True,
+        wifi_ctrl_enabled=False,
+        operational_notes=[
+            "CMDB отсутствует; изменения согласуются в чатах.",
+            "Wi-Fi без единой панели; capacity planning не формализован.",
+            "RTO и RPO не согласованы, восстановление тестируется нерегулярно.",
+            "СХД заполнена на 84%.",
+        ],
+    )
+    assert_true(
+        degraded_score < 60,
+        f"Confirmed operational IT gaps must materially reduce maturity, got {degraded_score}",
+    )
+
+
+def test_security_maturity_is_normalized_and_evidence_capped() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace: dict[str, object] = {}
+    exec(extract_function_source(module_text, "calculate_weighted_security_score"), namespace)
+    controls = [(True, f"Vendor {index}", weight) for index, weight in enumerate((8, 12, 8, 10, 6, 5), start=1)]
+    score = namespace["calculate_weighted_security_score"](True, controls)
+    assert_true(score == 92, f"Self-reported security maturity must be capped at 92%, got {score}")
+
+    partial = [(True, "Vendor", 10), (False, "", 10), (False, "", 10)]
+    partial_score = namespace["calculate_weighted_security_score"](True, partial)
+    assert_true(partial_score == 31, f"Security score must be normalized by available weight, got {partial_score}")
 
 
 def test_ai_presentation_recommendation_path() -> None:
@@ -567,6 +600,7 @@ def main() -> None:
         test_presentation_actions_are_complete_and_deduplicated,
         test_ai_presentation_recommendation_path,
         test_it_maturity_measures_controls_not_infrastructure_size,
+        test_security_maturity_is_normalized_and_evidence_capped,
         test_presentation_evidence_and_maturity_palette,
     ]
     for test in tests:
