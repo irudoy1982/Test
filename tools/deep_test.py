@@ -639,6 +639,48 @@ def test_canonical_roadmap_uses_only_confirmed_findings() -> None:
         assert_true(sum(item["phase"] == phase for item in roadmap) == 2, f"Roadmap phase is incomplete: {phase}")
 
 
+def test_confirmed_wan_and_monitoring_survive_ai_omission() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {
+        "re": re,
+        "IT_GAP_LABELS": {
+            "wifi_capacity": "Wi-Fi",
+            "network_performance": "WAN",
+            "virtualization": "Виртуализация",
+            "storage": "СХД",
+            "it_monitoring": "ИТ-мониторинг",
+            "itam": "CMDB",
+            "change_management": "Изменения",
+            "dr": "DR",
+        },
+    }
+    for name in ("confirmed_it_gap_topics", "build_confirmed_it_gap_risks"):
+        exec(extract_function_source(module_text, name), namespace)
+
+    results = {
+        "_user_count": 650,
+        "WiFi Точки": 12,
+        "WiFi Контроллер": "Нет",
+        "_main_speed": 1000,
+        "_back_speed": 50,
+        "1.2. Примечание": (
+            "Переключение на резервный канал тестируется нерегулярно. "
+            "Мониторинг доступности ведется отдельными утилитами без единой панели и SLA."
+        ),
+        "1.3. Примечание": (
+            "Capacity planning не формализован. Инфраструктурный мониторинг серверов, "
+            "виртуализации, СХД и каналов не объединен в единый контур."
+        ),
+    }
+    findings = namespace["build_confirmed_it_gap_risks"](results, {})
+    by_key = {item["semantic_key"]: item for item in findings}
+    assert_true("network_performance" in by_key, "Confirmed weak backup channel was omitted")
+    assert_true("it_monitoring" in by_key, "Confirmed fragmented IT monitoring was omitted")
+    wan = by_key["network_performance"]
+    assert_true("1000" in wan["description"] and "50" in wan["description"], "WAN evidence lost questionnaire speeds")
+    assert_true(wan["level"] == "HIGH", "A 5% backup channel with irregular failover should be high priority")
+
+
 def test_it_maturity_measures_controls_not_infrastructure_size() -> None:
     module_text = APP.read_text(encoding="utf-8")
     namespace: dict[str, object] = {"re": re}
@@ -837,6 +879,7 @@ def main() -> None:
         test_presentation_text_is_self_contained,
         test_presentation_actions_are_complete_and_deduplicated,
         test_canonical_roadmap_uses_only_confirmed_findings,
+        test_confirmed_wan_and_monitoring_survive_ai_omission,
         test_ai_presentation_recommendation_path,
         test_it_maturity_measures_controls_not_infrastructure_size,
         test_security_maturity_is_normalized_and_evidence_capped,

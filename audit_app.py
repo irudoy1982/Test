@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.29-dev"
+APP_VERSION = "12.30-dev"
 
 
 def get_app_instance_label():
@@ -1005,6 +1005,117 @@ def confirmed_it_gap_topics(results):
         gaps["dr"] = IT_GAP_LABELS["dr"]
 
     return gaps
+
+
+def build_confirmed_it_gap_risks(results, context):
+    """Convert questionnaire-confirmed IT gaps into fact-safe fallback findings."""
+    gaps = confirmed_it_gap_topics(results)
+    if not gaps:
+        return []
+
+    def number(value):
+        match = re.search(r"-?\d+(?:[.,]\d+)?", str(value or ""))
+        return float(match.group(0).replace(",", ".")) if match else 0.0
+
+    users = int(number(results.get("_user_count")))
+    access_points = int(number(results.get("WiFi Точки")))
+    main_speed = number(results.get("_main_speed") or results.get("Интернет канал (осн)"))
+    backup_speed = number(results.get("_back_speed") or results.get("Резервный канал"))
+    templates = {
+        "wifi_capacity": {
+            "level": "HIGH" if users and access_points and users / access_points > 45 else "MEDIUM",
+            "risk": "Емкость и централизованное управление Wi-Fi требуют усиления",
+            "description": (
+                f"В анкете указано {access_points} точек доступа для контура из {users} рабочих мест; "
+                f"Wi-Fi контроллер: {results.get('WiFi Контроллер', 'Нет')}."
+            ),
+            "impact": "Перегрузка радиоэфира и отсутствие единого управления могут снижать качество связи, роуминга и видеоконференций.",
+            "recommendation": "Провести радиообследование, определить требуемую плотность точек доступа и выполнить пилот централизованного WLAN-управления.",
+            "success_metric": "Покрытие и емкость подтверждены радиообследованием; пиковая загрузка точек остается в целевых пределах",
+            "vendors": ["Wi-Fi", "WLAN"],
+        },
+        "network_performance": {
+            "level": "HIGH" if main_speed and (backup_speed <= 0 or backup_speed / main_speed < 0.1) else "MEDIUM",
+            "risk": "Резервный канал не обеспечивает подтвержденную отказоустойчивость",
+            "description": (
+                f"Основной канал: {int(main_speed)} Mbit/s; резервный канал: "
+                f"{int(backup_speed)} Mbit/s. Автоматическое переключение и независимость трасс требуют подтверждения."
+            ),
+            "impact": "При отказе основного канала критичные облачные сервисы, удаленная работа и коммуникации могут деградировать или стать недоступными.",
+            "recommendation": "Определить требуемую резервную полосу и SLA, проверить независимость операторов и трасс, затем провести тест автоматического failover под рабочей нагрузкой.",
+            "success_metric": "Резервный канал выдерживает согласованную критичную нагрузку; failover проходит в пределах SLA",
+            "vendors": ["Network Equipment", "SD-WAN"],
+        },
+        "virtualization": {
+            "level": "HIGH",
+            "risk": "Виртуальной среде требуется подтвержденный запас ресурсов",
+            "description": "Примечания анкеты указывают на недостаточный ресурсный запас или отсутствие формализованного capacity planning виртуальной среды.",
+            "impact": "Недостаточный запас повышает вероятность деградации или простоя критичных сервисов при росте нагрузки и отказе хоста.",
+            "recommendation": "Провести capacity-анализ, проверить сценарий отказа хоста и подготовить план расширения вычислительных ресурсов.",
+            "success_metric": "Запас ресурсов подтвержден для отказа одного хоста и прогнозируемого роста нагрузки",
+            "vendors": ["Virtualization"],
+        },
+        "storage": {
+            "level": "HIGH",
+            "risk": "Емкость и производительность СХД требуют управляемого плана развития",
+            "description": "Анкета подтверждает высокий уровень заполнения, отсутствие утвержденного порога расширения или недостаточную глубину статистики производительности СХД.",
+            "impact": "Исчерпание емкости или деградация производительности могут остановить зависимые бизнес-системы и усложнить восстановление.",
+            "recommendation": "Провести health-check СХД, утвердить пороги расширения и план развития емкости, производительности и репликации.",
+            "success_metric": "Запас емкости и производительности контролируется по утвержденным порогам и прогнозу роста",
+            "vendors": ["Storage"],
+        },
+        "it_monitoring": {
+            "level": "HIGH",
+            "risk": "ИТ-мониторинг не объединен в единый эксплуатационный контур",
+            "description": "Примечания анкеты подтверждают разрозненный контроль серверов, виртуализации, СХД или каналов без единой панели и SLA реакции.",
+            "impact": "Команда позднее обнаруживает деградацию сервисов и не имеет единой картины доступности, производительности и емкости.",
+            "recommendation": "Определить критичные сервисы и метрики, провести пилот единого ИТ-мониторинга и связать оповещения с ответственными и SLA реакции.",
+            "success_metric": "Критичные сервисы имеют единые метрики, пороги, владельцев реакции и отчетность по SLA",
+            "vendors": ["IT Monitoring", "NMS"],
+        },
+        "itam": {
+            "level": "HIGH",
+            "risk": "Учет ИТ-активов и сервисов не централизован",
+            "description": "Примечания анкеты подтверждают отсутствие единой CMDB, каталога услуг или управляемого жизненного цикла ИТ-активов.",
+            "impact": "Неполные данные об активах и зависимостях замедляют устранение инцидентов, изменения и планирование бюджета.",
+            "recommendation": "Сформировать модель данных CMDB, назначить владельцев и связать активы с сервисами, изменениями и SLA.",
+            "success_metric": "Не менее 95% критичных активов и сервисов имеют владельца, зависимости и актуальный статус",
+            "vendors": ["ITAM", "ITSM", "CMDB"],
+        },
+        "change_management": {
+            "level": "HIGH",
+            "risk": "Управление изменениями не формализовано",
+            "description": "Примечания анкеты подтверждают согласование изменений в чатах или неполное применение календаря изменений и планов отката.",
+            "impact": "Непроверенные изменения повышают вероятность простоев и усложняют восстановление и расследование инцидентов.",
+            "recommendation": "Ввести единый процесс регистрации, оценки риска, согласования, тестирования и отката продуктивных изменений.",
+            "success_metric": "Все продуктивные изменения имеют владельца, согласование, тест и план отката",
+            "vendors": ["ITSM", "Change Management", "CMDB"],
+        },
+        "dr": {
+            "level": "HIGH",
+            "risk": "RTO/RPO и регулярное тестирование восстановления не формализованы",
+            "description": "Примечания анкеты подтверждают отсутствие согласованных RTO/RPO или нерегулярное полное тестовое восстановление.",
+            "impact": "Наличие резервных копий не гарантирует восстановление критичных сервисов в приемлемые для бизнеса сроки.",
+            "recommendation": "Согласовать RTO/RPO, провести контрольное восстановление и утвердить регулярные DR-учения с фиксацией результатов.",
+            "success_metric": "Критичные сервисы проходят регулярный тест восстановления в пределах утвержденных RTO/RPO",
+            "vendors": ["DR", "Backup"],
+        },
+    }
+
+    findings = []
+    for key in gaps:
+        template = templates.get(key)
+        if not template:
+            continue
+        findings.append({
+            **template,
+            "semantic_key": key,
+            "_semantic_key": key,
+            "_ai_area": "ИТ",
+            "_source": "Базовые правила",
+            "evidence": [templates[key]["description"]],
+        })
+    return findings
 
 
 def ai_it_gap_coverage(items, expected_gaps):
@@ -8448,6 +8559,7 @@ def build_report_risk_set(c_info, results, context):
             for item in ai_risks
             if isinstance(item, dict)
         ])
+    combined_risks.extend(build_confirmed_it_gap_risks(results, context))
     combined_risks.extend(rule_risks)
 
     priority_order = {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4}
@@ -9020,6 +9132,9 @@ def presentation_success_metric(semantic_key):
         "itam": "Не менее 95% активов имеют владельца и актуальный статус",
         "change_management": "Все продуктивные изменения имеют согласование и план отката",
         "it_monitoring": "Критичные сервисы имеют метрики, пороги и владельцев реакции",
+        "virtualization": "Запас ресурсов подтвержден для отказа одного хоста и прогнозируемого роста",
+        "storage": "Емкость и производительность контролируются по утвержденным порогам и прогнозу",
+        "dr": "Критичные сервисы проходят тест восстановления в пределах утвержденных RTO/RPO",
     }
     return metrics.get(semantic_key, "Владелец, срок и измеримый критерий результата утверждены")
 
@@ -9028,6 +9143,11 @@ def canonical_roadmap_action(item, phase):
     """Build one stage-appropriate action from a confirmed audit finding."""
     key = risk_semantic_key(item)
     actions = {
+        "legacy_os": {
+            "0-30 дней": "Изолировать или обновить устройства на неподдерживаемых ОС и утвердить срок полной миграции.",
+            "31-60 дней": "Завершить миграцию приоритетных legacy-устройств и проверить совместимость прикладного ПО.",
+            "61-90 дней": "Закрыть согласованный legacy-контур и включить контроль сроков поддержки ОС.",
+        },
         "virtualization": {
             "0-30 дней": "Провести capacity-анализ виртуальной среды, проверить запас на отказ одного хоста и прогноз роста нагрузки.",
             "31-60 дней": "Утвердить план расширения вычислительных ресурсов по результатам capacity-анализа.",
@@ -9052,6 +9172,11 @@ def canonical_roadmap_action(item, phase):
             "0-30 дней": "Описать текущий поток изменений, владельцев, точки согласования и причины неуспешных изменений.",
             "31-60 дней": "Внедрить единый процесс согласования, тестирования и отката изменений с обязательной регистрацией.",
             "61-90 дней": "Закрепить процесс управления изменениями метриками качества и регулярным разбором отклонений.",
+        },
+        "itam": {
+            "0-30 дней": "Определить владельцев, обязательные атрибуты активов и границы первого контура CMDB.",
+            "31-60 дней": "Провести пилот CMDB и связать критичные активы с сервисами, изменениями и SLA.",
+            "61-90 дней": "Расширить CMDB на целевой контур и включить регулярный контроль качества данных.",
         },
         "it_monitoring": {
             "0-30 дней": "Определить критичные сервисы, метрики доступности и производительности, пороги и владельцев реакции.",
@@ -9105,6 +9230,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
     """Create the Excel and PowerPoint roadmap from one fact-checked finding set."""
     phase_order = ("0-30 дней", "31-60 дней", "61-90 дней")
     preferred_phase = {
+        "legacy_os": "0-30 дней",
         "virtualization": "0-30 дней",
         "storage": "0-30 дней",
         "network_performance": "0-30 дней",
@@ -9134,11 +9260,13 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "LOW": "P3", "НИЗКИЙ": "P3",
     }
     domain_by_key = {
+        "legacy_os": "Конечные устройства",
         "virtualization": "ИТ-инфраструктура",
         "storage": "Хранение данных",
         "network_performance": "Сеть и связь",
         "wifi_capacity": "Корпоративный Wi-Fi",
         "change_management": "ИТ-процессы",
+        "itam": "Учет активов и сервисов",
         "it_monitoring": "ИТ-мониторинг",
         "backup": "Резервное копирование",
         "dr": "Непрерывность",
@@ -9150,7 +9278,23 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
     roadmap = []
     seen = set()
 
-    for raw_item in report_risks or []:
+    roadmap_key_order = {
+        "legacy_os": 0,
+        "network_performance": 1,
+        "wifi_capacity": 2,
+        "virtualization": 3,
+        "storage": 4,
+        "dr": 5,
+        "it_monitoring": 6,
+        "change_management": 7,
+        "itam": 8,
+    }
+    ordered_risks = sorted(
+        [item for item in (report_risks or []) if isinstance(item, dict)],
+        key=lambda item: roadmap_key_order.get(risk_semantic_key(item), 50),
+    )
+
+    for raw_item in ordered_risks:
         if not isinstance(raw_item, dict):
             continue
         item = dict(raw_item)
@@ -9168,7 +9312,12 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
             break
         level = str(item.get("level", "MEDIUM")).strip().upper()
         priority = level_priority.get(level, "P2")
-        area = str(item.get("area") or item.get("_ai_area") or "ИТ/ИБ").strip()
+        area = str(item.get("area") or item.get("_ai_area") or "ИТ/ИБ").strip().upper()
+        if area not in {"ИТ", "ИБ", "ИТ/ИБ"}:
+            area = "ИТ" if key in {
+                "legacy_os", "network_performance", "wifi_capacity", "virtualization",
+                "storage", "dr", "it_monitoring", "change_management", "itam",
+            } else "ИБ"
         metric = item.get("success_metric") or presentation_success_metric(key)
         rationale = item.get("impact") or item.get("description") or "Мера снижает подтвержденный риск аудита."
         roadmap.append({
@@ -9177,7 +9326,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
             "domain": domain_by_key.get(key, area),
             "action": canonical_roadmap_action(item, phase),
             "rationale": presentation_action_text(rationale, 240),
-            "owner": "ИТ" if area.upper() == "ИТ" else ("ИБ" if area.upper() == "ИБ" else "ИТ/ИБ"),
+            "owner": "ИТ" if area == "ИТ" else ("ИБ" if area == "ИБ" else "ИТ/ИБ"),
             "effort": "Высокая" if key in {"virtualization", "storage", "siem_soc", "pam", "iam"} else "Средняя",
             "result": presentation_action_text(metric, 155),
             "semantic_key": key,

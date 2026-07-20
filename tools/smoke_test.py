@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.29-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "12.30-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_customer_changelog() -> None:
@@ -254,6 +254,11 @@ def check_static_hooks() -> None:
     assert_true('replacements["__RECOMMENDATION_COUNT__"]' in text, "Presentation must support a variable recommendation count")
     assert_true("partial_recommendation_slide" in text, "Odd recommendation counts must use a single-card final slide")
     assert_true("def build_canonical_report_roadmap" in text, "A shared fact-checked roadmap builder is missing")
+    assert_true("def build_confirmed_it_gap_risks" in text, "Confirmed IT gaps are not protected from AI omission")
+    assert_true(
+        "combined_risks.extend(build_confirmed_it_gap_risks(results, context))" in text,
+        "Questionnaire-confirmed IT gaps do not reach the canonical report set",
+    )
     assert_true("def canonical_roadmap_action" in text, "Roadmap must provide assessment, pilot, and rollout stages")
     assert_true(
         text.count("build_canonical_report_roadmap(") >= 3,
