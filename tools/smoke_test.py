@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "12.33-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "X3-dev", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_forced_light_theme() -> None:
