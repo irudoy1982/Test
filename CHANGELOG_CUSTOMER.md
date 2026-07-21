@@ -8,6 +8,7 @@ Keep this file focused only on customer-visible questionnaire and report changes
 Status: in development in Test.
 
 Planned customer-visible improvement:
+- Stabilized the light interface on Android devices using a system-wide dark theme.
 - Fixed PowerPoint compatibility when an audit contains more than eight recommendations.
 - Preserved questionnaire-confirmed WAN resilience and IT-monitoring findings even when an analysis response omits them.
 - Reordered the 90-day plan around immediate risk reduction, followed by pilots and controlled rollout.

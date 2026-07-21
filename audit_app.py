@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.31-dev"
+APP_VERSION = "12.32-dev"
 
 
 def get_app_instance_label():
@@ -3183,6 +3183,8 @@ def inject_audit_design():
     st.markdown("""
     <style>
     :root {
+        color-scheme: light;
+        color-scheme: only light;
         --audit-bg: #f6f7f9;
         --audit-panel: #ffffff;
         --audit-border: #d8dee8;
@@ -3202,9 +3204,44 @@ def inject_audit_design():
         color: var(--audit-text);
     }
 
+    html,
+    body,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"] {
+        color-scheme: light;
+        color-scheme: only light;
+        background-color: var(--audit-bg);
+        color: var(--audit-text);
+    }
+
+    input,
+    textarea,
+    select,
+    button,
+    [data-baseweb="input"],
+    [data-baseweb="select"],
+    [data-baseweb="textarea"],
+    [data-testid="stFileUploaderDropzone"] {
+        color-scheme: light;
+        color-scheme: only light;
+    }
+
+    [data-baseweb="input"] > div,
+    [data-baseweb="select"] > div,
+    [data-baseweb="textarea"],
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #ffffff;
+        color: var(--audit-text);
+    }
+
     section[data-testid="stSidebar"] {
         background: #fbfcfe;
         border-right: 1px solid var(--audit-border);
+    }
+
+    section[data-testid="stSidebar"] > div {
+        background: #fbfcfe;
+        color: var(--audit-text);
     }
 
     div[data-testid="stHeader"] {
