@@ -16,11 +16,15 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
-from crm_admin import (
-    is_admin_request,
-    load_runtime_asset_bytes,
-    load_runtime_settings,
-    render_crm_admin,
+import crm_admin as crm_admin_module
+
+is_admin_request = crm_admin_module.is_admin_request
+load_runtime_settings = crm_admin_module.load_runtime_settings
+render_crm_admin = crm_admin_module.render_crm_admin
+load_runtime_asset_bytes = getattr(
+    crm_admin_module,
+    "load_runtime_asset_bytes",
+    lambda _secret_getter, _asset_key: None,
 )
 
 REQUEST_VERIFY = True
