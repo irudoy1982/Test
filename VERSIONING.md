@@ -32,11 +32,11 @@
 
 1. CRM Automation MVP.
    - Provide a protected internal admin console for CRM routing and operational settings.
-   - The CRM provider is selected internally per deployment: `amocrm`, `bitrix24`, or `off`.
+   - The administrator selects one active CRM: `amocrm`, `bitrix24`, or `off`.
    - CRM selection and diagnostics are never shown on the customer screen.
-   - The existing Test deployment is reserved for amoCRM development and validation.
-   - Bitrix24 is implemented only after amoCRM is accepted and receives a separate Test Bitrix deployment with isolated secrets and test records.
-   - Never send one audit to both CRMs unless this is explicitly enabled in a future release.
+   - Implement and validate amoCRM first in the existing Test deployment.
+   - After amoCRM acceptance, use the same Test admin console to configure and validate Bitrix24.
+   - Never send one audit to both CRMs; switching providers changes the destination for future audits only.
    - Create or update the contact, company, and lead after a completed audit.
    - Attach audit artifacts and store industry, IT/IS maturity, priorities, and source application.
    - Create the first sales follow-up and presales tasks from confirmed P1 findings.
@@ -55,12 +55,12 @@
 
 ## CRM implementation principles
 
-- All amoCRM development and validation are performed only in the existing Test deployment until explicit production approval.
-- Bitrix24 validation uses a separate Test Bitrix Streamlit application, not a provider switch in the existing Test deployment.
+- All amoCRM and Bitrix24 development and validation are performed only in the existing Test deployment until explicit production approval.
 - CRM failures must never block delivery of the customer presentation.
 - Customer-facing screens must not expose CRM names, diagnostics, or internal sales data.
-- Credentials and account identifiers live only in Streamlit secrets.
-- The active provider is controlled by the `CRM_PROVIDER` secret and defaults to `off`.
+- The database access credential lives only in Streamlit secrets.
+- CRM credentials entered in the admin console are stored in an encrypted server-side vault and are never returned to the browser after saving.
+- The active provider is stored in the protected configuration database and defaults to `off`.
 - Every delivery attempt receives an idempotency key and an internal status.
 - CRM payloads contain only the data required for lead processing.
 
@@ -69,9 +69,10 @@
 - The admin console is not linked from the customer questionnaire.
 - Access requires an authenticated administrator session and an explicit email allowlist or a temporary Test-only admin password.
 - The console can enable or disable CRM delivery, select an allowed provider, switch test mode, choose pipeline/status/responsible user, configure task deadlines, and run a connection test.
-- Provider credentials are read from Streamlit secrets and are never displayed, edited, or returned by the console.
+- Provider credentials can be entered or replaced in the console, but saved values are masked and never displayed again.
 - Persistent non-secret settings and delivery history are stored outside the Streamlit filesystem.
-- Each deployment has a provider allowlist: existing Test allows amoCRM; future Test Bitrix allows Bitrix24.
+- A new CRM configuration remains inactive until its connection test succeeds and the administrator explicitly activates it.
+- Switching CRM never resends historical audits automatically.
 - Production CRM routing remains disabled until each provider passes its isolated acceptance test.
 
 ## CRM rollout sequence
@@ -79,6 +80,6 @@
 1. `X3-dev.1`: protected admin console, persistent settings, normalized lead payload, and amoCRM connection diagnostics in Test.
 2. `X3-dev.2`: amoCRM contact/company deduplication, lead creation, artifacts, and tasks.
 3. `X3-dev.3`: amoCRM manual acceptance and failure handling.
-4. `X3-dev.4`: Bitrix24 adapter using the same normalized payload and a separate Test Bitrix deployment.
-5. `X3-dev.5`: Bitrix24 acceptance without changing or contaminating the amoCRM Test environment.
-6. `X3-rc1`: regression and live checks in both isolated test deployments; production remains unchanged.
+4. `X3-dev.4`: Bitrix24 adapter using the same normalized payload and the same protected Test admin console.
+5. `X3-dev.5`: switch Test to Bitrix24, run isolated Bitrix24 acceptance, then return the provider to `off` or amoCRM.
+6. `X3-rc1`: regression and live checks for both saved provider configurations in Test; production remains unchanged.
