@@ -31,6 +31,7 @@
 ## vX3 roadmap
 
 1. CRM Automation MVP.
+   - Provide a protected internal admin console for CRM routing and operational settings.
    - The CRM provider is selected internally per deployment: `amocrm`, `bitrix24`, or `off`.
    - CRM selection and diagnostics are never shown on the customer screen.
    - The existing Test deployment is reserved for amoCRM development and validation.
@@ -63,9 +64,19 @@
 - Every delivery attempt receives an idempotency key and an internal status.
 - CRM payloads contain only the data required for lead processing.
 
+## Admin console
+
+- The admin console is not linked from the customer questionnaire.
+- Access requires an authenticated administrator session and an explicit email allowlist or a temporary Test-only admin password.
+- The console can enable or disable CRM delivery, select an allowed provider, switch test mode, choose pipeline/status/responsible user, configure task deadlines, and run a connection test.
+- Provider credentials are read from Streamlit secrets and are never displayed, edited, or returned by the console.
+- Persistent non-secret settings and delivery history are stored outside the Streamlit filesystem.
+- Each deployment has a provider allowlist: existing Test allows amoCRM; future Test Bitrix allows Bitrix24.
+- Production CRM routing remains disabled until each provider passes its isolated acceptance test.
+
 ## CRM rollout sequence
 
-1. `X3-dev.1`: normalized lead payload, provider switch, and amoCRM connection diagnostics in Test.
+1. `X3-dev.1`: protected admin console, persistent settings, normalized lead payload, and amoCRM connection diagnostics in Test.
 2. `X3-dev.2`: amoCRM contact/company deduplication, lead creation, artifacts, and tasks.
 3. `X3-dev.3`: amoCRM manual acceptance and failure handling.
 4. `X3-dev.4`: Bitrix24 adapter using the same normalized payload and a separate Test Bitrix deployment.
