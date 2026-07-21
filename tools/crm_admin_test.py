@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 import crm_store
 import crm_admin
+import crm_assets
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -75,6 +76,66 @@ def test_admin_password_verification() -> None:
         not crm_admin._verify_admin_password("wrong-password", configured),
         "Wrong admin password was accepted",
     )
+    generated = crm_admin._hash_admin_password("a-strong-test-password")
+    assert_true(
+        crm_admin._verify_admin_password("a-strong-test-password", generated),
+        "Generated admin password hash cannot be verified",
+    )
+
+
+def test_managed_asset_validation() -> None:
+    logo = crm_assets.validate_logo((ROOT / "logo.png").read_bytes(), "logo.png")
+    presentation = crm_assets.validate_presentation_template(
+        (ROOT / "static" / "audit_presentation_khalil.pptx").read_bytes(),
+        "audit_presentation_khalil.pptx",
+    )
+    portfolio = crm_assets.validate_vendor_matrix(
+        (ROOT / "vendor_matrix_detailed.xlsx").read_bytes(),
+        "vendor_matrix_detailed.xlsx",
+    )
+    assert_true(logo.ok, logo.message)
+    assert_true(presentation.ok, presentation.message)
+    assert_true(portfolio.ok, portfolio.message)
+
+
+def test_private_asset_download_route() -> None:
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def __init__(self, content, payload=None):
+            self.content = content
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        if "/rest/v1/admin_assets" in url:
+            return FakeResponse(
+                b"metadata",
+                [{"asset_key": "logo", "object_path": "published/logo/version_logo.png"}],
+            )
+        return FakeResponse(b"asset")
+
+    original_request = crm_store.requests.request
+    crm_store.requests.request = fake_request
+    try:
+        store = crm_store.SupabaseCrmStore("https://example.supabase.co", "service-key")
+        assert_true(store.download_asset("logo") == b"asset", "Private asset was not downloaded")
+    finally:
+        crm_store.requests.request = original_request
+    assert_true(
+        any(
+            "/storage/v1/object/authenticated/audit-admin-assets/published/logo/version_logo.png"
+            in call[1]
+            for call in calls
+        ),
+        "Private Supabase asset route is incorrect",
+    )
 
 
 def main() -> None:
@@ -83,6 +144,8 @@ def main() -> None:
         test_normalized_lead_payload,
         test_amo_domain_validation,
         test_admin_password_verification,
+        test_managed_asset_validation,
+        test_private_asset_download_route,
     ]
     for test in tests:
         test()

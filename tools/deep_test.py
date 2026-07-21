@@ -63,6 +63,9 @@ def load_portfolio_helpers():
     names = [
         "normalize_vendor_key",
         "clean_vendor_display_name",
+        "read_active_vendor_matrix",
+        "load_detailed_vendor_names",
+        "load_vendor_names",
         "load_detailed_solution_vendor_map",
         "normalize_portfolio_header",
         "split_portfolio_list",
@@ -82,6 +85,7 @@ def load_portfolio_helpers():
         "os": os,
         "pd": pd,
         "re": re,
+        "BytesIO": BytesIO,
     }
     for name in names:
         exec(extract_function_source(module_text, name), namespace)

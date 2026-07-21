@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "X3-dev.1", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "X3-dev.2", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_forced_light_theme() -> None:
@@ -66,8 +66,19 @@ def check_x3_admin_console() -> None:
     admin_module = ROOT / "crm_admin.py"
     store_module = ROOT / "crm_store.py"
     migration = ROOT / "db" / "001_crm_admin.sql"
+    asset_migration = ROOT / "db" / "002_admin_assets.sql"
+    user_migration = ROOT / "db" / "003_admin_users.sql"
+    assets_module = ROOT / "crm_assets.py"
     setup = ROOT / "ADMIN_SETUP.md"
-    for path in (admin_module, store_module, migration, setup):
+    for path in (
+        admin_module,
+        store_module,
+        migration,
+        asset_migration,
+        user_migration,
+        assets_module,
+        setup,
+    ):
         assert_true(path.exists(), f"Missing X3 admin artifact: {path.name}")
     app_text = read_text(APP)
     admin_text = read_text(admin_module)
@@ -80,6 +91,11 @@ def check_x3_admin_console() -> None:
     assert_true('"active_provider": "off"' in store_text, "CRM must default to off")
     assert_true("vault.create_secret" in migration_text, "Encrypted CRM secret storage is missing")
     assert_true("enable row level security" in migration_text.lower(), "CRM tables require RLS")
+    assert_true("load_runtime_asset_bytes" in app_text, "Managed assets are not connected")
+    assert_true("_render_users" in admin_text, "Admin user management is missing")
+    assert_true("ADMIN_MAX_FAILED_ATTEMPTS" in admin_text, "Admin login lockout is missing")
+    assert_true("audit-admin-assets" in read_text(asset_migration), "Private asset bucket is missing")
+    assert_true("admin_users" in read_text(user_migration), "Admin user table is missing")
 
 
 def check_customer_changelog() -> None:

@@ -71,6 +71,8 @@
 - The console can enable or disable CRM delivery, select an allowed provider, switch test mode, choose pipeline/status/responsible user, configure task deadlines, and run a connection test.
 - The console selects whether the customer receives the management presentation, the expert Excel workbook, or both files.
 - The console controls Telegram diagnostics, lead text, captions, and which generated files are sent.
+- The console supports named administrator, editor, and viewer accounts with revocable access.
+- The console validates and publishes the active web logo, presentation template, and vendor portfolio while retaining the repository versions as fallbacks.
 - Provider credentials can be entered or replaced in the console, but saved values are masked and never displayed again.
 - Persistent non-secret settings and delivery history are stored outside the Streamlit filesystem.
 - A new CRM configuration remains inactive until its connection test succeeds and the administrator explicitly activates it.
@@ -80,8 +82,9 @@
 ## CRM rollout sequence
 
 1. `X3-dev.1`: protected admin console, persistent settings, normalized lead payload, and amoCRM connection diagnostics in Test.
-2. `X3-dev.2`: amoCRM contact/company deduplication, lead creation, artifacts, and tasks.
-3. `X3-dev.3`: amoCRM manual acceptance and failure handling.
-4. `X3-dev.4`: Bitrix24 adapter using the same normalized payload and the same protected Test admin console.
-5. `X3-dev.5`: switch Test to Bitrix24, run isolated Bitrix24 acceptance, then return the provider to `off` or amoCRM.
-6. `X3-rc1`: regression and live checks for both saved provider configurations in Test; production remains unchanged.
+2. `X3-dev.2`: role-based admin users and managed logo, presentation template, and vendor portfolio assets.
+3. `X3-dev.3`: amoCRM contact/company deduplication, lead creation, artifacts, and tasks.
+4. `X3-dev.4`: amoCRM manual acceptance and failure handling.
+5. `X3-dev.5`: Bitrix24 adapter using the same normalized payload and the same protected Test admin console.
+6. `X3-dev.6`: switch Test to Bitrix24, run isolated Bitrix24 acceptance, then return the provider to `off` or amoCRM.
+7. `X3-rc1`: regression and live checks for both saved provider configurations in Test; production remains unchanged.

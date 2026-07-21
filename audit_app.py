@@ -16,7 +16,12 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
-from crm_admin import is_admin_request, load_runtime_settings, render_crm_admin
+from crm_admin import (
+    is_admin_request,
+    load_runtime_asset_bytes,
+    load_runtime_settings,
+    render_crm_admin,
+)
 
 REQUEST_VERIFY = True
 
@@ -67,7 +72,7 @@ def sanitize_for_ai(c_info, results):
 
 def load_vendor_matrix():
     try:
-        df = pd.read_excel("Портфель для отчета.xlsx")
+        df = read_active_vendor_matrix()
 
         vendors_text = ""
 
@@ -88,9 +93,10 @@ def load_vendor_names():
         detailed = load_detailed_vendor_names()
         if detailed:
             return detailed
-        df = pd.read_excel("Портфель для отчета.xlsx", header=None)
+        df = read_active_vendor_matrix()
         values = []
-        for value in df.iloc[:, 0].dropna().tolist():
+        vendor_column = "Vendor" if "Vendor" in df.columns else df.columns[0]
+        for value in df[vendor_column].dropna().tolist():
             vendor = str(value).strip()
             if vendor and vendor.lower() not in {"nan", "none"}:
                 values.append(vendor)
@@ -101,13 +107,16 @@ def load_vendor_names():
 
 def get_app_secret(name, default=None):
     try:
-        return st.secrets.get(name, default)
+        secret_value = st.secrets.get(name)
+        if secret_value is not None:
+            return secret_value
     except Exception:
-        return default
+        pass
+    return os.environ.get(name, default)
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "X3-dev.1"
+APP_VERSION = "X3-dev.2"
 
 
 def get_app_instance_label():
@@ -4076,13 +4085,15 @@ def inject_audit_design():
 
 
 def get_logo_data_uri(path="logo.png"):
-    if not os.path.exists(path):
-        return ""
-
-    with open(path, "rb") as logo_file:
-        encoded = base64.b64encode(logo_file.read()).decode("ascii")
-
-    return f"data:image/png;base64,{encoded}"
+    logo_bytes = globals().get("ACTIVE_LOGO_BYTES")
+    if not logo_bytes:
+        if not os.path.exists(path):
+            return ""
+        with open(path, "rb") as logo_file:
+            logo_bytes = logo_file.read()
+    mime_type = "image/jpeg" if logo_bytes[:3] == b"\xff\xd8\xff" else "image/png"
+    encoded = base64.b64encode(logo_bytes).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def render_app_header():
@@ -5043,6 +5054,11 @@ RUNTIME_SETTINGS = load_runtime_settings(get_app_secret)
 CUSTOMER_DELIVERY_FORMAT = str(
     RUNTIME_SETTINGS.get("customer_delivery_format", "pptx") or "pptx"
 ).lower()
+ACTIVE_LOGO_BYTES = load_runtime_asset_bytes(get_app_secret, "logo")
+ACTIVE_PRESENTATION_TEMPLATE_BYTES = load_runtime_asset_bytes(
+    get_app_secret, "presentation_template"
+)
+ACTIVE_VENDOR_MATRIX_BYTES = load_runtime_asset_bytes(get_app_secret, "vendor_matrix")
 
 # Якорь для принудительного перехода в начало страницы
 st.markdown("<div id='top'></div>", unsafe_allow_html=True)
@@ -6450,11 +6466,17 @@ def clean_vendor_display_name(value):
 DETAILED_VENDOR_MATRIX_FILE = "vendor_matrix_detailed.xlsx"
 
 
+def read_active_vendor_matrix():
+    matrix_bytes = globals().get("ACTIVE_VENDOR_MATRIX_BYTES")
+    source = BytesIO(matrix_bytes) if matrix_bytes else DETAILED_VENDOR_MATRIX_FILE
+    return pd.read_excel(source)
+
+
 def load_detailed_vendor_names():
     try:
-        if not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
+        if not globals().get("ACTIVE_VENDOR_MATRIX_BYTES") and not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
             return []
-        df = pd.read_excel(DETAILED_VENDOR_MATRIX_FILE)
+        df = read_active_vendor_matrix()
         if df.empty or "Vendor" not in df.columns:
             return []
         values = []
@@ -6469,9 +6491,9 @@ def load_detailed_vendor_names():
 
 def load_detailed_solution_vendor_map():
     try:
-        if not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
+        if not globals().get("ACTIVE_VENDOR_MATRIX_BYTES") and not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
             return {}
-        df = pd.read_excel(DETAILED_VENDOR_MATRIX_FILE)
+        df = read_active_vendor_matrix()
         if df.empty or "Vendor" not in df.columns:
             return {}
 
@@ -6508,9 +6530,9 @@ def split_portfolio_list(value):
 
 def load_verified_distributor_map():
     try:
-        if not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
+        if not globals().get("ACTIVE_VENDOR_MATRIX_BYTES") and not os.path.exists(DETAILED_VENDOR_MATRIX_FILE):
             return {}
-        df = pd.read_excel(DETAILED_VENDOR_MATRIX_FILE)
+        df = read_active_vendor_matrix()
         if df.empty or "Vendor" not in df.columns:
             return {}
 
@@ -10270,20 +10292,24 @@ def render_audit_presentation_template(template_path, replacements):
 
 def make_audit_presentation(c_info, results, final_score, it_maturity_score):
     brand_key = presentation_brand_key()
-    template_path = os.path.join(
-        os.path.dirname(__file__),
-        "static",
-        f"audit_presentation_{brand_key}.pptx",
-    )
-    if not os.path.exists(template_path):
-        raise FileNotFoundError(f"Не найден шаблон презентации: {template_path}")
+    active_template = globals().get("ACTIVE_PRESENTATION_TEMPLATE_BYTES")
+    if active_template:
+        template_source = BytesIO(active_template)
+    else:
+        template_source = os.path.join(
+            os.path.dirname(__file__),
+            "static",
+            f"audit_presentation_{brand_key}.pptx",
+        )
+        if not os.path.exists(template_source):
+            raise FileNotFoundError(f"Не найден шаблон презентации: {template_source}")
     replacements = build_audit_presentation_replacements(
         c_info,
         results,
         final_score,
         it_maturity_score,
     )
-    return render_audit_presentation_template(template_path, replacements)
+    return render_audit_presentation_template(template_source, replacements)
 
 
 # --- Отчет ---

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 
@@ -24,6 +25,8 @@ DEFAULT_RUNTIME_SETTINGS = {
 }
 ALLOWED_PROVIDERS = {"off", "amocrm", "bitrix24"}
 ALLOWED_DELIVERY_FORMATS = {"pptx", "xlsx", "both"}
+ADMIN_ASSET_BUCKET = "audit-admin-assets"
+ADMIN_ASSET_KEYS = {"logo", "presentation_template", "vendor_matrix"}
 
 
 class CrmConfigurationError(RuntimeError):
@@ -266,6 +269,169 @@ class SupabaseCrmStore:
             },
         )
         return rows if isinstance(rows, list) else []
+
+    def get_admin_user(self, username: str) -> dict[str, Any]:
+        rows = self._request(
+            "GET",
+            "/rest/v1/admin_users",
+            params={
+                "username": f"eq.{str(username or '').strip()}",
+                "select": "username,display_name,password_hash,role,active",
+                "limit": "1",
+            },
+        )
+        return rows[0] if rows else {}
+
+    def list_admin_users(self) -> list[dict[str, Any]]:
+        rows = self._request(
+            "GET",
+            "/rest/v1/admin_users",
+            params={
+                "select": "username,display_name,role,active,created_at,updated_at,updated_by",
+                "order": "username.asc",
+            },
+        )
+        return rows if isinstance(rows, list) else []
+
+    def save_admin_user(
+        self,
+        username: str,
+        display_name: str,
+        role: str,
+        password_hash: str | None,
+        updated_by: str,
+    ) -> None:
+        username = str(username or "").strip()
+        existing = self.get_admin_user(username)
+        if not existing and not password_hash:
+            raise CrmConfigurationError("Для нового пользователя требуется пароль.")
+        payload = {
+            "username": username,
+            "display_name": str(display_name or username).strip()[:120],
+            "role": role if role in {"admin", "editor", "viewer"} else "viewer",
+            "active": bool(existing.get("active", True)),
+            "updated_by": str(updated_by or "admin"),
+        }
+        payload["password_hash"] = password_hash or existing.get("password_hash")
+        self._request(
+            "POST",
+            "/rest/v1/admin_users",
+            payload=payload,
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+
+    def set_admin_user_active(self, username: str, active: bool, updated_by: str) -> None:
+        self._request(
+            "PATCH",
+            "/rest/v1/admin_users",
+            params={"username": f"eq.{str(username or '').strip()}"},
+            payload={"active": bool(active), "updated_by": str(updated_by or "admin")},
+            prefer="return=minimal",
+        )
+
+    def get_asset_metadata(self, asset_key: str) -> dict[str, Any]:
+        rows = self._request(
+            "GET",
+            "/rest/v1/admin_assets",
+            params={
+                "asset_key": f"eq.{asset_key}",
+                "select": "asset_key,object_path,filename,content_type,size_bytes,sha256,details,updated_at,updated_by",
+                "limit": "1",
+            },
+        )
+        return rows[0] if rows else {}
+
+    def _storage_request(
+        self,
+        method: str,
+        object_path: str,
+        *,
+        data: bytes | None = None,
+        content_type: str = "application/octet-stream",
+        upsert: bool = False,
+    ) -> bytes:
+        headers = {
+            "apikey": self.secret_key,
+            "Authorization": f"Bearer {self.secret_key}",
+        }
+        if data is not None:
+            headers["Content-Type"] = content_type
+        if upsert:
+            headers["x-upsert"] = "true"
+        encoded_path = quote(object_path.strip("/"), safe="/")
+        object_route = "object/authenticated" if method.upper() == "GET" else "object"
+        try:
+            response = requests.request(
+                method,
+                f"{self.project_url}/storage/v1/{object_route}/{ADMIN_ASSET_BUCKET}/{encoded_path}",
+                headers=headers,
+                data=data,
+                timeout=max(self.timeout, 30),
+            )
+        except requests.RequestException as exc:
+            raise CrmConfigurationError(f"Хранилище файлов недоступно: {exc}") from exc
+        if response.status_code >= 400:
+            message = response.text[:300].replace(self.secret_key, "***")
+            raise CrmConfigurationError(
+                f"Ошибка файлового хранилища HTTP {response.status_code}: {message}"
+            )
+        return response.content
+
+    def download_asset(self, asset_key: str) -> bytes | None:
+        asset_key = str(asset_key or "")
+        if asset_key not in ADMIN_ASSET_KEYS:
+            raise CrmConfigurationError("Неизвестный тип административного файла.")
+        metadata = self.get_asset_metadata(asset_key)
+        object_path = str(metadata.get("object_path") or "").strip()
+        if not object_path:
+            return None
+        try:
+            return self._storage_request("GET", object_path)
+        except CrmConfigurationError as exc:
+            if "HTTP 400" in str(exc) or "HTTP 404" in str(exc):
+                return None
+            raise
+
+    def save_asset(
+        self,
+        asset_key: str,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        details: dict[str, Any],
+        updated_by: str,
+    ) -> dict[str, Any]:
+        asset_key = str(asset_key or "")
+        if asset_key not in ADMIN_ASSET_KEYS:
+            raise CrmConfigurationError("Неизвестный тип административного файла.")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        safe_filename = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(filename or asset_key)).strip("._")
+        safe_filename = safe_filename or asset_key
+        object_path = f"published/{asset_key}/{timestamp}_{safe_filename}"
+        self._storage_request(
+            "POST",
+            object_path,
+            data=data,
+            content_type=content_type,
+            upsert=False,
+        )
+        metadata = {
+            "asset_key": asset_key,
+            "object_path": object_path,
+            "filename": str(filename or asset_key)[:240],
+            "content_type": content_type,
+            "size_bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "details": details,
+            "updated_by": str(updated_by or "admin"),
+        }
+        self._request(
+            "POST",
+            "/rest/v1/admin_assets",
+            payload=metadata,
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+        return metadata
 
 
 def create_store(secret_getter: Callable[[str, Any], Any]) -> SupabaseCrmStore:
