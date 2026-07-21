@@ -69,6 +69,8 @@
 - The admin console is not linked from the customer questionnaire.
 - Access requires an authenticated administrator session and an explicit email allowlist or a temporary Test-only admin password.
 - The console can enable or disable CRM delivery, select an allowed provider, switch test mode, choose pipeline/status/responsible user, configure task deadlines, and run a connection test.
+- The console selects whether the customer receives the management presentation, the expert Excel workbook, or both files.
+- The console controls Telegram diagnostics, lead text, captions, and which generated files are sent.
 - Provider credentials can be entered or replaced in the console, but saved values are masked and never displayed again.
 - Persistent non-secret settings and delivery history are stored outside the Streamlit filesystem.
 - A new CRM configuration remains inactive until its connection test succeeds and the administrator explicitly activates it.
