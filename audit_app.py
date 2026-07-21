@@ -105,7 +105,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "12.32-dev"
+APP_VERSION = "12.33-dev"
 
 
 def get_app_instance_label():
@@ -4023,8 +4023,15 @@ def inject_audit_design():
         }
 
         .st-key-floating_draft_save {
-            bottom: 12px;
-            width: calc(100vw - 24px);
+            position: sticky;
+            top: calc(64px + env(safe-area-inset-top, 0px));
+            right: auto;
+            bottom: auto;
+            left: auto;
+            transform: none;
+            width: 100%;
+            margin: 10px auto 14px auto;
+            z-index: 990;
         }
     }
     </style>

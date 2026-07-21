@@ -8,6 +8,7 @@ Keep this file focused only on customer-visible questionnaire and report changes
 Status: in development in Test.
 
 Planned customer-visible improvement:
+- Improved the mobile draft toolbar so Android browsers cannot clip the questionnaire when calculating the viewport incorrectly.
 - Stabilized the light interface on Android devices using a system-wide dark theme.
 - Fixed PowerPoint compatibility when an audit contains more than eight recommendations.
 - Preserved questionnaire-confirmed WAN resilience and IT-monitoring findings even when an analysis response omits them.
