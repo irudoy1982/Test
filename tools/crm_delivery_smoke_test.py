@@ -108,6 +108,9 @@ def main():
     assert task["responsible_user_id"] == 33
 
     class FakeStore:
+        def __init__(self):
+            self.status_updates = []
+
         def get_provider_config(self, provider):
             return {
                 "provider": provider,
@@ -125,12 +128,13 @@ def main():
             return {"access_token": "test-access-token"}
 
         def get_delivery_by_idempotency(self, key):
-            return {}
+            return {"status": "error"}
 
         def reserve_delivery(self, provider, event, key):
             return True
 
         def update_delivery(self, key, **values):
+            self.status_updates.append(values.get("status"))
             return None
 
     class FakeClient:
@@ -148,7 +152,8 @@ def main():
 
     original_create_store = crm_delivery.create_store
     original_client = crm_delivery.AmoCrmClient
-    crm_delivery.create_store = lambda secret_getter: FakeStore()
+    fake_store = FakeStore()
+    crm_delivery.create_store = lambda secret_getter: fake_store
     crm_delivery.AmoCrmClient = FakeClient
     try:
         orchestrated = crm_delivery.deliver_audit_to_active_crm(
@@ -163,6 +168,7 @@ def main():
         )
         assert orchestrated.status == "success"
         assert orchestrated.lead_id == 303
+        assert fake_store.status_updates == ["pending", "success"]
     finally:
         crm_delivery.create_store = original_create_store
         crm_delivery.AmoCrmClient = original_client

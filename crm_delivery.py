@@ -492,14 +492,21 @@ def deliver_audit_to_active_crm(
         idempotency_key = build_delivery_idempotency_key(payload, artifacts)
         existing = store.get_delivery_by_idempotency(idempotency_key)
         if existing:
-            return AmoDeliveryResult(
-                "skipped",
-                (
-                    "Этот результат аудита уже отправлялся в amoCRM: "
-                    f"{existing.get('lead_reference') or existing.get('status') or 'запись найдена'}."
-                ),
+            existing_status = str(existing.get("status") or "").lower()
+            if existing_status in {"success", "partial", "pending"}:
+                return AmoDeliveryResult(
+                    "skipped",
+                    (
+                        "Этот результат аудита уже отправлялся в amoCRM: "
+                        f"{existing.get('lead_reference') or existing_status or 'запись найдена'}."
+                    ),
+                )
+            store.update_delivery(
+                idempotency_key,
+                status="pending",
+                message="Повторная отправка после предыдущей ошибки",
             )
-        if not store.reserve_delivery("amocrm", "audit_completed", idempotency_key):
+        elif not store.reserve_delivery("amocrm", "audit_completed", idempotency_key):
             return AmoDeliveryResult("skipped", "Отправка этого аудита уже выполняется.")
 
         client = AmoCrmClient(
