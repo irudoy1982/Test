@@ -118,9 +118,13 @@ def _render_password_recovery(
     if store is None:
         st.info("Для восстановления сначала подключите Supabase.")
         return
-    pepper = str(secret_getter("ADMIN_RECOVERY_PEPPER", "") or "").strip()
+    pepper = str(
+        secret_getter("ADMIN_RECOVERY_PEPPER", "")
+        or secret_getter("TELEGRAM_TOKEN", "")
+        or ""
+    ).strip()
     if not pepper:
-        st.info("Восстановление пароля ещё не настроено.")
+        st.info("Восстановление пароля ещё не настроено: отсутствует Telegram-бот.")
         return
 
     with st.form("crm_admin_recovery_request"):
