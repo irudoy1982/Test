@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "X3-dev.3.8"
+APP_VERSION = "X3-dev.3.9"
 
 
 def get_app_instance_label():

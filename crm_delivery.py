@@ -450,6 +450,7 @@ class AmoCrmClient:
                 upload_url,
                 data=chunk,
                 headers={"Content-Type": "application/octet-stream"},
+                expected=(200, 201, 202),
             )
             if offset + len(chunk) < len(artifact.data):
                 upload_url = str(final_response.get("next_url") or "")

@@ -32,6 +32,7 @@ class FakeResponse:
 class FakeSession:
     def __init__(self):
         self.calls = []
+        self.upload_part = 0
 
     def request(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
@@ -56,11 +57,17 @@ class FakeSession:
                 200,
                 {
                     "upload_url": "https://drive.example/upload/part-1",
-                    "max_part_size": 1024,
+                    "max_part_size": 8,
                 },
             )
         if method == "POST" and "/upload/" in url:
-            return FakeResponse(200, {"uuid": "file-uuid"})
+            self.upload_part += 1
+            if self.upload_part == 1:
+                return FakeResponse(
+                    202,
+                    {"next_url": "https://drive.example/upload/part-2"},
+                )
+            return FakeResponse(201, {"uuid": "file-uuid"})
         if method == "PUT" and url.endswith("/api/v4/leads/303/files"):
             return FakeResponse(202)
         raise AssertionError(f"Unexpected request: {method} {url}")
