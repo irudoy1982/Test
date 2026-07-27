@@ -678,6 +678,19 @@ def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
     has_secret = bool(config.get("has_secret"))
     st.subheader("amoCRM")
     st.caption("Сохранённые токены не отображаются. Чтобы заменить токен, введите новый.")
+    connection_status = str(config.get("connection_status") or "not_checked")
+    connection_message = str(
+        config.get("connection_message") or "Подключение ещё не проверялось."
+    )
+    if connection_status == "ok":
+        st.success(f"Последняя проверка: {connection_message}")
+    elif connection_status == "error":
+        st.error(f"Последняя проверка: {connection_message}")
+        st.caption(
+            "Сообщение останется здесь до следующей проверки подключения."
+        )
+    else:
+        st.info(connection_message)
     with st.form("amocrm_settings"):
         domain = st.text_input("Домен amoCRM", value=str(settings.get("domain", "")), placeholder="company.amocrm.ru")
         pipeline_id = st.text_input("ID воронки", value=str(settings.get("pipeline_id", "")))
