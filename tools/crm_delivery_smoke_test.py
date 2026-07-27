@@ -35,11 +35,11 @@ class FakeSession:
     def request(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
         if method == "GET" and url.endswith("/api/v4/companies"):
-            return FakeResponse(200, {"_embedded": {"companies": []}})
+            return FakeResponse(204)
         if method == "POST" and url.endswith("/api/v4/companies"):
             return FakeResponse(200, {"_embedded": {"companies": [{"id": 101}]}})
         if method == "GET" and url.endswith("/api/v4/contacts"):
-            return FakeResponse(200, {"_embedded": {"contacts": []}})
+            return FakeResponse(204)
         if method == "POST" and url.endswith("/api/v4/contacts"):
             return FakeResponse(200, {"_embedded": {"contacts": [{"id": 202}]}})
         if method == "POST" and url.endswith("/api/v4/leads"):

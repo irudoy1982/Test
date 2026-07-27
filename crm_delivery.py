@@ -169,6 +169,7 @@ class AmoCrmClient:
             "GET",
             "/api/v4/companies",
             params={"query": name, "limit": 50},
+            expected=(200, 204),
         )
         companies = (response.get("_embedded") or {}).get("companies") or []
         expected_name = _normalize_text(name)
@@ -197,6 +198,7 @@ class AmoCrmClient:
                 "GET",
                 "/api/v4/contacts",
                 params={"query": query, "limit": 50, "with": "companies"},
+                expected=(200, 204),
             )
             contacts = (response.get("_embedded") or {}).get("contacts") or []
             for contact in contacts:
