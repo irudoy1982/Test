@@ -193,14 +193,58 @@ class AmoCrmClient:
             None,
         )
 
-    def ensure_company(self, name: str, responsible_user_id: int) -> tuple[int, bool]:
+    @staticmethod
+    def _communication_fields(email: str, phone: str) -> list[dict[str, Any]]:
+        fields: list[dict[str, Any]] = []
+        if email:
+            fields.append(
+                {
+                    "field_code": "EMAIL",
+                    "values": [{"value": email, "enum_code": "WORK"}],
+                }
+            )
+        if phone:
+            fields.append(
+                {
+                    "field_code": "PHONE",
+                    "values": [{"value": phone, "enum_code": "WORK"}],
+                }
+            )
+        return fields
+
+    def ensure_company(
+        self,
+        name: str,
+        email: str,
+        phone: str,
+        responsible_user_id: int,
+    ) -> tuple[int, bool]:
         existing = self.find_company(name)
         if existing:
-            return int(existing["id"]), False
+            company_id = int(existing["id"])
+            missing_fields = []
+            if email and not _field_values(existing, "EMAIL"):
+                missing_fields.extend(self._communication_fields(email, ""))
+            if phone and not _field_values(existing, "PHONE"):
+                missing_fields.extend(self._communication_fields("", phone))
+            if missing_fields:
+                self._request(
+                    "PATCH",
+                    f"/api/v4/companies/{company_id}",
+                    payload={"custom_fields_values": missing_fields},
+                )
+            return company_id, False
+        model: dict[str, Any] = {
+            "name": name,
+            "responsible_user_id": responsible_user_id,
+        }
+        communication_fields = self._communication_fields(email, phone)
+        if communication_fields:
+            model["custom_fields_values"] = communication_fields
         response = self._request(
             "POST",
             "/api/v4/companies",
-            payload=[{"name": name, "responsible_user_id": responsible_user_id}],
+            payload=[model],
         )
         return int(self._first_embedded(response, "companies")["id"]), True
 
@@ -245,21 +289,7 @@ class AmoCrmClient:
                 self.link_contact_to_company(contact_id, company_id)
             return contact_id, False
 
-        custom_fields = []
-        if email:
-            custom_fields.append(
-                {
-                    "field_code": "EMAIL",
-                    "values": [{"value": email, "enum_code": "WORK"}],
-                }
-            )
-        if phone:
-            custom_fields.append(
-                {
-                    "field_code": "PHONE",
-                    "values": [{"value": phone, "enum_code": "WORK"}],
-                }
-            )
+        custom_fields = self._communication_fields(email, phone)
         model: dict[str, Any] = {
             "name": name or "Контакт автоматического аудита",
             "responsible_user_id": responsible_user_id,
@@ -516,7 +546,12 @@ class AmoCrmClient:
         status_id = _int_setting(settings, "status_id")
         due_hours = max(1, min(720, int(settings.get("task_due_hours", 24) or 24)))
 
-        company_id, _ = self.ensure_company(company_name, responsible_user_id)
+        company_id, _ = self.ensure_company(
+            company_name,
+            str(payload.get("email") or "").strip(),
+            str(payload.get("phone") or "").strip(),
+            responsible_user_id,
+        )
         contact_id, _ = self.ensure_contact(
             name=str(payload.get("contact_name") or "").strip(),
             email=str(payload.get("email") or "").strip(),

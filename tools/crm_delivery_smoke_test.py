@@ -106,6 +106,13 @@ def main():
     )
     assert result.attached_files == ["audit.pptx"]
 
+    company_call = next(
+        call for call in session.calls if call[1].endswith("/api/v4/companies")
+        and call[0] == "POST"
+    )
+    company_fields = company_call[2]["json"][0]["custom_fields_values"]
+    assert {item["field_code"] for item in company_fields} == {"EMAIL", "PHONE"}
+
     lead_call = next(call for call in session.calls if call[1].endswith("/api/v4/leads"))
     lead = lead_call[2]["json"][0]
     assert lead["name"] == "[Test] Автоматический аудит — Demo Company"
