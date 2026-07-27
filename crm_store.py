@@ -270,6 +270,68 @@ class SupabaseCrmStore:
         )
         return rows if isinstance(rows, list) else []
 
+    def get_delivery_by_idempotency(self, idempotency_key: str) -> dict[str, Any]:
+        rows = self._request(
+            "GET",
+            "/rest/v1/crm_delivery_log",
+            params={
+                "idempotency_key": f"eq.{str(idempotency_key)}",
+                "select": (
+                    "created_at,provider,event,status,message,"
+                    "lead_reference,idempotency_key"
+                ),
+                "limit": "1",
+            },
+        )
+        return rows[0] if rows else {}
+
+    def reserve_delivery(
+        self,
+        provider: str,
+        event: str,
+        idempotency_key: str,
+    ) -> bool:
+        if self.get_delivery_by_idempotency(idempotency_key):
+            return False
+        try:
+            self._request(
+                "POST",
+                "/rest/v1/crm_delivery_log",
+                payload={
+                    "provider": str(provider),
+                    "event": str(event),
+                    "status": "pending",
+                    "message": "Отправка начата",
+                    "idempotency_key": str(idempotency_key),
+                },
+                prefer="return=minimal",
+            )
+        except CrmConfigurationError:
+            if self.get_delivery_by_idempotency(idempotency_key):
+                return False
+            raise
+        return True
+
+    def update_delivery(
+        self,
+        idempotency_key: str,
+        *,
+        status: str,
+        message: str,
+        lead_reference: str | None = None,
+    ) -> None:
+        self._request(
+            "PATCH",
+            "/rest/v1/crm_delivery_log",
+            params={"idempotency_key": f"eq.{str(idempotency_key)}"},
+            payload={
+                "status": str(status)[:40],
+                "message": str(message)[:1500],
+                "lead_reference": str(lead_reference or "")[:200] or None,
+            },
+            prefer="return=minimal",
+        )
+
     def get_admin_user(self, username: str) -> dict[str, Any]:
         rows = self._request(
             "GET",
@@ -528,10 +590,72 @@ def test_amo_connection(
         )
         if response.status_code == 200:
             payload = response.json() if response.content else {}
+            details = {
+                "account_id": payload.get("id"),
+                "account_name": payload.get("name"),
+            }
+            headers = {"Authorization": f"Bearer {token}"}
+            pipeline_id = str(settings.get("pipeline_id", "") or "").strip()
+            status_id = str(settings.get("status_id", "") or "").strip()
+            responsible_user_id = str(
+                settings.get("responsible_user_id", "") or ""
+            ).strip()
+            required_ids = {
+                "ID воронки": pipeline_id,
+                "ID этапа": status_id,
+                "ID ответственного": responsible_user_id,
+            }
+            missing = [label for label, value in required_ids.items() if not value.isdigit()]
+            if missing:
+                return ConnectionCheck(
+                    False,
+                    f"Подключение есть, но не заполнены корректно: {', '.join(missing)}.",
+                    details,
+                )
+
+            checks = (
+                (
+                    f"/api/v4/leads/pipelines/{pipeline_id}",
+                    "pipeline_name",
+                    "Воронка",
+                ),
+                (
+                    f"/api/v4/leads/pipelines/{pipeline_id}/statuses/{status_id}",
+                    "status_name",
+                    "Этап",
+                ),
+                (
+                    f"/api/v4/users/{responsible_user_id}",
+                    "responsible_name",
+                    "Ответственный",
+                ),
+            )
+            for path, detail_key, label in checks:
+                check_response = requests.get(
+                    f"https://{host}{path}",
+                    headers=headers,
+                    timeout=timeout,
+                )
+                if check_response.status_code != 200:
+                    return ConnectionCheck(
+                        False,
+                        (
+                            f"{label} не найдена или недоступна "
+                            f"(HTTP {check_response.status_code}). Проверьте ID."
+                        ),
+                        details,
+                    )
+                check_payload = check_response.json() if check_response.content else {}
+                details[detail_key] = check_payload.get("name")
             return ConnectionCheck(
                 True,
-                f"Подключение подтверждено: {payload.get('name') or host}",
-                {"account_id": payload.get("id"), "account_name": payload.get("name")},
+                (
+                    f"Подключение подтверждено: {payload.get('name') or host}; "
+                    f"воронка «{details.get('pipeline_name') or pipeline_id}», "
+                    f"этап «{details.get('status_name') or status_id}», "
+                    f"ответственный «{details.get('responsible_name') or responsible_user_id}»."
+                ),
+                details,
             )
         if response.status_code == 401:
             message = (

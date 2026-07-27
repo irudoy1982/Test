@@ -17,6 +17,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 
 import crm_admin as crm_admin_module
+from crm_delivery import DeliveryArtifact, deliver_audit_to_active_crm
 
 is_admin_request = crm_admin_module.is_admin_request
 load_runtime_settings = crm_admin_module.load_runtime_settings
@@ -120,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "X3-dev.2.4"
+APP_VERSION = "X3-dev.3"
 
 
 def get_app_instance_label():
@@ -11653,6 +11654,8 @@ if "presentation_status" not in st.session_state:
     st.session_state.presentation_status = ""
 if "telegram_status" not in st.session_state:
     st.session_state.telegram_status = ""
+if "crm_delivery_status" not in st.session_state:
+    st.session_state.crm_delivery_status = ""
 if "generation_attempt_started_at" not in st.session_state:
     st.session_state.generation_attempt_started_at = None
 if "generation_error_message" not in st.session_state:
@@ -12047,7 +12050,11 @@ if st.session_state.generation_state == "heavy_ai":
             )
             st.session_state.cached_report_bytes = report_bytes
             st.session_state.cached_sales_report_bytes = sales_report_bytes
-            if CUSTOMER_DELIVERY_FORMAT in {"pptx", "both"}:
+            crm_needs_presentation = (
+                str(RUNTIME_SETTINGS.get("active_provider", "off")).lower() == "amocrm"
+            )
+            customer_needs_presentation = CUSTOMER_DELIVERY_FORMAT in {"pptx", "both"}
+            if customer_needs_presentation or crm_needs_presentation:
                 try:
                     st.session_state.cached_presentation_bytes = make_audit_presentation(
                         client_info,
@@ -12063,7 +12070,10 @@ if st.session_state.generation_state == "heavy_ai":
                         f"[{get_app_instance_label()}] Презентация не сформирована: "
                         f"{redact_secret(presentation_exc, TOKEN)}"
                     )
-                    raise RuntimeError("Не удалось сформировать клиентскую презентацию") from presentation_exc
+                    if customer_needs_presentation:
+                        raise RuntimeError(
+                            "Не удалось сформировать клиентскую презентацию"
+                        ) from presentation_exc
             else:
                 st.session_state.cached_presentation_bytes = None
                 st.session_state.presentation_status = "not_required"
@@ -12180,6 +12190,46 @@ if st.session_state.generation_state == "heavy_ai":
     else:
         st.session_state.telegram_status = "Telegram не отправлен: не найдены TELEGRAM_TOKEN или TELEGRAM_CHAT_ID."
 
+    crm_artifacts = []
+    crm_company_name = str(client_info.get("Наименование компании", "") or "").strip()
+    crm_file_company = re.sub(r'[\\/:*?"<>|]+', "_", crm_company_name) or "Компания"
+    if st.session_state.cached_presentation_bytes:
+        crm_artifacts.append(
+            DeliveryArtifact(
+                filename=f"Автоматический аудит - {crm_file_company}.pptx",
+                data=st.session_state.cached_presentation_bytes,
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                ),
+            )
+        )
+    if sales_report_bytes:
+        crm_artifacts.append(
+            DeliveryArtifact(
+                filename=f"Sales Playbook - {crm_file_company}.xlsx",
+                data=sales_report_bytes,
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+            )
+        )
+    crm_result = deliver_audit_to_active_crm(
+        get_app_secret,
+        RUNTIME_SETTINGS,
+        client_info=client_info,
+        security_maturity=f_score,
+        it_maturity=it_maturity_score,
+        source_app=get_app_instance_label(),
+        priorities=telegram_sales,
+        artifacts=crm_artifacts,
+    )
+    st.session_state.crm_delivery_status = crm_result.message
+    if crm_result.status in {"error", "partial"}:
+        send_internal_telegram_message(
+            f"[{get_app_instance_label()}] CRM {crm_result.status}: "
+            f"{redact_secret(crm_result.message, TOKEN)}"
+        )
+
     # Переключаем статус в финал
     st.session_state.generation_state = "finalized"
     st.session_state.generation_attempt_started_at = None
@@ -12251,6 +12301,7 @@ if st.session_state.generation_state == "finalized":
         st.session_state.cached_presentation_bytes = None
         st.session_state.presentation_status = ""
         st.session_state.telegram_status = ""
+        st.session_state.crm_delivery_status = ""
         st.session_state.ai_last_error = ""
         st.session_state.report_shortened_last = False
         st.session_state.generation_attempt_started_at = None
