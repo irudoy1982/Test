@@ -637,6 +637,34 @@ def test_amo_connection(
                     timeout=timeout,
                 )
                 if check_response.status_code != 200:
+                    if label == "Ответственный":
+                        users_response = requests.get(
+                            f"https://{host}/api/v4/users",
+                            params={"limit": 250},
+                            headers=headers,
+                            timeout=timeout,
+                        )
+                        if users_response.status_code == 200:
+                            users_payload = (
+                                users_response.json() if users_response.content else {}
+                            )
+                            users = (
+                                (users_payload.get("_embedded") or {}).get("users") or []
+                            )
+                            available_users = "; ".join(
+                                f"{user.get('name') or 'Без имени'} — ID {user.get('id')}"
+                                for user in users
+                                if user.get("id")
+                            )
+                            if available_users:
+                                return ConnectionCheck(
+                                    False,
+                                    (
+                                        "Ответственный с указанным ID не найден. "
+                                        f"Доступные пользователи: {available_users}"
+                                    )[:1800],
+                                    details,
+                                )
                     return ConnectionCheck(
                         False,
                         (
