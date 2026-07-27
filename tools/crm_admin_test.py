@@ -20,12 +20,25 @@ def assert_true(condition: bool, message: str) -> None:
 def test_runtime_defaults_and_validation() -> None:
     defaults = crm_store.normalize_runtime_settings({})
     assert_true(defaults["active_provider"] == "off", "CRM must default to off")
+    assert_true(defaults["enabled_providers"] == [], "CRM delivery must default to off")
     assert_true(defaults["customer_delivery_format"] == "pptx", "PPTX must remain the default")
     assert_true(defaults["telegram_diagnostics_enabled"] is True, "Diagnostics default changed")
     invalid = crm_store.normalize_runtime_settings(
         {"active_provider": "unknown", "customer_delivery_format": "pdf"}
     )
     assert_true(invalid["active_provider"] == "off", "Unknown provider must be rejected")
+    legacy = crm_store.normalize_runtime_settings({"active_provider": "amocrm"})
+    assert_true(
+        legacy["enabled_providers"] == ["amocrm"],
+        "Legacy active provider must remain enabled",
+    )
+    multi = crm_store.normalize_runtime_settings(
+        {"enabled_providers": ["amocrm", "bitrix24"]}
+    )
+    assert_true(
+        multi["enabled_providers"] == ["amocrm", "bitrix24"],
+        "Both CRM providers must be independently enabled",
+    )
     assert_true(invalid["customer_delivery_format"] == "pptx", "Unknown format must be rejected")
     both = crm_store.normalize_runtime_settings({"customer_delivery_format": "both"})
     assert_true(both["customer_delivery_format"] == "both", "Combined customer format was rejected")

@@ -1101,9 +1101,8 @@ def _deliver_audit_to_bitrix24(
         return AmoDeliveryResult("error", message)
 
 
-def deliver_audit_to_active_crm(
+def _deliver_audit_to_amocrm(
     secret_getter: Callable[[str, Any], Any],
-    runtime_settings: dict[str, Any],
     *,
     client_info: dict[str, Any],
     security_maturity: int,
@@ -1112,25 +1111,6 @@ def deliver_audit_to_active_crm(
     priorities: list[dict[str, Any]] | None,
     artifacts: list[DeliveryArtifact],
 ) -> AmoDeliveryResult:
-    provider = str(runtime_settings.get("active_provider", "off") or "off").lower()
-    if provider == "off":
-        return AmoDeliveryResult("skipped", "CRM-интеграция выключена.")
-    if provider == "bitrix24":
-        return _deliver_audit_to_bitrix24(
-            secret_getter,
-            client_info=client_info,
-            security_maturity=security_maturity,
-            it_maturity=it_maturity,
-            source_app=source_app,
-            priorities=priorities,
-            artifacts=artifacts,
-        )
-    if provider != "amocrm":
-        return AmoDeliveryResult(
-            "skipped",
-            f"Автоматическая отправка для {provider} пока не реализована.",
-        )
-
     try:
         store = create_store(secret_getter)
         config = store.get_provider_config("amocrm")
@@ -1249,3 +1229,76 @@ def deliver_audit_to_active_crm(
         except Exception:
             pass
         return AmoDeliveryResult("error", message)
+
+
+def deliver_audit_to_active_crm(
+    secret_getter: Callable[[str, Any], Any],
+    runtime_settings: dict[str, Any],
+    *,
+    client_info: dict[str, Any],
+    security_maturity: int,
+    it_maturity: int,
+    source_app: str,
+    priorities: list[dict[str, Any]] | None,
+    artifacts: list[DeliveryArtifact],
+) -> AmoDeliveryResult:
+    raw_enabled = runtime_settings.get("enabled_providers")
+    if isinstance(raw_enabled, (list, tuple, set)):
+        providers = [
+            str(item).lower()
+            for item in raw_enabled
+            if str(item).lower() in {"amocrm", "bitrix24"}
+        ]
+    else:
+        legacy_provider = str(
+            runtime_settings.get("active_provider", "off") or "off"
+        ).lower()
+        providers = (
+            [legacy_provider]
+            if legacy_provider in {"amocrm", "bitrix24"}
+            else []
+        )
+    providers = list(dict.fromkeys(providers))
+    if not providers:
+        return AmoDeliveryResult("skipped", "CRM-интеграция выключена.")
+
+    results: list[tuple[str, AmoDeliveryResult]] = []
+    for provider in providers:
+        if provider == "amocrm":
+            result = _deliver_audit_to_amocrm(
+                secret_getter,
+                client_info=client_info,
+                security_maturity=security_maturity,
+                it_maturity=it_maturity,
+                source_app=source_app,
+                priorities=priorities,
+                artifacts=artifacts,
+            )
+        else:
+            result = _deliver_audit_to_bitrix24(
+                secret_getter,
+                client_info=client_info,
+                security_maturity=security_maturity,
+                it_maturity=it_maturity,
+                source_app=source_app,
+                priorities=priorities,
+                artifacts=artifacts,
+            )
+        results.append((provider, result))
+
+    if len(results) == 1:
+        return results[0][1]
+
+    labels = {"amocrm": "amoCRM", "bitrix24": "Bitrix24"}
+    messages = [
+        f"{labels.get(provider, provider)}: {result.message}"
+        for provider, result in results
+    ]
+    statuses = {result.status for _, result in results}
+    if statuses <= {"success", "skipped"}:
+        status = "success" if "success" in statuses else "skipped"
+    elif statuses == {"error"}:
+        status = "error"
+    else:
+        status = "partial"
+    return AmoDeliveryResult(status, " | ".join(messages))

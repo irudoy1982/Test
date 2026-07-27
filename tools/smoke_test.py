@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "14.2-dev", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "14.2-dev.1", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_forced_light_theme() -> None:
@@ -89,6 +89,10 @@ def check_x3_admin_console() -> None:
     assert_true("telegram_diagnostics_enabled" in app_text, "Telegram diagnostic switch is missing")
     assert_true("crm_admin_authenticated" in admin_text, "Admin authentication is missing")
     assert_true('"active_provider": "off"' in store_text, "CRM must default to off")
+    assert_true(
+        '"enabled_providers": []' in store_text,
+        "Independent CRM delivery switches are missing",
+    )
     assert_true("vault.create_secret" in migration_text, "Encrypted CRM secret storage is missing")
     assert_true("enable row level security" in migration_text.lower(), "CRM tables require RLS")
     assert_true("load_runtime_asset_bytes" in app_text, "Managed assets are not connected")

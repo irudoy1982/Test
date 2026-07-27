@@ -13,6 +13,7 @@ import requests
 
 DEFAULT_RUNTIME_SETTINGS = {
     "active_provider": "off",
+    "enabled_providers": [],
     "customer_delivery_format": "pptx",
     "test_mode": True,
     "telegram_diagnostics_enabled": True,
@@ -43,9 +44,23 @@ class ConnectionCheck:
 def normalize_runtime_settings(value: Any) -> dict[str, Any]:
     source = value if isinstance(value, dict) else {}
     provider = str(source.get("active_provider", "off") or "off").lower()
+    raw_enabled = source.get("enabled_providers")
+    if isinstance(raw_enabled, (list, tuple, set)):
+        enabled_providers = [
+            str(item).lower()
+            for item in raw_enabled
+            if str(item).lower() in {"amocrm", "bitrix24"}
+        ]
+    elif provider in {"amocrm", "bitrix24"}:
+        # Backward compatibility for settings saved before multi-CRM delivery.
+        enabled_providers = [provider]
+    else:
+        enabled_providers = []
+    enabled_providers = list(dict.fromkeys(enabled_providers))
     delivery_format = str(source.get("customer_delivery_format", "pptx") or "pptx").lower()
     return {
-        "active_provider": provider if provider in ALLOWED_PROVIDERS else "off",
+        "active_provider": enabled_providers[0] if len(enabled_providers) == 1 else "off",
+        "enabled_providers": enabled_providers,
         "customer_delivery_format": (
             delivery_format if delivery_format in ALLOWED_DELIVERY_FORMATS else "pptx"
         ),

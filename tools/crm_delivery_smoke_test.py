@@ -285,6 +285,36 @@ def main():
         crm_delivery.create_store = original_create_store
         crm_delivery.AmoCrmClient = original_client
 
+    original_amo_delivery = crm_delivery._deliver_audit_to_amocrm
+    original_bitrix_delivery = crm_delivery._deliver_audit_to_bitrix24
+    provider_calls = []
+    crm_delivery._deliver_audit_to_amocrm = lambda *args, **kwargs: (
+        provider_calls.append("amocrm")
+        or AmoDeliveryResult("success", "amo ok")
+    )
+    crm_delivery._deliver_audit_to_bitrix24 = lambda *args, **kwargs: (
+        provider_calls.append("bitrix24")
+        or AmoDeliveryResult("error", "bitrix failed")
+    )
+    try:
+        multi = crm_delivery.deliver_audit_to_active_crm(
+            lambda name, default=None: default,
+            {"enabled_providers": ["amocrm", "bitrix24"]},
+            client_info={},
+            security_maturity=50,
+            it_maturity=60,
+            source_app="Test",
+            priorities=[],
+            artifacts=[],
+        )
+        assert provider_calls == ["amocrm", "bitrix24"]
+        assert multi.status == "partial"
+        assert "amoCRM: amo ok" in multi.message
+        assert "Bitrix24: bitrix failed" in multi.message
+    finally:
+        crm_delivery._deliver_audit_to_amocrm = original_amo_delivery
+        crm_delivery._deliver_audit_to_bitrix24 = original_bitrix_delivery
+
     print("CRM delivery smoke test: OK")
 
 

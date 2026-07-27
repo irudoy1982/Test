@@ -361,10 +361,15 @@ def _render_storage_setup() -> None:
 
 
 def _render_overview(store, runtime: dict[str, Any]) -> None:
-    provider_labels = {"off": "Выключено", "amocrm": "amoCRM", "bitrix24": "Bitrix24"}
     format_labels = {"pptx": "Презентация", "xlsx": "Excel", "both": "Презентация + Excel"}
+    enabled = runtime.get("enabled_providers", [])
+    enabled_label = " + ".join(
+        label
+        for provider, label in (("amocrm", "amoCRM"), ("bitrix24", "Bitrix24"))
+        if provider in enabled
+    ) or "Выключено"
     col1, col2, col3 = st.columns(3)
-    col1.metric("Активная CRM", provider_labels.get(runtime["active_provider"], "Выключено"))
+    col1.metric("Отправка в CRM", enabled_label)
     col2.metric("Формат заказчику", format_labels.get(runtime["customer_delivery_format"], "Презентация"))
     col3.metric("Режим", "Тестовый" if runtime.get("test_mode", True) else "Рабочий")
 
@@ -394,10 +399,39 @@ def _render_general_settings(store, runtime: dict[str, Any]) -> None:
             horizontal=True,
         )
         test_mode = st.toggle("Тестовый режим CRM", value=bool(runtime.get("test_mode", True)))
+        st.markdown("**Автоматическая отправка**")
+        enabled_now = set(runtime.get("enabled_providers", []))
+        amo_config = store.get_provider_config("amocrm")
+        bitrix_config = store.get_provider_config("bitrix24")
+        amo_enabled = st.toggle(
+            "Отправлять в amoCRM",
+            value="amocrm" in enabled_now,
+            disabled=amo_config.get("connection_status") != "ok",
+            help="Сначала сохраните и успешно проверьте подключение amoCRM.",
+        )
+        bitrix_enabled = st.toggle(
+            "Отправлять в Bitrix24",
+            value="bitrix24" in enabled_now,
+            disabled=bitrix_config.get("connection_status") != "ok",
+            help="Сначала сохраните и успешно проверьте подключение Bitrix24.",
+        )
         saved = st.form_submit_button("Сохранить настройки", type="primary")
     if saved:
         runtime["customer_delivery_format"] = customer_format
         runtime["test_mode"] = test_mode
+        runtime["enabled_providers"] = [
+            provider
+            for provider, enabled in (
+                ("amocrm", amo_enabled),
+                ("bitrix24", bitrix_enabled),
+            )
+            if enabled
+        ]
+        runtime["active_provider"] = (
+            runtime["enabled_providers"][0]
+            if len(runtime["enabled_providers"]) == 1
+            else "off"
+        )
         store.save_runtime_settings(runtime, _admin_identity())
         _clear_runtime_cache()
         st.success("Настройки сохранены.")
@@ -730,7 +764,7 @@ def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
             st.success("Конфигурация amoCRM сохранена и ожидает проверки.")
             st.rerun()
 
-    col_test, col_activate = st.columns(2)
+    col_test, _ = st.columns(2)
     if col_test.button("Проверить подключение", use_container_width=True):
         credentials = (
             {"access_token": normalize_amo_token(access_token)}
@@ -745,22 +779,7 @@ def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
             st.error(check.message)
         st.rerun()
 
-    can_activate = store.get_provider_config("amocrm").get("connection_status") == "ok"
-    if col_activate.button(
-        "Активировать amoCRM",
-        disabled=not can_activate,
-        type="primary",
-        use_container_width=True,
-    ):
-        store.activate_provider("amocrm", _admin_identity())
-        _clear_runtime_cache()
-        st.success("amoCRM активирована для новых аудитов.")
-        st.rerun()
-
-    if runtime.get("active_provider") != "off" and st.button("Выключить отправку в CRM"):
-        store.activate_provider("off", _admin_identity())
-        _clear_runtime_cache()
-        st.rerun()
+    st.caption("Отправка включается отдельно на вкладке «Общие настройки».")
 
 
 def _render_bitrix_settings(store, runtime: dict[str, Any]) -> None:
@@ -854,7 +873,7 @@ def _render_bitrix_settings(store, runtime: dict[str, Any]) -> None:
             st.success("Конфигурация Bitrix24 сохранена и ожидает проверки.")
             st.rerun()
 
-    col_test, col_activate = st.columns(2)
+    col_test, _ = st.columns(2)
     if col_test.button(
         "Проверить подключение",
         key="bitrix_connection_test",
@@ -873,28 +892,7 @@ def _render_bitrix_settings(store, runtime: dict[str, Any]) -> None:
             st.error(check.message)
         st.rerun()
 
-    can_activate = (
-        store.get_provider_config("bitrix24").get("connection_status") == "ok"
-    )
-    if col_activate.button(
-        "Активировать Bitrix24",
-        key="bitrix_activate",
-        disabled=not can_activate,
-        type="primary",
-        use_container_width=True,
-    ):
-        store.activate_provider("bitrix24", _admin_identity())
-        _clear_runtime_cache()
-        st.success("Bitrix24 активирован для новых аудитов.")
-        st.rerun()
-
-    if runtime.get("active_provider") != "off" and st.button(
-        "Выключить отправку в CRM",
-        key="bitrix_disable",
-    ):
-        store.activate_provider("off", _admin_identity())
-        _clear_runtime_cache()
-        st.rerun()
+    st.caption("Отправка включается отдельно на вкладке «Общие настройки».")
 
 
 def _render_logs(store) -> None:
