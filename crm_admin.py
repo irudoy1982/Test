@@ -368,10 +368,9 @@ def _render_overview(store, runtime: dict[str, Any]) -> None:
         for provider, label in (("amocrm", "amoCRM"), ("bitrix24", "Bitrix24"))
         if provider in enabled
     ) or "Выключено"
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     col1.metric("Отправка в CRM", enabled_label)
     col2.metric("Формат заказчику", format_labels.get(runtime["customer_delivery_format"], "Презентация"))
-    col3.metric("Режим", "Тестовый" if runtime.get("test_mode", True) else "Рабочий")
 
     st.subheader("Состояние подключений")
     for provider, label in (("amocrm", "amoCRM"), ("bitrix24", "Bitrix24")):
@@ -398,7 +397,6 @@ def _render_general_settings(store, runtime: dict[str, Any]) -> None:
             ),
             horizontal=True,
         )
-        test_mode = st.toggle("Тестовый режим CRM", value=bool(runtime.get("test_mode", True)))
         st.markdown("**Автоматическая отправка**")
         enabled_now = set(runtime.get("enabled_providers", []))
         amo_config = store.get_provider_config("amocrm")
@@ -418,7 +416,6 @@ def _render_general_settings(store, runtime: dict[str, Any]) -> None:
         saved = st.form_submit_button("Сохранить настройки", type="primary")
     if saved:
         runtime["customer_delivery_format"] = customer_format
-        runtime["test_mode"] = test_mode
         runtime["enabled_providers"] = [
             provider
             for provider, enabled in (

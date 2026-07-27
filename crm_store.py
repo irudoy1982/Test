@@ -15,7 +15,6 @@ DEFAULT_RUNTIME_SETTINGS = {
     "active_provider": "off",
     "enabled_providers": [],
     "customer_delivery_format": "pptx",
-    "test_mode": True,
     "telegram_diagnostics_enabled": True,
     "telegram_send_lead_summary": True,
     "telegram_send_sales_playbook": True,
@@ -64,7 +63,6 @@ def normalize_runtime_settings(value: Any) -> dict[str, Any]:
         "customer_delivery_format": (
             delivery_format if delivery_format in ALLOWED_DELIVERY_FORMATS else "pptx"
         ),
-        "test_mode": bool(source.get("test_mode", True)),
         "telegram_diagnostics_enabled": bool(source.get("telegram_diagnostics_enabled", True)),
         "telegram_send_lead_summary": bool(source.get("telegram_send_lead_summary", True)),
         "telegram_send_sales_playbook": bool(source.get("telegram_send_sales_playbook", True)),
