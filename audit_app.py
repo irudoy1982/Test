@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "X3-dev.3.7"
+APP_VERSION = "X3-dev.3.8"
 
 
 def get_app_instance_label():
@@ -12224,7 +12224,7 @@ if st.session_state.generation_state == "heavy_ai":
         artifacts=crm_artifacts,
     )
     st.session_state.crm_delivery_status = crm_result.message
-    if crm_result.status in {"error", "partial"}:
+    if crm_result.status in {"error", "partial", "skipped"}:
         send_internal_telegram_message(
             f"[{get_app_instance_label()}] CRM {crm_result.status}: "
             f"{redact_secret(crm_result.message, TOKEN)}"

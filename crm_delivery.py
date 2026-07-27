@@ -6,6 +6,7 @@ import mimetypes
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 import requests
@@ -51,6 +52,20 @@ def _int_setting(settings: dict[str, Any], key: str) -> int:
 
 def _normalize_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
+def _pending_delivery_is_recent(created_at: Any, max_age_seconds: int = 300) -> bool:
+    raw = str(created_at or "").strip()
+    if not raw:
+        return False
+    try:
+        created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - created.astimezone(timezone.utc)).total_seconds()
+        return 0 <= age < max_age_seconds
+    except (TypeError, ValueError):
+        return False
 
 
 def _field_values(entity: dict[str, Any], field_code: str) -> list[str]:
@@ -325,7 +340,10 @@ class AmoCrmClient:
             f"/api/v4/leads/{lead_id}",
             expected=(200, 204, 404),
         )
-        return int(response.get("id") or 0) == int(lead_id)
+        return (
+            int(response.get("id") or 0) == int(lead_id)
+            and not bool(response.get("is_deleted"))
+        )
 
     def create_lead(
         self,
@@ -600,7 +618,9 @@ def deliver_audit_to_active_crm(
                         f"{existing.get('lead_reference') or existing_status or 'запись найдена'}."
                     ),
                 )
-            if existing_status == "pending":
+            if existing_status == "pending" and _pending_delivery_is_recent(
+                existing.get("created_at")
+            ):
                 return AmoDeliveryResult(
                     "skipped",
                     "Отправка этого результата аудита в amoCRM уже выполняется.",

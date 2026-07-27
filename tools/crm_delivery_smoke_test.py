@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import types
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -111,9 +112,12 @@ def main():
     assert task["responsible_user_id"] == 33
 
     class FakeStore:
-        def __init__(self, existing_status="error"):
+        def __init__(self, existing_status="error", created_at=None):
             self.status_updates = []
             self.existing_status = existing_status
+            self.created_at = created_at or (
+                datetime.now(timezone.utc) - timedelta(minutes=10)
+            ).isoformat()
 
         def get_provider_config(self, provider):
             return {
@@ -134,6 +138,7 @@ def main():
         def get_delivery_by_idempotency(self, key):
             return {
                 "status": self.existing_status,
+                "created_at": self.created_at,
                 "lead_reference": "https://example.amocrm.ru/leads/detail/303",
             }
 
@@ -247,6 +252,21 @@ def main():
         )
         assert recreated_from_success.status == "success"
         assert deleted_success_store.status_updates == ["pending", "success"]
+
+        stale_pending_store = FakeStore(existing_status="pending")
+        crm_delivery.create_store = lambda secret_getter: stale_pending_store
+        recreated_from_pending = crm_delivery.deliver_audit_to_active_crm(
+            lambda name, default=None: default,
+            {"active_provider": "amocrm"},
+            client_info={"Наименование компании": "Demo Company"},
+            security_maturity=50,
+            it_maturity=60,
+            source_app="Test",
+            priorities=[],
+            artifacts=[],
+        )
+        assert recreated_from_pending.status == "success"
+        assert stale_pending_store.status_updates == ["pending", "success"]
     finally:
         crm_delivery.create_store = original_create_store
         crm_delivery.AmoCrmClient = original_client
