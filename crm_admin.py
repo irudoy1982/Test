@@ -5,7 +5,10 @@ import hashlib
 import hmac
 import re
 import secrets
+import smtplib
 import time
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Callable
 
@@ -29,6 +32,8 @@ ADMIN_SESSION_TTL_SECONDS = 30 * 60
 ADMIN_MAX_FAILED_ATTEMPTS = 5
 ADMIN_LOCK_SECONDS = 60
 ADMIN_PASSWORD_ITERATIONS = 600_000
+ADMIN_RESET_TTL_MINUTES = 15
+ADMIN_RESET_MAX_ATTEMPTS = 5
 
 
 def is_admin_request() -> bool:
@@ -74,6 +79,133 @@ def _hash_admin_password(password: str) -> str:
     salt_text = base64.urlsafe_b64encode(salt).decode("ascii")
     digest_text = base64.urlsafe_b64encode(digest).decode("ascii")
     return f"pbkdf2_sha256${ADMIN_PASSWORD_ITERATIONS}${salt_text}${digest_text}"
+
+
+def _hash_reset_code(username: str, code: str, pepper: str) -> str:
+    payload = f"{str(username).strip().lower()}:{str(code).strip()}".encode("utf-8")
+    return hmac.new(str(pepper).encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def _send_recovery_email(
+    secret_getter: Callable[[str, Any], Any],
+    recipient: str,
+    code: str,
+) -> None:
+    host = str(secret_getter("SMTP_HOST", "") or "").strip()
+    port = int(secret_getter("SMTP_PORT", 587) or 587)
+    username = str(secret_getter("SMTP_USERNAME", "") or "").strip()
+    password = str(secret_getter("SMTP_PASSWORD", "") or "")
+    sender = str(secret_getter("SMTP_FROM", username) or username).strip()
+    if not host or not username or not password or not sender:
+        raise CrmConfigurationError("Отправка восстановления ещё не настроена.")
+
+    message = EmailMessage()
+    message["Subject"] = "Код восстановления Khalil Audit"
+    message["From"] = sender
+    message["To"] = recipient
+    message.set_content(
+        f"Код восстановления админ-панели: {code}\n\n"
+        f"Код действует {ADMIN_RESET_TTL_MINUTES} минут. "
+        "Если вы не запрашивали восстановление, проигнорируйте письмо."
+    )
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=15) as smtp:
+            smtp.login(username, password)
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(host, port, timeout=15) as smtp:
+            smtp.starttls()
+            smtp.login(username, password)
+            smtp.send_message(message)
+
+
+def _render_password_recovery(
+    secret_getter: Callable[[str, Any], Any],
+    store,
+    configured_username: str,
+) -> None:
+    if store is None:
+        st.info("Для восстановления сначала подключите Supabase.")
+        return
+    pepper = str(secret_getter("ADMIN_RECOVERY_PEPPER", "") or "").strip()
+    if not pepper:
+        st.info("Восстановление пароля ещё не настроено.")
+        return
+
+    with st.form("crm_admin_recovery_request"):
+        identity = st.text_input("Логин для восстановления")
+        request_code = st.form_submit_button("Получить код", use_container_width=True)
+    if request_code:
+        normalized = identity.strip()
+        account = store.get_admin_user(normalized)
+        recipient = str(account.get("email") or "").strip()
+        if hmac.compare_digest(normalized, configured_username):
+            recipient = str(secret_getter("ADMIN_RECOVERY_EMAIL", recipient) or recipient).strip()
+        try:
+            if recipient:
+                code = f"{secrets.randbelow(1_000_000):06d}"
+                expires_at = datetime.now(timezone.utc) + timedelta(minutes=ADMIN_RESET_TTL_MINUTES)
+                store.create_password_reset(
+                    normalized,
+                    _hash_reset_code(normalized, code, pepper),
+                    expires_at.isoformat(),
+                )
+                _send_recovery_email(secret_getter, recipient, code)
+            st.success("Если логин и email настроены, код отправлен.")
+        except Exception:
+            st.error("Не удалось отправить код. Проверьте настройки почты.")
+
+    with st.form("crm_admin_recovery_confirm"):
+        identity = st.text_input("Логин", key="recovery_identity")
+        code = st.text_input("Код из письма", max_chars=6)
+        password = st.text_input("Новый пароль", type="password")
+        confirmation = st.text_input("Повторите новый пароль", type="password")
+        reset_password = st.form_submit_button(
+            "Изменить пароль",
+            type="primary",
+            use_container_width=True,
+        )
+    if not reset_password:
+        return
+    if len(password) < 12:
+        st.error("Пароль должен содержать не менее 12 символов.")
+        return
+    if password != confirmation:
+        st.error("Пароли не совпадают.")
+        return
+
+    normalized = identity.strip()
+    reset = store.get_password_reset(normalized)
+    try:
+        expires_at = datetime.fromisoformat(str(reset.get("expires_at") or "").replace("Z", "+00:00"))
+    except ValueError:
+        expires_at = datetime.min.replace(tzinfo=timezone.utc)
+    valid = (
+        bool(reset)
+        and not reset.get("used")
+        and int(reset.get("attempts") or 0) < ADMIN_RESET_MAX_ATTEMPTS
+        and expires_at > datetime.now(timezone.utc)
+        and hmac.compare_digest(
+            str(reset.get("code_hash") or ""),
+            _hash_reset_code(normalized, code, pepper),
+        )
+    )
+    store.register_password_reset_attempt(normalized, used=valid)
+    if not valid:
+        st.error("Код неверен или срок его действия истёк.")
+        return
+
+    existing = store.get_admin_user(normalized)
+    is_primary = hmac.compare_digest(normalized, configured_username)
+    store.save_admin_user(
+        normalized,
+        str(existing.get("display_name") or normalized),
+        str(existing.get("role") or ("admin" if is_primary else "viewer")),
+        _hash_admin_password(password),
+        "password-recovery",
+        str(existing.get("email") or secret_getter("ADMIN_RECOVERY_EMAIL", "") or ""),
+    )
+    st.success("Пароль изменён. Теперь можно войти.")
 
 
 def _admin_identity() -> str:
@@ -125,6 +257,8 @@ def _render_login(secret_getter: Callable[[str, Any], Any], store=None) -> bool:
                 autocomplete="current-password",
             )
             submitted = st.form_submit_button("Войти", type="primary", use_container_width=True)
+        with st.expander("Забыли пароль?"):
+            _render_password_recovery(secret_getter, store, configured_username)
     if submitted:
         identity = username.strip()
         authenticated_role = ""
@@ -462,6 +596,7 @@ def _render_users(store) -> None:
             {
                 "Логин": row.get("username"),
                 "Имя": row.get("display_name"),
+                "Email": row.get("email") or "",
                 "Роль": role_labels.get(row.get("role"), row.get("role")),
                 "Активен": bool(row.get("active")),
                 "Изменён": row.get("updated_at"),
@@ -476,6 +611,7 @@ def _render_users(store) -> None:
         with st.form("admin_user_create"):
             username = st.text_input("Логин нового пользователя")
             display_name = st.text_input("Имя")
+            email = st.text_input("Email для восстановления")
             role = st.selectbox(
                 "Роль",
                 options=["editor", "viewer", "admin"],
@@ -487,6 +623,8 @@ def _render_users(store) -> None:
         if create_user:
             if not _valid_admin_username(username):
                 st.error("Логин: 3-80 символов, только латиница, цифры и . _ @ -")
+            elif not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()):
+                st.error("Укажите корректный email для восстановления.")
             elif len(password) < 12:
                 st.error("Пароль должен содержать не менее 12 символов.")
             elif password != confirmation:
@@ -500,6 +638,7 @@ def _render_users(store) -> None:
                     role,
                     _hash_admin_password(password),
                     _admin_identity(),
+                    email.strip(),
                 )
                 st.success("Пользователь создан.")
                 st.rerun()
@@ -514,6 +653,7 @@ def _render_users(store) -> None:
         selected = next(row for row in users if row.get("username") == selected_username)
         with st.form("admin_user_edit"):
             edit_name = st.text_input("Имя", value=str(selected.get("display_name") or ""))
+            edit_email = st.text_input("Email для восстановления", value=str(selected.get("email") or ""))
             edit_role = st.selectbox(
                 "Роль",
                 options=["admin", "editor", "viewer"],
@@ -526,6 +666,8 @@ def _render_users(store) -> None:
         if save_user:
             if selected_username == _admin_identity() and not active:
                 st.error("Нельзя отключить собственную учётную запись.")
+            elif not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", edit_email.strip()):
+                st.error("Укажите корректный email для восстановления.")
             elif new_password and len(new_password) < 12:
                 st.error("Новый пароль должен содержать не менее 12 символов.")
             else:
@@ -535,6 +677,7 @@ def _render_users(store) -> None:
                     edit_role,
                     _hash_admin_password(new_password) if new_password else None,
                     _admin_identity(),
+                    edit_email.strip(),
                 )
                 store.set_admin_user_active(
                     selected_username,

@@ -16,6 +16,7 @@ It is intentionally not linked from the customer questionnaire.
    - `db/001_crm_admin.sql`
    - `db/002_admin_assets.sql`
    - `db/003_admin_users.sql`
+   - `db/004_admin_password_recovery.sql`
 4. Keep Row Level Security enabled. The migration grants no table access to `anon` or `authenticated`.
 
 ## 2. Configure Test secrets
@@ -27,6 +28,13 @@ SUPABASE_URL = "https://PROJECT.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY = "SUPABASE_SERVER_SECRET"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_HASH = "pbkdf2_sha256$PASSWORD_HASH"
+ADMIN_RECOVERY_EMAIL = "admin@example.kz"
+ADMIN_RECOVERY_PEPPER = "LONG_RANDOM_SECRET"
+SMTP_HOST = "smtp.example.kz"
+SMTP_PORT = 587
+SMTP_USERNAME = "audit@example.kz"
+SMTP_PASSWORD = "SMTP_APP_PASSWORD"
+SMTP_FROM = "audit@example.kz"
 ```
 
 Generate the password hash locally:

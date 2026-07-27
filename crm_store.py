@@ -276,7 +276,7 @@ class SupabaseCrmStore:
             "/rest/v1/admin_users",
             params={
                 "username": f"eq.{str(username or '').strip()}",
-                "select": "username,display_name,password_hash,role,active",
+                "select": "username,display_name,email,password_hash,role,active",
                 "limit": "1",
             },
         )
@@ -287,7 +287,7 @@ class SupabaseCrmStore:
             "GET",
             "/rest/v1/admin_users",
             params={
-                "select": "username,display_name,role,active,created_at,updated_at,updated_by",
+                "select": "username,display_name,email,role,active,created_at,updated_at,updated_by",
                 "order": "username.asc",
             },
         )
@@ -300,6 +300,7 @@ class SupabaseCrmStore:
         role: str,
         password_hash: str | None,
         updated_by: str,
+        email: str = "",
     ) -> None:
         username = str(username or "").strip()
         existing = self.get_admin_user(username)
@@ -308,6 +309,7 @@ class SupabaseCrmStore:
         payload = {
             "username": username,
             "display_name": str(display_name or username).strip()[:120],
+            "email": str(email or existing.get("email") or "").strip().lower()[:254] or None,
             "role": role if role in {"admin", "editor", "viewer"} else "viewer",
             "active": bool(existing.get("active", True)),
             "updated_by": str(updated_by or "admin"),
@@ -318,6 +320,51 @@ class SupabaseCrmStore:
             "/rest/v1/admin_users",
             payload=payload,
             prefer="resolution=merge-duplicates,return=minimal",
+        )
+
+    def create_password_reset(self, username: str, code_hash: str, expires_at: str) -> None:
+        self._request(
+            "DELETE",
+            "/rest/v1/admin_password_resets",
+            params={"username": f"eq.{str(username or '').strip()}"},
+            prefer="return=minimal",
+        )
+        self._request(
+            "POST",
+            "/rest/v1/admin_password_resets",
+            payload={
+                "username": str(username or "").strip(),
+                "code_hash": str(code_hash),
+                "expires_at": str(expires_at),
+                "attempts": 0,
+                "used": False,
+            },
+            prefer="return=minimal",
+        )
+
+    def get_password_reset(self, username: str) -> dict[str, Any]:
+        rows = self._request(
+            "GET",
+            "/rest/v1/admin_password_resets",
+            params={
+                "username": f"eq.{str(username or '').strip()}",
+                "select": "username,code_hash,expires_at,attempts,used",
+                "limit": "1",
+            },
+        )
+        return rows[0] if rows else {}
+
+    def register_password_reset_attempt(self, username: str, *, used: bool = False) -> None:
+        reset = self.get_password_reset(username)
+        self._request(
+            "PATCH",
+            "/rest/v1/admin_password_resets",
+            params={"username": f"eq.{str(username or '').strip()}"},
+            payload={
+                "attempts": int(reset.get("attempts") or 0) + 1,
+                "used": bool(used),
+            },
+            prefer="return=minimal",
         )
 
     def set_admin_user_active(self, username: str, active: bool, updated_by: str) -> None:

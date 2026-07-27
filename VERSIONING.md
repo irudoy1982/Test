@@ -83,6 +83,7 @@
 
 1. `X3-dev.1`: protected admin console, persistent settings, normalized lead payload, and amoCRM connection diagnostics in Test.
 2. `X3-dev.2`: role-based admin users and managed logo, presentation template, and vendor portfolio assets.
+   - `X3-dev.2.1`: email-based one-time password recovery for admin users.
 3. `X3-dev.3`: amoCRM contact/company deduplication, lead creation, artifacts, and tasks.
 4. `X3-dev.4`: amoCRM manual acceptance and failure handling.
 5. `X3-dev.5`: Bitrix24 adapter using the same normalized payload and the same protected Test admin console.

@@ -81,6 +81,15 @@ def test_admin_password_verification() -> None:
         crm_admin._verify_admin_password("a-strong-test-password", generated),
         "Generated admin password hash cannot be verified",
     )
+    reset_hash = crm_admin._hash_reset_code("admin", "123456", "test-pepper")
+    assert_true(
+        reset_hash == crm_admin._hash_reset_code("admin", "123456", "test-pepper"),
+        "Password reset code hash is unstable",
+    )
+    assert_true(
+        reset_hash != crm_admin._hash_reset_code("admin", "654321", "test-pepper"),
+        "Different password reset codes have the same hash",
+    )
 
 
 def test_managed_asset_validation() -> None:
