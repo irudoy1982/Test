@@ -61,6 +61,14 @@ def test_amo_domain_validation() -> None:
         pass
     else:
         raise AssertionError("Foreign amoCRM domain must be rejected")
+    assert_true(
+        crm_store.normalize_amo_token('Bearer "abc.def.ghi"') == "abc.def.ghi",
+        "Bearer token prefix was not normalized",
+    )
+    assert_true(
+        crm_store.normalize_amo_token('"abc.def.ghi"') == "abc.def.ghi",
+        "Quoted token was not normalized",
+    )
 
 
 def test_admin_password_verification() -> None:

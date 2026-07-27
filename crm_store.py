@@ -502,6 +502,15 @@ def normalize_amo_domain(value: Any) -> str:
     return host
 
 
+def normalize_amo_token(value: Any) -> str:
+    token = str(value or "").strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in {'"', "'"}:
+        token = token[1:-1].strip()
+    return token
+
+
 def test_amo_connection(
     settings: dict[str, Any],
     credentials: dict[str, Any],
@@ -509,7 +518,7 @@ def test_amo_connection(
 ) -> ConnectionCheck:
     try:
         host = normalize_amo_domain(settings.get("domain"))
-        token = str(credentials.get("access_token", "") or "").strip()
+        token = normalize_amo_token(credentials.get("access_token", ""))
         if not token:
             raise CrmConfigurationError("Введите access token amoCRM.")
         response = requests.get(
@@ -524,10 +533,15 @@ def test_amo_connection(
                 f"Подключение подтверждено: {payload.get('name') or host}",
                 {"account_id": payload.get("id"), "account_name": payload.get("name")},
             )
-        return ConnectionCheck(
-            False,
-            f"amoCRM вернула HTTP {response.status_code}. Проверьте домен и токен.",
-            {"status_code": response.status_code},
-        )
+        if response.status_code == 401:
+            message = (
+                "amoCRM отклонила токен (HTTP 401). Убедитесь, что это действующий "
+                "долгосрочный токен для указанного аккаунта, без кавычек и лишнего текста."
+            )
+        elif response.status_code == 403:
+            message = "amoCRM приняла токен, но у пользователя недостаточно прав (HTTP 403)."
+        else:
+            message = f"amoCRM вернула HTTP {response.status_code}. Проверьте домен и токен."
+        return ConnectionCheck(False, message, {"status_code": response.status_code})
     except (requests.RequestException, ValueError, CrmConfigurationError) as exc:
         return ConnectionCheck(False, str(exc), {})

@@ -18,6 +18,7 @@ from crm_store import (
     DEFAULT_RUNTIME_SETTINGS,
     create_store,
     normalize_runtime_settings,
+    normalize_amo_token,
     test_amo_connection,
 )
 from crm_assets import (
@@ -702,7 +703,11 @@ def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
         "task_due_hours": int(task_due_hours),
     }
     if save:
-        credentials = {"access_token": access_token.strip()} if access_token.strip() else None
+        credentials = (
+            {"access_token": normalize_amo_token(access_token)}
+            if access_token.strip()
+            else None
+        )
         if not has_secret and not credentials:
             st.error("Для первого сохранения нужен access token.")
         else:
@@ -712,7 +717,11 @@ def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
 
     col_test, col_activate = st.columns(2)
     if col_test.button("Проверить подключение", use_container_width=True):
-        credentials = {"access_token": access_token.strip()} if access_token.strip() else store.get_provider_credentials("amocrm")
+        credentials = (
+            {"access_token": normalize_amo_token(access_token)}
+            if access_token.strip()
+            else store.get_provider_credentials("amocrm")
+        )
         check = test_amo_connection(new_settings, credentials)
         store.set_connection_status("amocrm", check)
         if check.ok:

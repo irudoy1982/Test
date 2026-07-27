@@ -85,6 +85,8 @@
 2. `X3-dev.2`: role-based admin users and managed logo, presentation template, and vendor portfolio assets.
    - `X3-dev.2.1`: initial password-recovery foundation.
    - `X3-dev.2.2`: one-time admin password recovery through the configured Telegram bot.
+   - `X3-dev.2.3`: tolerant amoCRM token input and clearer connection diagnostics.
+   - `X3-dev.2.4`: embedded customer filling guide and separate developer/admin PDF manuals.
 3. `X3-dev.3`: amoCRM contact/company deduplication, lead creation, artifacts, and tasks.
 4. `X3-dev.4`: amoCRM manual acceptance and failure handling.
 5. `X3-dev.5`: Bitrix24 adapter using the same normalized payload and the same protected Test admin console.
