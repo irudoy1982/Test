@@ -397,25 +397,40 @@ def _render_general_settings(store, runtime: dict[str, Any]) -> None:
             ),
             horizontal=True,
         )
-        st.markdown("**Автоматическая отправка**")
+        saved = st.form_submit_button("Сохранить настройки", type="primary")
+    if saved:
+        runtime["customer_delivery_format"] = customer_format
+        store.save_runtime_settings(runtime, _admin_identity())
+        _clear_runtime_cache()
+        st.success("Настройки сохранены.")
+        st.rerun()
+
+
+def _render_crm_delivery_settings(store, runtime: dict[str, Any]) -> None:
+    st.subheader("Автоматическая отправка в CRM")
+    st.caption(
+        "Обе CRM могут оставаться настроенными. Включайте отправку в одну систему "
+        "или одновременно в обе."
+    )
+    with st.form("crm_delivery_settings"):
         enabled_now = set(runtime.get("enabled_providers", []))
         amo_config = store.get_provider_config("amocrm")
         bitrix_config = store.get_provider_config("bitrix24")
-        amo_enabled = st.toggle(
+        col_amo, col_bitrix = st.columns(2)
+        amo_enabled = col_amo.toggle(
             "Отправлять в amoCRM",
             value="amocrm" in enabled_now,
             disabled=amo_config.get("connection_status") != "ok",
             help="Сначала сохраните и успешно проверьте подключение amoCRM.",
         )
-        bitrix_enabled = st.toggle(
+        bitrix_enabled = col_bitrix.toggle(
             "Отправлять в Bitrix24",
             value="bitrix24" in enabled_now,
             disabled=bitrix_config.get("connection_status") != "ok",
             help="Сначала сохраните и успешно проверьте подключение Bitrix24.",
         )
-        saved = st.form_submit_button("Сохранить настройки", type="primary")
+        saved = st.form_submit_button("Сохранить отправку", type="primary")
     if saved:
-        runtime["customer_delivery_format"] = customer_format
         runtime["enabled_providers"] = [
             provider
             for provider, enabled in (
@@ -431,7 +446,7 @@ def _render_general_settings(store, runtime: dict[str, Any]) -> None:
         )
         store.save_runtime_settings(runtime, _admin_identity())
         _clear_runtime_cache()
-        st.success("Настройки сохранены.")
+        st.success("Настройки отправки в CRM сохранены.")
         st.rerun()
 
 
@@ -754,8 +769,8 @@ def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
             "доступные воронки и этапы вместе с их ID.\n"
             "4. **ID ответственного:** аналогично укажите предполагаемый ID. Проверка "
             "покажет доступных пользователей и их ID, если значение неверно.\n"
-            "5. После успешной проверки включите **Отправлять в amoCRM** на вкладке "
-            "**Результат заказчику**."
+            "5. После успешной проверки включите **Отправлять в amoCRM** выше на "
+            "этой вкладке **CRM**."
         )
         st.warning(
             "Access Token является секретом. Не отправляйте его в чатах и не вставляйте "
@@ -797,7 +812,7 @@ def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
             st.error(check.message)
         st.rerun()
 
-    st.caption("Отправка включается отдельно на вкладке «Общие настройки».")
+    st.caption("Отправка включается выше на этой вкладке CRM.")
 
 
 def _render_bitrix_settings(store, runtime: dict[str, Any]) -> None:
@@ -866,8 +881,8 @@ def _render_bitrix_settings(store, runtime: dict[str, Any]) -> None:
             "доступные этапы.\n"
             "4. **ID ответственного:** откройте профиль сотрудника. В адресе "
             "`/company/personal/user/7/` числом `7` является ID пользователя.\n"
-            "5. После успешной проверки включите **Отправлять в Bitrix24** на вкладке "
-            "**Результат заказчику**."
+            "5. После успешной проверки включите **Отправлять в Bitrix24** выше на "
+            "этой вкладке **CRM**."
         )
         st.warning(
             "Webhook содержит секретный ключ. Если URL попал на скриншот или был "
@@ -921,7 +936,7 @@ def _render_bitrix_settings(store, runtime: dict[str, Any]) -> None:
             st.error(check.message)
         st.rerun()
 
-    st.caption("Отправка включается отдельно на вкладке «Общие настройки».")
+    st.caption("Отправка включается выше на этой вкладке CRM.")
 
 
 def _render_logs(store) -> None:
@@ -990,6 +1005,8 @@ def render_crm_admin(app_version: str, secret_getter: Callable[[str, Any], Any])
             st.caption("Выполните миграцию db/002_admin_assets.sql в Supabase.")
     tab_index += 1
     with tabs[tab_index]:
+        _render_crm_delivery_settings(store, runtime)
+        st.divider()
         provider = st.segmented_control(
             "Настраиваемая CRM",
             options=["amocrm", "bitrix24"],
