@@ -573,6 +573,187 @@ def normalize_amo_token(value: Any) -> str:
     return token
 
 
+def normalize_bitrix_webhook_url(value: Any) -> str:
+    candidate = str(value or "").strip()
+    if not candidate:
+        raise CrmConfigurationError("Укажите URL входящего webhook Bitrix24.")
+    if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {'"', "'"}:
+        candidate = candidate[1:-1].strip()
+    parsed = urlparse(candidate)
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if parsed.scheme != "https" or not parsed.netloc or len(path_parts) < 3:
+        raise CrmConfigurationError(
+            "Webhook должен иметь вид https://portal.bitrix24.kz/rest/USER_ID/SECRET/"
+        )
+    if path_parts[0].lower() != "rest":
+        raise CrmConfigurationError(
+            "URL должен вести на входящий webhook Bitrix24 через /rest/."
+        )
+    return f"https://{parsed.netloc}/{'/'.join(path_parts[:3])}/"
+
+
+def _bitrix_call(
+    webhook_url: str,
+    method: str,
+    params: dict[str, Any] | None = None,
+    *,
+    timeout: int = 15,
+) -> Any:
+    response = requests.post(
+        f"{webhook_url}{method}.json",
+        json=params or {},
+        timeout=timeout,
+    )
+    try:
+        payload = response.json() if response.content else {}
+    except ValueError as exc:
+        raise CrmConfigurationError(
+            f"Bitrix24 вернул некорректный ответ HTTP {response.status_code}."
+        ) from exc
+    if response.status_code != 200 or payload.get("error"):
+        detail = str(
+            payload.get("error_description")
+            or payload.get("error")
+            or response.text
+            or f"HTTP {response.status_code}"
+        )[:500]
+        raise CrmConfigurationError(f"Bitrix24: {detail}")
+    return payload.get("result")
+
+
+def test_bitrix_connection(
+    settings: dict[str, Any],
+    credentials: dict[str, Any],
+    timeout: int = 15,
+) -> ConnectionCheck:
+    try:
+        webhook_url = normalize_bitrix_webhook_url(
+            credentials.get("webhook_url", "")
+        )
+        profile = _bitrix_call(webhook_url, "profile", timeout=timeout)
+        required_ids = {
+            "ID воронки": str(settings.get("category_id", "") or "").strip(),
+            "ID ответственного": str(
+                settings.get("responsible_user_id", "") or ""
+            ).strip(),
+        }
+        missing = [label for label, value in required_ids.items() if not value.isdigit()]
+        stage_id = str(settings.get("stage_id", "") or "").strip()
+        if not stage_id:
+            missing.append("ID этапа")
+        details = {
+            "portal": urlparse(webhook_url).netloc,
+            "user_id": (profile or {}).get("ID") if isinstance(profile, dict) else None,
+            "user_name": " ".join(
+                str((profile or {}).get(key) or "").strip()
+                for key in ("NAME", "LAST_NAME")
+            ).strip()
+            if isinstance(profile, dict)
+            else "",
+        }
+        if missing:
+            return ConnectionCheck(
+                False,
+                f"Webhook работает, но не заполнены корректно: {', '.join(missing)}.",
+                details,
+            )
+        user = _bitrix_call(
+            webhook_url,
+            "user.get",
+            {"ID": required_ids["ID ответственного"]},
+            timeout=timeout,
+        )
+        if not isinstance(user, list) or not user:
+            return ConnectionCheck(False, "Ответственный пользователь не найден.", details)
+        categories = _bitrix_call(
+            webhook_url,
+            "crm.category.list",
+            {"entityTypeId": 2},
+            timeout=timeout,
+        )
+        category_rows = (
+            (categories or {}).get("categories")
+            if isinstance(categories, dict)
+            else []
+        ) or []
+        if not any(
+            str(row.get("id")) == required_ids["ID воронки"]
+            for row in category_rows
+        ):
+            available = "; ".join(
+                f"{row.get('name') or 'Без названия'} — ID {row.get('id')}"
+                for row in category_rows
+            )
+            return ConnectionCheck(
+                False,
+                f"Воронка сделок не найдена. Доступны: {available or 'нет'}",
+                details,
+            )
+        category_id = int(required_ids["ID воронки"])
+        stage_entity = "DEAL_STAGE" if category_id == 0 else f"DEAL_STAGE_{category_id}"
+        statuses = _bitrix_call(
+            webhook_url,
+            "crm.status.list",
+            {
+                "order": {"SORT": "ASC"},
+                "filter": {
+                    "ENTITY_ID": stage_entity,
+                    "STATUS_ID": stage_id,
+                },
+            },
+            timeout=timeout,
+        )
+        if not isinstance(statuses, list) or not statuses:
+            available_statuses = _bitrix_call(
+                webhook_url,
+                "crm.status.list",
+                {
+                    "order": {"SORT": "ASC"},
+                    "filter": {"ENTITY_ID": stage_entity},
+                },
+                timeout=timeout,
+            )
+            available = "; ".join(
+                f"{row.get('NAME') or 'Без названия'} — ID {row.get('STATUS_ID')}"
+                for row in (available_statuses or [])
+            )
+            return ConnectionCheck(
+                False,
+                f"Этап сделки не найден. Доступны: {available or 'нет'}",
+                details,
+            )
+        _bitrix_call(
+            webhook_url,
+            "tasks.task.list",
+            {
+                "filter": {"ID": 0},
+                "select": ["ID"],
+                "start": 0,
+            },
+            timeout=timeout,
+        )
+        details.update(
+            {
+                "responsible_name": " ".join(
+                    str(user[0].get(key) or "").strip()
+                    for key in ("NAME", "LAST_NAME")
+                ).strip(),
+                "category_id": required_ids["ID воронки"],
+                "stage_id": stage_id,
+            }
+        )
+        return ConnectionCheck(
+            True,
+            (
+                f"Bitrix24 подключён: {details['portal']}; "
+                f"ответственный — {details['responsible_name'] or required_ids['ID ответственного']}."
+            ),
+            details,
+        )
+    except (CrmConfigurationError, requests.RequestException) as exc:
+        return ConnectionCheck(False, str(exc), {})
+
+
 def test_amo_connection(
     settings: dict[str, Any],
     credentials: dict[str, Any],

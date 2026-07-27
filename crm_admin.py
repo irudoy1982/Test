@@ -17,9 +17,11 @@ from crm_store import (
     CrmConfigurationError,
     DEFAULT_RUNTIME_SETTINGS,
     create_store,
+    normalize_bitrix_webhook_url,
     normalize_runtime_settings,
     normalize_amo_token,
     test_amo_connection,
+    test_bitrix_connection,
 )
 from crm_assets import (
     validate_logo,
@@ -761,9 +763,138 @@ def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
         st.rerun()
 
 
-def _render_bitrix_placeholder() -> None:
+def _render_bitrix_settings(store, runtime: dict[str, Any]) -> None:
+    config = store.get_provider_config("bitrix24")
+    settings = config.get("settings") if isinstance(config.get("settings"), dict) else {}
+    has_secret = bool(config.get("has_secret"))
     st.subheader("Bitrix24")
-    st.info("Адаптер Bitrix24 будет подключён после приёмки amoCRM на этапе X3-dev.4.")
+    st.caption(
+        "Используется входящий webhook Bitrix24 с правами CRM и Задачи. "
+        "Секретная часть URL после сохранения не отображается."
+    )
+    connection_status = str(config.get("connection_status") or "not_checked")
+    connection_message = str(
+        config.get("connection_message") or "Подключение ещё не проверялось."
+    )
+    if connection_status == "ok":
+        st.success(f"Последняя проверка: {connection_message}")
+    elif connection_status == "error":
+        st.error(f"Последняя проверка: {connection_message}")
+        st.caption("Сообщение останется здесь до следующей проверки подключения.")
+    else:
+        st.info(connection_message)
+
+    with st.form("bitrix24_settings"):
+        webhook_url = st.text_input(
+            "Новый URL входящего webhook" if has_secret else "URL входящего webhook",
+            type="password",
+            placeholder=(
+                "Оставьте пустым, чтобы сохранить текущий"
+                if has_secret
+                else "https://portal.bitrix24.kz/rest/1/secret/"
+            ),
+        )
+        category_id = st.text_input(
+            "ID воронки сделок",
+            value=str(settings.get("category_id", "0")),
+            help="Для основной воронки обычно используется 0.",
+        )
+        stage_id = st.text_input(
+            "ID этапа",
+            value=str(settings.get("stage_id", "")),
+            placeholder="Например: NEW или C7:NEW",
+        )
+        responsible_user_id = st.text_input(
+            "ID ответственного",
+            value=str(settings.get("responsible_user_id", "")),
+        )
+        task_due_hours = st.number_input(
+            "Срок первой задачи, часов",
+            min_value=1,
+            max_value=720,
+            value=int(settings.get("task_due_hours", 24) or 24),
+        )
+        save = st.form_submit_button("Сохранить конфигурацию", type="primary")
+
+    with st.expander("Где взять webhook и ID", expanded=False):
+        st.markdown(
+            "1. В Bitrix24 откройте **Приложения → Ресурсы разработчика → Другое → "
+            "Входящий webhook**.\n"
+            "2. Разрешите доступ к **CRM** и **Задачам**, затем скопируйте полный URL.\n"
+            "3. Для основной воронки укажите `0`; стандартный первый этап обычно `NEW`.\n"
+            "4. ID сотрудника виден в адресе его профиля. После проверки неверного ID "
+            "система покажет доступные значения."
+        )
+
+    new_settings = {
+        "category_id": category_id.strip(),
+        "stage_id": stage_id.strip(),
+        "responsible_user_id": responsible_user_id.strip(),
+        "task_due_hours": int(task_due_hours),
+    }
+    if save:
+        credentials = None
+        if webhook_url.strip():
+            try:
+                credentials = {
+                    "webhook_url": normalize_bitrix_webhook_url(webhook_url)
+                }
+            except CrmConfigurationError as exc:
+                st.error(str(exc))
+                credentials = {}
+        if not has_secret and not credentials:
+            st.error("Для первого сохранения нужен URL входящего webhook.")
+        elif credentials != {}:
+            store.save_provider_config(
+                "bitrix24",
+                new_settings,
+                credentials,
+                _admin_identity(),
+            )
+            st.success("Конфигурация Bitrix24 сохранена и ожидает проверки.")
+            st.rerun()
+
+    col_test, col_activate = st.columns(2)
+    if col_test.button(
+        "Проверить подключение",
+        key="bitrix_connection_test",
+        use_container_width=True,
+    ):
+        credentials = (
+            {"webhook_url": webhook_url.strip()}
+            if webhook_url.strip()
+            else store.get_provider_credentials("bitrix24")
+        )
+        check = test_bitrix_connection(new_settings, credentials)
+        store.set_connection_status("bitrix24", check)
+        if check.ok:
+            st.success(check.message)
+        else:
+            st.error(check.message)
+        st.rerun()
+
+    can_activate = (
+        store.get_provider_config("bitrix24").get("connection_status") == "ok"
+    )
+    if col_activate.button(
+        "Активировать Bitrix24",
+        key="bitrix_activate",
+        disabled=not can_activate,
+        type="primary",
+        use_container_width=True,
+    ):
+        store.activate_provider("bitrix24", _admin_identity())
+        _clear_runtime_cache()
+        st.success("Bitrix24 активирован для новых аудитов.")
+        st.rerun()
+
+    if runtime.get("active_provider") != "off" and st.button(
+        "Выключить отправку в CRM",
+        key="bitrix_disable",
+    ):
+        store.activate_provider("off", _admin_identity())
+        _clear_runtime_cache()
+        st.rerun()
 
 
 def _render_logs(store) -> None:
@@ -839,7 +970,7 @@ def render_crm_admin(app_version: str, secret_getter: Callable[[str, Any], Any])
             default="amocrm",
         )
         if provider == "bitrix24":
-            _render_bitrix_placeholder()
+            _render_bitrix_settings(store, runtime)
         else:
             _render_amo_settings(store, runtime)
     tab_index += 1

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import mimetypes
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 import requests
 
@@ -17,6 +19,7 @@ from crm_store import (
     create_store,
     normalize_amo_domain,
     normalize_amo_token,
+    normalize_bitrix_webhook_url,
 )
 
 
@@ -47,6 +50,13 @@ def _int_setting(settings: dict[str, Any], key: str) -> int:
     raw = str(settings.get(key, "") or "").strip()
     if not raw.isdigit() or int(raw) <= 0:
         raise CrmConfigurationError(f"В настройках amoCRM не указан корректный {key}.")
+    return int(raw)
+
+
+def _nonnegative_int_setting(settings: dict[str, Any], key: str) -> int:
+    raw = str(settings.get(key, "") or "").strip()
+    if not raw.isdigit() or int(raw) < 0:
+        raise CrmConfigurationError(f"В настройках CRM не указан корректный {key}.")
     return int(raw)
 
 
@@ -616,6 +626,481 @@ class AmoCrmClient:
         return result
 
 
+class Bitrix24Client:
+    def __init__(
+        self,
+        webhook_url: str,
+        *,
+        timeout: int = 30,
+        session: requests.Session | None = None,
+    ):
+        self.webhook_url = normalize_bitrix_webhook_url(webhook_url)
+        self.timeout = timeout
+        self.session = session or requests.Session()
+
+    @property
+    def portal_host(self) -> str:
+        return urlparse(self.webhook_url).netloc
+
+    def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
+        url = f"{self.webhook_url}{method}.json"
+        try:
+            response = self.session.post(
+                url,
+                json=params or {},
+                timeout=self.timeout,
+            )
+        except requests.RequestException as exc:
+            raise AmoCrmDeliveryError(f"Bitrix24 недоступен: {exc}") from exc
+        try:
+            payload = response.json() if response.content else {}
+        except ValueError as exc:
+            raise AmoCrmDeliveryError(
+                f"Bitrix24 вернул некорректный ответ HTTP {response.status_code}."
+            ) from exc
+        if response.status_code != 200 or payload.get("error"):
+            detail = str(
+                payload.get("error_description")
+                or payload.get("error")
+                or response.text
+                or f"HTTP {response.status_code}"
+            )[:600]
+            raise AmoCrmDeliveryError(f"Bitrix24 {method}: {detail}")
+        return payload.get("result")
+
+    @staticmethod
+    def _communication_values(value: str) -> list[dict[str, str]]:
+        return [{"VALUE": value, "VALUE_TYPE": "WORK"}] if value else []
+
+    def find_company(self, name: str) -> dict[str, Any] | None:
+        rows = self.call(
+            "crm.company.list",
+            {
+                "filter": {"=TITLE": name},
+                "select": ["ID", "TITLE", "PHONE", "EMAIL"],
+                "start": 0,
+            },
+        )
+        expected = _normalize_text(name)
+        return next(
+            (
+                row
+                for row in (rows or [])
+                if _normalize_text(row.get("TITLE")) == expected
+            ),
+            None,
+        )
+
+    def ensure_company(
+        self,
+        name: str,
+        email: str,
+        phone: str,
+        responsible_user_id: int,
+    ) -> tuple[int, bool]:
+        existing = self.find_company(name)
+        fields: dict[str, Any] = {}
+        if email:
+            fields["EMAIL"] = self._communication_values(email)
+        if phone:
+            fields["PHONE"] = self._communication_values(phone)
+        if existing:
+            company_id = int(existing["ID"])
+            missing: dict[str, Any] = {}
+            if email and not existing.get("EMAIL"):
+                missing["EMAIL"] = fields["EMAIL"]
+            if phone and not existing.get("PHONE"):
+                missing["PHONE"] = fields["PHONE"]
+            if missing:
+                self.call(
+                    "crm.company.update",
+                    {"id": company_id, "fields": missing},
+                )
+            return company_id, False
+        fields.update(
+            {
+                "TITLE": name,
+                "ASSIGNED_BY_ID": responsible_user_id,
+            }
+        )
+        return int(self.call("crm.company.add", {"fields": fields})), True
+
+    def _find_contact_ids(self, email: str, phone: str) -> list[int]:
+        for comm_type, value in (("EMAIL", email), ("PHONE", phone)):
+            if not value:
+                continue
+            result = self.call(
+                "crm.duplicate.findbycomm",
+                {
+                    "entity_type": "CONTACT",
+                    "type": comm_type,
+                    "values": [value],
+                },
+            )
+            ids = (result or {}).get("CONTACT") if isinstance(result, dict) else []
+            if ids:
+                return [int(item) for item in ids]
+        return []
+
+    def ensure_contact(
+        self,
+        *,
+        name: str,
+        role: str,
+        email: str,
+        phone: str,
+        company_id: int,
+        responsible_user_id: int,
+    ) -> tuple[int, bool]:
+        contact_ids = self._find_contact_ids(email, phone)
+        if contact_ids:
+            contact_id = contact_ids[0]
+            self.call(
+                "crm.contact.update",
+                {
+                    "id": contact_id,
+                    "fields": {
+                        "COMPANY_ID": company_id,
+                        "POST": role,
+                    },
+                },
+            )
+            return contact_id, False
+        fields: dict[str, Any] = {
+            "NAME": name or "Контакт автоматического аудита",
+            "POST": role,
+            "COMPANY_ID": company_id,
+            "ASSIGNED_BY_ID": responsible_user_id,
+        }
+        if email:
+            fields["EMAIL"] = self._communication_values(email)
+        if phone:
+            fields["PHONE"] = self._communication_values(phone)
+        return int(self.call("crm.contact.add", {"fields": fields})), True
+
+    def create_deal(
+        self,
+        *,
+        company_name: str,
+        company_id: int,
+        contact_id: int,
+        category_id: int,
+        stage_id: str,
+        responsible_user_id: int,
+        source_app: str,
+        payload: dict[str, Any],
+    ) -> int:
+        description = (
+            f"Автоматический аудит из приложения {source_app}. "
+            f"Зрелость ИБ: {payload.get('security_maturity', 0)}%; "
+            f"зрелость ИТ: {payload.get('it_maturity', 0)}%."
+        )
+        fields = {
+            "TITLE": f"[{source_app}] Автоматический аудит — {company_name}",
+            "COMPANY_ID": company_id,
+            "CONTACT_ID": contact_id,
+            "CATEGORY_ID": category_id,
+            "STAGE_ID": stage_id,
+            "ASSIGNED_BY_ID": responsible_user_id,
+            "COMMENTS": description,
+            "SOURCE_DESCRIPTION": f"Автоматический аудит · {source_app}",
+        }
+        return int(self.call("crm.deal.add", {"fields": fields}))
+
+    def create_task(
+        self,
+        *,
+        deal_id: int,
+        company_name: str,
+        responsible_user_id: int,
+        due_hours: int,
+        source_app: str,
+    ) -> int:
+        deadline = datetime.now(timezone.utc) + timedelta(hours=due_hours)
+        result = self.call(
+            "tasks.task.add",
+            {
+                "fields": {
+                    "TITLE": f"[{source_app}] Автоматический аудит — {company_name}",
+                    "DESCRIPTION": (
+                        "Связаться с заказчиком, подтвердить выводы аудита "
+                        "и согласовать следующий шаг."
+                    ),
+                    "RESPONSIBLE_ID": responsible_user_id,
+                    "DEADLINE": deadline.isoformat(),
+                    "UF_CRM_TASK": [f"D_{deal_id}"],
+                }
+            },
+        )
+        task = (result or {}).get("task") if isinstance(result, dict) else {}
+        return int((task or {}).get("id") or (task or {}).get("ID") or 0)
+
+    def deal_exists(self, deal_id: int) -> bool:
+        try:
+            result = self.call("crm.deal.get", {"id": deal_id})
+            return int((result or {}).get("ID") or 0) == int(deal_id)
+        except AmoCrmDeliveryError as exc:
+            if any(
+                marker in str(exc).lower()
+                for marker in ("not found", "не найден", "crm_deal_not_found")
+            ):
+                return False
+            raise
+
+    def update_deal_title(
+        self,
+        deal_id: int,
+        company_name: str,
+        source_app: str,
+    ) -> None:
+        self.call(
+            "crm.deal.update",
+            {
+                "id": deal_id,
+                "fields": {
+                    "TITLE": f"[{source_app}] Автоматический аудит — {company_name}"
+                },
+            },
+        )
+
+    def attach_artifacts_to_deal(
+        self,
+        deal_id: int,
+        artifacts: list[DeliveryArtifact],
+    ) -> AmoDeliveryResult:
+        result = AmoDeliveryResult(
+            status="success",
+            message=f"Вложения сделки #{deal_id} обновлены",
+            lead_id=deal_id,
+        )
+        for artifact in artifacts:
+            try:
+                if not artifact.data:
+                    raise AmoCrmDeliveryError(f"Файл {artifact.filename} пуст.")
+                self.call(
+                    "crm.timeline.comment.add",
+                    {
+                        "fields": {
+                            "ENTITY_ID": deal_id,
+                            "ENTITY_TYPE": "deal",
+                            "COMMENT": f"Файл автоматического аудита: {artifact.filename}",
+                            "FILES": [
+                                [
+                                    artifact.filename,
+                                    base64.b64encode(artifact.data).decode("ascii"),
+                                ]
+                            ],
+                        }
+                    },
+                )
+                result.attached_files.append(artifact.filename)
+            except AmoCrmDeliveryError as exc:
+                result.warnings.append(f"{artifact.filename}: {exc}")
+        if result.warnings:
+            result.status = "partial"
+            result.message = (
+                f"Вложения сделки #{deal_id} загружены не полностью: "
+                f"{' | '.join(result.warnings)}"
+            )
+        return result
+
+    def deliver(
+        self,
+        settings: dict[str, Any],
+        payload: dict[str, Any],
+        artifacts: list[DeliveryArtifact],
+    ) -> AmoDeliveryResult:
+        company_name = str(payload.get("company") or "").strip()
+        if not company_name:
+            raise CrmConfigurationError("Для CRM не указано название компании.")
+        category_id = _nonnegative_int_setting(settings, "category_id")
+        responsible_user_id = _int_setting(settings, "responsible_user_id")
+        stage_id = str(settings.get("stage_id") or "").strip()
+        if not stage_id:
+            raise CrmConfigurationError("В настройках Bitrix24 не указан stage_id.")
+        due_hours = max(
+            1,
+            min(720, int(settings.get("task_due_hours", 24) or 24)),
+        )
+        email = str(payload.get("email") or "").strip()
+        phone = str(payload.get("phone") or "").strip()
+        company_id, _ = self.ensure_company(
+            company_name,
+            email,
+            phone,
+            responsible_user_id,
+        )
+        contact_id, _ = self.ensure_contact(
+            name=str(payload.get("contact_name") or "").strip(),
+            role=str(payload.get("contact_role") or "").strip(),
+            email=email,
+            phone=phone,
+            company_id=company_id,
+            responsible_user_id=responsible_user_id,
+        )
+        deal_id = self.create_deal(
+            company_name=company_name,
+            company_id=company_id,
+            contact_id=contact_id,
+            category_id=category_id,
+            stage_id=stage_id,
+            responsible_user_id=responsible_user_id,
+            source_app=str(payload.get("source_app") or "Audit"),
+            payload=payload,
+        )
+        task_id = self.create_task(
+            deal_id=deal_id,
+            company_name=company_name,
+            responsible_user_id=responsible_user_id,
+            due_hours=due_hours,
+            source_app=str(payload.get("source_app") or "Audit"),
+        )
+        result = AmoDeliveryResult(
+            status="success",
+            message=f"Создана сделка #{deal_id}: Автоматический аудит — {company_name}",
+            lead_id=deal_id,
+            contact_id=contact_id,
+            company_id=company_id,
+            task_id=task_id or None,
+        )
+        attachment_result = self.attach_artifacts_to_deal(deal_id, artifacts)
+        result.attached_files = attachment_result.attached_files
+        result.warnings = attachment_result.warnings
+        if attachment_result.status == "partial":
+            result.status = "partial"
+            result.message = f"{result.message}; {attachment_result.message}"
+        return result
+
+
+def _deliver_audit_to_bitrix24(
+    secret_getter: Callable[[str, Any], Any],
+    *,
+    client_info: dict[str, Any],
+    security_maturity: int,
+    it_maturity: int,
+    source_app: str,
+    priorities: list[dict[str, Any]] | None,
+    artifacts: list[DeliveryArtifact],
+) -> AmoDeliveryResult:
+    try:
+        store = create_store(secret_getter)
+        config = store.get_provider_config("bitrix24")
+        if (
+            not config
+            or config.get("connection_status") != "ok"
+            or not bool(config.get("has_secret"))
+        ):
+            return AmoDeliveryResult(
+                "error",
+                "Активная конфигурация Bitrix24 не найдена.",
+            )
+        settings = (
+            config.get("settings")
+            if isinstance(config.get("settings"), dict)
+            else {}
+        )
+        credentials = store.get_provider_credentials("bitrix24")
+        payload = build_normalized_lead_payload(
+            client_info,
+            security_maturity,
+            it_maturity,
+            source_app,
+            priorities,
+        )
+        idempotency_key = build_delivery_idempotency_key(
+            payload,
+            artifacts,
+        ).replace("amocrm:", "bitrix24:", 1)
+        client = Bitrix24Client(credentials.get("webhook_url", ""))
+        existing = store.get_delivery_by_idempotency(idempotency_key)
+        if existing:
+            existing_status = str(existing.get("status") or "").lower()
+            deal_match = re.search(
+                r"/(\d+)(?:/)?$",
+                str(existing.get("lead_reference") or ""),
+            )
+            deal_id = int(deal_match.group(1)) if deal_match else 0
+            if (
+                existing_status == "success"
+                and deal_id
+                and client.deal_exists(deal_id)
+            ):
+                return AmoDeliveryResult(
+                    "skipped",
+                    (
+                        "Этот результат аудита уже отправлялся в Bitrix24: "
+                        f"{existing.get('lead_reference')}."
+                    ),
+                )
+            if existing_status == "pending" and _pending_delivery_is_recent(
+                existing.get("created_at")
+            ):
+                return AmoDeliveryResult(
+                    "skipped",
+                    "Отправка этого результата аудита в Bitrix24 уже выполняется.",
+                )
+            if (
+                existing_status == "partial"
+                and deal_id
+                and client.deal_exists(deal_id)
+            ):
+                client.update_deal_title(
+                    deal_id,
+                    str(payload.get("company") or "Компания"),
+                    str(payload.get("source_app") or "Audit"),
+                )
+                result = client.attach_artifacts_to_deal(deal_id, artifacts)
+                store.update_delivery(
+                    idempotency_key,
+                    status=result.status,
+                    message=result.message,
+                    lead_reference=str(existing.get("lead_reference") or ""),
+                )
+                return result
+            store.update_delivery(
+                idempotency_key,
+                status="pending",
+                message="Повторная отправка после предыдущей ошибки",
+            )
+        elif not store.reserve_delivery(
+            "bitrix24",
+            "audit_completed",
+            idempotency_key,
+        ):
+            return AmoDeliveryResult(
+                "skipped",
+                "Отправка этого аудита в Bitrix24 уже выполняется.",
+            )
+        result = client.deliver(settings, payload, artifacts)
+        lead_reference = (
+            f"https://{client.portal_host}/crm/deal/details/{result.lead_id}/"
+            if result.lead_id
+            else None
+        )
+        log_message = result.message
+        if result.warnings:
+            log_message = f"{log_message}. {' | '.join(result.warnings)}"
+        store.update_delivery(
+            idempotency_key,
+            status=result.status,
+            message=log_message,
+            lead_reference=lead_reference,
+        )
+        return result
+    except Exception as exc:
+        message = f"Ошибка отправки в Bitrix24: {exc}"
+        try:
+            if "store" in locals() and "idempotency_key" in locals():
+                store.update_delivery(
+                    idempotency_key,
+                    status="error",
+                    message=message,
+                )
+        except Exception:
+            pass
+        return AmoDeliveryResult("error", message)
+
+
 def deliver_audit_to_active_crm(
     secret_getter: Callable[[str, Any], Any],
     runtime_settings: dict[str, Any],
@@ -630,6 +1115,16 @@ def deliver_audit_to_active_crm(
     provider = str(runtime_settings.get("active_provider", "off") or "off").lower()
     if provider == "off":
         return AmoDeliveryResult("skipped", "CRM-интеграция выключена.")
+    if provider == "bitrix24":
+        return _deliver_audit_to_bitrix24(
+            secret_getter,
+            client_info=client_info,
+            security_maturity=security_maturity,
+            it_maturity=it_maturity,
+            source_app=source_app,
+            priorities=priorities,
+            artifacts=artifacts,
+        )
     if provider != "amocrm":
         return AmoDeliveryResult(
             "skipped",

@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "14.1"
+APP_VERSION = "14.2-dev"
 
 
 def get_app_instance_label():
@@ -12051,7 +12051,8 @@ if st.session_state.generation_state == "heavy_ai":
             st.session_state.cached_report_bytes = report_bytes
             st.session_state.cached_sales_report_bytes = sales_report_bytes
             crm_needs_presentation = (
-                str(RUNTIME_SETTINGS.get("active_provider", "off")).lower() == "amocrm"
+                str(RUNTIME_SETTINGS.get("active_provider", "off")).lower()
+                in {"amocrm", "bitrix24"}
             )
             customer_needs_presentation = CUSTOMER_DELIVERY_FORMAT in {"pptx", "both"}
             if customer_needs_presentation or crm_needs_presentation:
@@ -12224,7 +12225,12 @@ if st.session_state.generation_state == "heavy_ai":
         artifacts=crm_artifacts,
     )
     st.session_state.crm_delivery_status = crm_result.message
-    if crm_result.status in {"error", "partial", "skipped"}:
+    active_crm_provider = str(
+        RUNTIME_SETTINGS.get("active_provider", "off") or "off"
+    ).lower()
+    if crm_result.status in {"error", "partial"} or (
+        crm_result.status == "skipped" and active_crm_provider != "off"
+    ):
         send_internal_telegram_message(
             f"[{get_app_instance_label()}] CRM {crm_result.status}: "
             f"{redact_secret(crm_result.message, TOKEN)}"
