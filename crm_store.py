@@ -276,7 +276,7 @@ class SupabaseCrmStore:
             "/rest/v1/admin_users",
             params={
                 "username": f"eq.{str(username or '').strip()}",
-                "select": "username,display_name,email,password_hash,role,active",
+                "select": "username,display_name,password_hash,role,active",
                 "limit": "1",
             },
         )
@@ -287,7 +287,7 @@ class SupabaseCrmStore:
             "GET",
             "/rest/v1/admin_users",
             params={
-                "select": "username,display_name,email,role,active,created_at,updated_at,updated_by",
+                "select": "username,display_name,role,active,created_at,updated_at,updated_by",
                 "order": "username.asc",
             },
         )
@@ -300,7 +300,6 @@ class SupabaseCrmStore:
         role: str,
         password_hash: str | None,
         updated_by: str,
-        email: str = "",
     ) -> None:
         username = str(username or "").strip()
         existing = self.get_admin_user(username)
@@ -309,7 +308,6 @@ class SupabaseCrmStore:
         payload = {
             "username": username,
             "display_name": str(display_name or username).strip()[:120],
-            "email": str(email or existing.get("email") or "").strip().lower()[:254] or None,
             "role": role if role in {"admin", "editor", "viewer"} else "viewer",
             "active": bool(existing.get("active", True)),
             "updated_by": str(updated_by or "admin"),

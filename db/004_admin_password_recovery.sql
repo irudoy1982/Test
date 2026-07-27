@@ -1,10 +1,3 @@
-alter table public.admin_users
-    add column if not exists email text;
-
-create unique index if not exists admin_users_email_unique
-    on public.admin_users (lower(email))
-    where email is not null and email <> '';
-
 create table if not exists public.admin_password_resets (
     username text primary key,
     code_hash text not null,

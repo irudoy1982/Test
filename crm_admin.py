@@ -5,13 +5,12 @@ import hashlib
 import hmac
 import re
 import secrets
-import smtplib
 import time
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Callable
 
+import requests
 import streamlit as st
 
 from crm_store import (
@@ -86,37 +85,29 @@ def _hash_reset_code(username: str, code: str, pepper: str) -> str:
     return hmac.new(str(pepper).encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
 
-def _send_recovery_email(
+def _send_recovery_telegram(
     secret_getter: Callable[[str, Any], Any],
-    recipient: str,
+    username: str,
     code: str,
 ) -> None:
-    host = str(secret_getter("SMTP_HOST", "") or "").strip()
-    port = int(secret_getter("SMTP_PORT", 587) or 587)
-    username = str(secret_getter("SMTP_USERNAME", "") or "").strip()
-    password = str(secret_getter("SMTP_PASSWORD", "") or "")
-    sender = str(secret_getter("SMTP_FROM", username) or username).strip()
-    if not host or not username or not password or not sender:
-        raise CrmConfigurationError("Отправка восстановления ещё не настроена.")
-
-    message = EmailMessage()
-    message["Subject"] = "Код восстановления Khalil Audit"
-    message["From"] = sender
-    message["To"] = recipient
-    message.set_content(
-        f"Код восстановления админ-панели: {code}\n\n"
-        f"Код действует {ADMIN_RESET_TTL_MINUTES} минут. "
-        "Если вы не запрашивали восстановление, проигнорируйте письмо."
+    token = str(secret_getter("TELEGRAM_TOKEN", "") or "").strip()
+    chat_id = str(secret_getter("TELEGRAM_CHAT_ID", "") or "").strip()
+    if not token or not chat_id:
+        raise CrmConfigurationError("Telegram для восстановления ещё не настроен.")
+    response = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={
+            "chat_id": chat_id,
+            "text": (
+                "🔐 Восстановление доступа к админ-панели Test\n"
+                f"Логин: {username}\n"
+                f"Код: {code}\n"
+                f"Действует: {ADMIN_RESET_TTL_MINUTES} минут"
+            ),
+        },
+        timeout=15,
     )
-    if port == 465:
-        with smtplib.SMTP_SSL(host, port, timeout=15) as smtp:
-            smtp.login(username, password)
-            smtp.send_message(message)
-    else:
-        with smtplib.SMTP(host, port, timeout=15) as smtp:
-            smtp.starttls()
-            smtp.login(username, password)
-            smtp.send_message(message)
+    response.raise_for_status()
 
 
 def _render_password_recovery(
@@ -138,11 +129,9 @@ def _render_password_recovery(
     if request_code:
         normalized = identity.strip()
         account = store.get_admin_user(normalized)
-        recipient = str(account.get("email") or "").strip()
-        if hmac.compare_digest(normalized, configured_username):
-            recipient = str(secret_getter("ADMIN_RECOVERY_EMAIL", recipient) or recipient).strip()
+        account_exists = bool(account) or hmac.compare_digest(normalized, configured_username)
         try:
-            if recipient:
+            if account_exists:
                 code = f"{secrets.randbelow(1_000_000):06d}"
                 expires_at = datetime.now(timezone.utc) + timedelta(minutes=ADMIN_RESET_TTL_MINUTES)
                 store.create_password_reset(
@@ -150,10 +139,10 @@ def _render_password_recovery(
                     _hash_reset_code(normalized, code, pepper),
                     expires_at.isoformat(),
                 )
-                _send_recovery_email(secret_getter, recipient, code)
-            st.success("Если логин и email настроены, код отправлен.")
+                _send_recovery_telegram(secret_getter, normalized, code)
+            st.success("Если логин существует, код отправлен администратору в Telegram.")
         except Exception:
-            st.error("Не удалось отправить код. Проверьте настройки почты.")
+            st.error("Не удалось отправить код. Проверьте настройки Telegram.")
 
     with st.form("crm_admin_recovery_confirm"):
         identity = st.text_input("Логин", key="recovery_identity")
@@ -203,7 +192,6 @@ def _render_password_recovery(
         str(existing.get("role") or ("admin" if is_primary else "viewer")),
         _hash_admin_password(password),
         "password-recovery",
-        str(existing.get("email") or secret_getter("ADMIN_RECOVERY_EMAIL", "") or ""),
     )
     st.success("Пароль изменён. Теперь можно войти.")
 
@@ -596,7 +584,6 @@ def _render_users(store) -> None:
             {
                 "Логин": row.get("username"),
                 "Имя": row.get("display_name"),
-                "Email": row.get("email") or "",
                 "Роль": role_labels.get(row.get("role"), row.get("role")),
                 "Активен": bool(row.get("active")),
                 "Изменён": row.get("updated_at"),
@@ -611,7 +598,6 @@ def _render_users(store) -> None:
         with st.form("admin_user_create"):
             username = st.text_input("Логин нового пользователя")
             display_name = st.text_input("Имя")
-            email = st.text_input("Email для восстановления")
             role = st.selectbox(
                 "Роль",
                 options=["editor", "viewer", "admin"],
@@ -623,8 +609,6 @@ def _render_users(store) -> None:
         if create_user:
             if not _valid_admin_username(username):
                 st.error("Логин: 3-80 символов, только латиница, цифры и . _ @ -")
-            elif not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()):
-                st.error("Укажите корректный email для восстановления.")
             elif len(password) < 12:
                 st.error("Пароль должен содержать не менее 12 символов.")
             elif password != confirmation:
@@ -638,7 +622,6 @@ def _render_users(store) -> None:
                     role,
                     _hash_admin_password(password),
                     _admin_identity(),
-                    email.strip(),
                 )
                 st.success("Пользователь создан.")
                 st.rerun()
@@ -653,7 +636,6 @@ def _render_users(store) -> None:
         selected = next(row for row in users if row.get("username") == selected_username)
         with st.form("admin_user_edit"):
             edit_name = st.text_input("Имя", value=str(selected.get("display_name") or ""))
-            edit_email = st.text_input("Email для восстановления", value=str(selected.get("email") or ""))
             edit_role = st.selectbox(
                 "Роль",
                 options=["admin", "editor", "viewer"],
@@ -666,8 +648,6 @@ def _render_users(store) -> None:
         if save_user:
             if selected_username == _admin_identity() and not active:
                 st.error("Нельзя отключить собственную учётную запись.")
-            elif not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", edit_email.strip()):
-                st.error("Укажите корректный email для восстановления.")
             elif new_password and len(new_password) < 12:
                 st.error("Новый пароль должен содержать не менее 12 символов.")
             else:
@@ -677,7 +657,6 @@ def _render_users(store) -> None:
                     edit_role,
                     _hash_admin_password(new_password) if new_password else None,
                     _admin_identity(),
-                    edit_email.strip(),
                 )
                 store.set_admin_user_active(
                     selected_username,
