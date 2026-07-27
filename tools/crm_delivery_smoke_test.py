@@ -178,7 +178,7 @@ def main():
                 lead_id=303,
             )
 
-        def repair_lead_relationships(self, lead_id):
+        def repair_lead_relationships(self, lead_id, **kwargs):
             self.repaired_lead_id = lead_id
 
         def update_lead_title(self, lead_id, company_name, source_app):

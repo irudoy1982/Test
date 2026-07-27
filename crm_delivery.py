@@ -314,7 +314,27 @@ class AmoCrmClient:
             expected=(200, 204),
         )
 
-    def repair_lead_relationships(self, lead_id: int) -> None:
+    def enrich_company(self, company_id: int, email: str, phone: str) -> None:
+        company = self._request("GET", f"/api/v4/companies/{company_id}")
+        missing_fields = []
+        if email and not _field_values(company, "EMAIL"):
+            missing_fields.extend(self._communication_fields(email, ""))
+        if phone and not _field_values(company, "PHONE"):
+            missing_fields.extend(self._communication_fields("", phone))
+        if missing_fields:
+            self._request(
+                "PATCH",
+                f"/api/v4/companies/{company_id}",
+                payload={"custom_fields_values": missing_fields},
+            )
+
+    def repair_lead_relationships(
+        self,
+        lead_id: int,
+        *,
+        company_email: str = "",
+        company_phone: str = "",
+    ) -> None:
         response = self._request(
             "GET",
             f"/api/v4/leads/{lead_id}/links",
@@ -349,6 +369,7 @@ class AmoCrmClient:
         companies = (contact.get("_embedded") or {}).get("companies") or []
         if not any(int(item.get("id", 0) or 0) == company_id for item in companies):
             self.link_contact_to_company(contact_id, company_id)
+        self.enrich_company(company_id, company_email, company_phone)
 
     def update_lead_title(
         self,
@@ -676,7 +697,11 @@ def deliver_audit_to_active_crm(
                             str(payload.get("company") or "Компания"),
                             str(payload.get("source_app") or "Audit"),
                         )
-                        client.repair_lead_relationships(lead_id)
+                        client.repair_lead_relationships(
+                            lead_id,
+                            company_email=str(payload.get("email") or "").strip(),
+                            company_phone=str(payload.get("phone") or "").strip(),
+                        )
                     except Exception as exc:
                         relation_warning = f"Связь контакт-компания: {exc}"
                     result = client.attach_artifacts_to_lead(lead_id, artifacts)
