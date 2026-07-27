@@ -231,6 +231,22 @@ def main():
         )
         assert recreated.status == "success"
         assert deleted_store.status_updates == ["pending", "success"]
+
+        deleted_success_store = FakeStore(existing_status="success")
+        crm_delivery.create_store = lambda secret_getter: deleted_success_store
+        FakeClient.existing_lead = False
+        recreated_from_success = crm_delivery.deliver_audit_to_active_crm(
+            lambda name, default=None: default,
+            {"active_provider": "amocrm"},
+            client_info={"Наименование компании": "Demo Company"},
+            security_maturity=50,
+            it_maturity=60,
+            source_app="Test",
+            priorities=[],
+            artifacts=[],
+        )
+        assert recreated_from_success.status == "success"
+        assert deleted_success_store.status_updates == ["pending", "success"]
     finally:
         crm_delivery.create_store = original_create_store
         crm_delivery.AmoCrmClient = original_client

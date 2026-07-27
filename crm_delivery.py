@@ -323,7 +323,7 @@ class AmoCrmClient:
         response = self._request(
             "GET",
             f"/api/v4/leads/{lead_id}",
-            expected=(200, 404),
+            expected=(200, 204, 404),
         )
         return int(response.get("id") or 0) == int(lead_id)
 
@@ -587,7 +587,12 @@ def deliver_audit_to_active_crm(
         existing = store.get_delivery_by_idempotency(idempotency_key)
         if existing:
             existing_status = str(existing.get("status") or "").lower()
-            if existing_status in {"success", "pending"}:
+            lead_match = re.search(
+                r"/(\d+)(?:/)?$",
+                str(existing.get("lead_reference") or ""),
+            )
+            lead_id = int(lead_match.group(1)) if lead_match else 0
+            if existing_status == "success" and lead_id and client.lead_exists(lead_id):
                 return AmoDeliveryResult(
                     "skipped",
                     (
@@ -595,11 +600,12 @@ def deliver_audit_to_active_crm(
                         f"{existing.get('lead_reference') or existing_status or 'запись найдена'}."
                     ),
                 )
-            if existing_status == "partial":
-                lead_match = re.search(
-                    r"/(\d+)(?:/)?$",
-                    str(existing.get("lead_reference") or ""),
+            if existing_status == "pending":
+                return AmoDeliveryResult(
+                    "skipped",
+                    "Отправка этого результата аудита в amoCRM уже выполняется.",
                 )
+            if existing_status == "partial":
                 if not lead_match:
                     return AmoDeliveryResult(
                         "error",
