@@ -42,6 +42,8 @@ class FakeSession:
             return FakeResponse(204)
         if method == "POST" and url.endswith("/api/v4/contacts"):
             return FakeResponse(200, {"_embedded": {"contacts": [{"id": 202}]}})
+        if method == "POST" and url.endswith("/api/v4/contacts/202/link"):
+            return FakeResponse(204)
         if method == "POST" and url.endswith("/api/v4/leads"):
             return FakeResponse(200, {"_embedded": {"leads": [{"id": 303}]}})
         if method == "POST" and url.endswith("/api/v4/tasks"):
@@ -82,6 +84,7 @@ def main():
             "contact_name": "Ivan Petrov",
             "email": "ivan@example.kz",
             "phone": "+7 777 000 00 00",
+            "source_app": "Test",
         },
         [DeliveryArtifact("audit.pptx", b"presentation")],
     )
@@ -97,19 +100,20 @@ def main():
 
     lead_call = next(call for call in session.calls if call[1].endswith("/api/v4/leads"))
     lead = lead_call[2]["json"][0]
-    assert lead["name"] == "Автоматический аудит — Demo Company"
+    assert lead["name"] == "[Test] Автоматический аудит — Demo Company"
     assert lead["pipeline_id"] == 11
     assert lead["status_id"] == 22
     assert lead["_embedded"]["contacts"][0]["is_main"] is True
 
     task_call = next(call for call in session.calls if call[1].endswith("/api/v4/tasks"))
     task = task_call[2]["json"][0]
-    assert task["text"] == "Автоматический аудит — Demo Company"
+    assert task["text"] == "[Test] Автоматический аудит — Demo Company"
     assert task["responsible_user_id"] == 33
 
     class FakeStore:
-        def __init__(self):
+        def __init__(self, existing_status="error"):
             self.status_updates = []
+            self.existing_status = existing_status
 
         def get_provider_config(self, provider):
             return {
@@ -128,7 +132,10 @@ def main():
             return {"access_token": "test-access-token"}
 
         def get_delivery_by_idempotency(self, key):
-            return {"status": "error"}
+            return {
+                "status": self.existing_status,
+                "lead_reference": "https://example.amocrm.ru/leads/detail/303",
+            }
 
         def reserve_delivery(self, provider, event, key):
             return True
@@ -139,6 +146,8 @@ def main():
 
     class FakeClient:
         domain = "example.amocrm.ru"
+        repaired_lead_id = None
+        existing_lead = True
 
         def __init__(self, domain, token):
             pass
@@ -148,6 +157,26 @@ def main():
                 status="success",
                 message="ok",
                 lead_id=303,
+            )
+
+        def repair_lead_relationships(self, lead_id):
+            self.repaired_lead_id = lead_id
+
+        def update_lead_title(self, lead_id, company_name, source_app):
+            self.updated_title = (
+                lead_id,
+                f"[{source_app}] Автоматический аудит — {company_name}",
+            )
+
+        def lead_exists(self, lead_id):
+            return self.existing_lead
+
+        def attach_artifacts_to_lead(self, lead_id, artifacts):
+            return AmoDeliveryResult(
+                status="success",
+                message="attachments restored",
+                lead_id=lead_id,
+                attached_files=[item.filename for item in artifacts],
             )
 
     original_create_store = crm_delivery.create_store
@@ -169,6 +198,39 @@ def main():
         assert orchestrated.status == "success"
         assert orchestrated.lead_id == 303
         assert fake_store.status_updates == ["pending", "success"]
+
+        partial_store = FakeStore(existing_status="partial")
+        crm_delivery.create_store = lambda secret_getter: partial_store
+        recovered = crm_delivery.deliver_audit_to_active_crm(
+            lambda name, default=None: default,
+            {"active_provider": "amocrm"},
+            client_info={"Наименование компании": "Demo Company"},
+            security_maturity=50,
+            it_maturity=60,
+            source_app="Test",
+            priorities=[],
+            artifacts=[DeliveryArtifact("audit.pptx", b"presentation")],
+        )
+        assert recovered.status == "success"
+        assert recovered.lead_id == 303
+        assert recovered.attached_files == ["audit.pptx"]
+        assert partial_store.status_updates == ["success"]
+
+        deleted_store = FakeStore(existing_status="partial")
+        crm_delivery.create_store = lambda secret_getter: deleted_store
+        FakeClient.existing_lead = False
+        recreated = crm_delivery.deliver_audit_to_active_crm(
+            lambda name, default=None: default,
+            {"active_provider": "amocrm"},
+            client_info={"Наименование компании": "Demo Company"},
+            security_maturity=50,
+            it_maturity=60,
+            source_app="Test",
+            priorities=[],
+            artifacts=[],
+        )
+        assert recreated.status == "success"
+        assert deleted_store.status_updates == ["pending", "success"]
     finally:
         crm_delivery.create_store = original_create_store
         crm_delivery.AmoCrmClient = original_client

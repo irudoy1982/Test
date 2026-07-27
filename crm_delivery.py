@@ -227,17 +227,7 @@ class AmoCrmClient:
             contact_id = int(existing["id"])
             companies = (existing.get("_embedded") or {}).get("companies") or []
             if not any(int(item.get("id", 0) or 0) == company_id for item in companies):
-                self._request(
-                    "POST",
-                    f"/api/v4/contacts/{contact_id}/link",
-                    payload=[
-                        {
-                            "to_entity_id": company_id,
-                            "to_entity_type": "companies",
-                        }
-                    ],
-                    expected=(200, 204),
-                )
+                self.link_contact_to_company(contact_id, company_id)
             return contact_id, False
 
         custom_fields = []
@@ -258,12 +248,84 @@ class AmoCrmClient:
         model: dict[str, Any] = {
             "name": name or "Контакт автоматического аудита",
             "responsible_user_id": responsible_user_id,
-            "_embedded": {"companies": [{"id": company_id}]},
         }
         if custom_fields:
             model["custom_fields_values"] = custom_fields
         response = self._request("POST", "/api/v4/contacts", payload=[model])
-        return int(self._first_embedded(response, "contacts")["id"]), True
+        contact_id = int(self._first_embedded(response, "contacts")["id"])
+        self.link_contact_to_company(contact_id, company_id)
+        return contact_id, True
+
+    def link_contact_to_company(self, contact_id: int, company_id: int) -> None:
+        self._request(
+            "POST",
+            f"/api/v4/contacts/{contact_id}/link",
+            payload=[
+                {
+                    "to_entity_id": company_id,
+                    "to_entity_type": "companies",
+                }
+            ],
+            expected=(200, 204),
+        )
+
+    def repair_lead_relationships(self, lead_id: int) -> None:
+        response = self._request(
+            "GET",
+            f"/api/v4/leads/{lead_id}/links",
+            expected=(200, 204),
+        )
+        links = (response.get("_embedded") or {}).get("links") or []
+        contact_links = [
+            item for item in links if item.get("to_entity_type") == "contacts"
+        ]
+        company_links = [
+            item for item in links if item.get("to_entity_type") == "companies"
+        ]
+        if not contact_links or not company_links:
+            return
+        main_contact = next(
+            (
+                item
+                for item in contact_links
+                if (item.get("metadata") or {}).get("main_contact")
+            ),
+            contact_links[0],
+        )
+        contact_id = int(main_contact.get("to_entity_id") or 0)
+        company_id = int(company_links[0].get("to_entity_id") or 0)
+        if not contact_id or not company_id:
+            return
+        contact = self._request(
+            "GET",
+            f"/api/v4/contacts/{contact_id}",
+            params={"with": "companies"},
+        )
+        companies = (contact.get("_embedded") or {}).get("companies") or []
+        if not any(int(item.get("id", 0) or 0) == company_id for item in companies):
+            self.link_contact_to_company(contact_id, company_id)
+
+    def update_lead_title(
+        self,
+        lead_id: int,
+        company_name: str,
+        source_app: str,
+    ) -> None:
+        self._request(
+            "PATCH",
+            f"/api/v4/leads/{lead_id}",
+            payload={
+                "name": f"[{source_app}] Автоматический аудит — {company_name}",
+            },
+        )
+
+    def lead_exists(self, lead_id: int) -> bool:
+        response = self._request(
+            "GET",
+            f"/api/v4/leads/{lead_id}",
+            expected=(200, 404),
+        )
+        return int(response.get("id") or 0) == int(lead_id)
 
     def create_lead(
         self,
@@ -274,8 +336,9 @@ class AmoCrmClient:
         pipeline_id: int,
         status_id: int,
         responsible_user_id: int,
+        source_app: str,
     ) -> int:
-        title = f"Автоматический аудит — {company_name}"
+        title = f"[{source_app}] Автоматический аудит — {company_name}"
         response = self._request(
             "POST",
             "/api/v4/leads",
@@ -302,6 +365,7 @@ class AmoCrmClient:
         company_name: str,
         responsible_user_id: int,
         due_hours: int,
+        source_app: str,
     ) -> int:
         due_at = int(time.time()) + max(1, due_hours) * 3600
         response = self._request(
@@ -310,7 +374,7 @@ class AmoCrmClient:
             payload=[
                 {
                     "task_type_id": 1,
-                    "text": f"Автоматический аудит — {company_name}",
+                    "text": f"[{source_app}] Автоматический аудит — {company_name}",
                     "complete_till": due_at,
                     "entity_id": lead_id,
                     "entity_type": "leads",
@@ -388,6 +452,37 @@ class AmoCrmClient:
             expected=(202,),
         )
 
+    def attach_artifacts_to_lead(
+        self,
+        lead_id: int,
+        artifacts: list[DeliveryArtifact],
+    ) -> AmoDeliveryResult:
+        result = AmoDeliveryResult(
+            status="success",
+            message=f"Вложения сделки #{lead_id} обновлены",
+            lead_id=lead_id,
+        )
+        if not artifacts:
+            return result
+        try:
+            drive_url = self.get_drive_url()
+            for artifact in artifacts:
+                try:
+                    file_uuid = self.upload_file(artifact, drive_url)
+                    self.attach_file_to_lead(lead_id, file_uuid)
+                    result.attached_files.append(artifact.filename)
+                except (AmoCrmDeliveryError, CrmConfigurationError) as exc:
+                    result.warnings.append(f"{artifact.filename}: {exc}")
+        except (AmoCrmDeliveryError, CrmConfigurationError) as exc:
+            result.warnings.append(str(exc))
+        if result.warnings:
+            result.status = "partial"
+            result.message = (
+                f"Вложения сделки #{lead_id} загружены не полностью: "
+                f"{' | '.join(result.warnings)}"
+            )
+        return result
+
     def deliver(
         self,
         settings: dict[str, Any],
@@ -417,12 +512,14 @@ class AmoCrmClient:
             pipeline_id=pipeline_id,
             status_id=status_id,
             responsible_user_id=responsible_user_id,
+            source_app=str(payload.get("source_app") or "Audit"),
         )
         task_id = self.create_task(
             lead_id=lead_id,
             company_name=company_name,
             responsible_user_id=responsible_user_id,
             due_hours=due_hours,
+            source_app=str(payload.get("source_app") or "Audit"),
         )
 
         result = AmoDeliveryResult(
@@ -433,21 +530,14 @@ class AmoCrmClient:
             company_id=company_id,
             task_id=task_id,
         )
-        if artifacts:
-            try:
-                drive_url = self.get_drive_url()
-                for artifact in artifacts:
-                    try:
-                        file_uuid = self.upload_file(artifact, drive_url)
-                        self.attach_file_to_lead(lead_id, file_uuid)
-                        result.attached_files.append(artifact.filename)
-                    except (AmoCrmDeliveryError, CrmConfigurationError) as exc:
-                        result.warnings.append(f"{artifact.filename}: {exc}")
-            except (AmoCrmDeliveryError, CrmConfigurationError) as exc:
-                result.warnings.append(str(exc))
-        if result.warnings:
+        attachment_result = self.attach_artifacts_to_lead(lead_id, artifacts)
+        result.attached_files = attachment_result.attached_files
+        result.warnings = attachment_result.warnings
+        if attachment_result.status == "partial":
             result.status = "partial"
-            result.message += "; вложения загружены не полностью"
+            result.message = (
+                f"{result.message}; {attachment_result.message}"
+            )
         return result
 
 
@@ -490,10 +580,14 @@ def deliver_audit_to_active_crm(
             priorities,
         )
         idempotency_key = build_delivery_idempotency_key(payload, artifacts)
+        client = AmoCrmClient(
+            settings.get("domain", ""),
+            credentials.get("access_token", ""),
+        )
         existing = store.get_delivery_by_idempotency(idempotency_key)
         if existing:
             existing_status = str(existing.get("status") or "").lower()
-            if existing_status in {"success", "partial", "pending"}:
+            if existing_status in {"success", "pending"}:
                 return AmoDeliveryResult(
                     "skipped",
                     (
@@ -501,6 +595,42 @@ def deliver_audit_to_active_crm(
                         f"{existing.get('lead_reference') or existing_status or 'запись найдена'}."
                     ),
                 )
+            if existing_status == "partial":
+                lead_match = re.search(
+                    r"/(\d+)(?:/)?$",
+                    str(existing.get("lead_reference") or ""),
+                )
+                if not lead_match:
+                    return AmoDeliveryResult(
+                        "error",
+                        "Не удалось определить сделку для повторной загрузки вложений.",
+                    )
+                lead_id = int(lead_match.group(1))
+                if client.lead_exists(lead_id):
+                    relation_warning = ""
+                    try:
+                        client.update_lead_title(
+                            lead_id,
+                            str(payload.get("company") or "Компания"),
+                            str(payload.get("source_app") or "Audit"),
+                        )
+                        client.repair_lead_relationships(lead_id)
+                    except Exception as exc:
+                        relation_warning = f"Связь контакт-компания: {exc}"
+                    result = client.attach_artifacts_to_lead(lead_id, artifacts)
+                    if relation_warning:
+                        result.warnings.append(relation_warning)
+                        result.status = "partial"
+                        result.message = (
+                            f"{result.message}; {relation_warning}"
+                        )
+                    store.update_delivery(
+                        idempotency_key,
+                        status=result.status,
+                        message=result.message,
+                        lead_reference=str(existing.get("lead_reference") or ""),
+                    )
+                    return result
             store.update_delivery(
                 idempotency_key,
                 status="pending",
@@ -509,10 +639,6 @@ def deliver_audit_to_active_crm(
         elif not store.reserve_delivery("amocrm", "audit_completed", idempotency_key):
             return AmoDeliveryResult("skipped", "Отправка этого аудита уже выполняется.")
 
-        client = AmoCrmClient(
-            settings.get("domain", ""),
-            credentials.get("access_token", ""),
-        )
         result = client.deliver(settings, payload, artifacts)
         lead_reference = (
             f"https://{client.domain}/leads/detail/{result.lead_id}"
