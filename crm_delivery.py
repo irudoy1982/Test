@@ -472,7 +472,11 @@ def deliver_audit_to_active_crm(
     try:
         store = create_store(secret_getter)
         config = store.get_provider_config("amocrm")
-        if not config or not bool(config.get("enabled")):
+        if (
+            not config
+            or config.get("connection_status") != "ok"
+            or not bool(config.get("has_secret"))
+        ):
             return AmoDeliveryResult("error", "Активная конфигурация amoCRM не найдена.")
         settings = config.get("settings") if isinstance(config.get("settings"), dict) else {}
         credentials = store.get_provider_credentials("amocrm")

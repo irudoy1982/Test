@@ -13,7 +13,8 @@ requests_stub.request = lambda *args, **kwargs: None
 sys.modules.setdefault("requests", requests_stub)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from crm_delivery import AmoCrmClient, DeliveryArtifact  # noqa: E402
+import crm_delivery  # noqa: E402
+from crm_delivery import AmoCrmClient, AmoDeliveryResult, DeliveryArtifact  # noqa: E402
 
 
 class FakeResponse:
@@ -105,6 +106,66 @@ def main():
     task = task_call[2]["json"][0]
     assert task["text"] == "Автоматический аудит — Demo Company"
     assert task["responsible_user_id"] == 33
+
+    class FakeStore:
+        def get_provider_config(self, provider):
+            return {
+                "provider": provider,
+                "settings": {
+                    "domain": "example.amocrm.ru",
+                    "pipeline_id": "11",
+                    "status_id": "22",
+                    "responsible_user_id": "33",
+                },
+                "has_secret": True,
+                "connection_status": "ok",
+            }
+
+        def get_provider_credentials(self, provider):
+            return {"access_token": "test-access-token"}
+
+        def get_delivery_by_idempotency(self, key):
+            return {}
+
+        def reserve_delivery(self, provider, event, key):
+            return True
+
+        def update_delivery(self, key, **values):
+            return None
+
+    class FakeClient:
+        domain = "example.amocrm.ru"
+
+        def __init__(self, domain, token):
+            pass
+
+        def deliver(self, settings, payload, artifacts):
+            return AmoDeliveryResult(
+                status="success",
+                message="ok",
+                lead_id=303,
+            )
+
+    original_create_store = crm_delivery.create_store
+    original_client = crm_delivery.AmoCrmClient
+    crm_delivery.create_store = lambda secret_getter: FakeStore()
+    crm_delivery.AmoCrmClient = FakeClient
+    try:
+        orchestrated = crm_delivery.deliver_audit_to_active_crm(
+            lambda name, default=None: default,
+            {"active_provider": "amocrm"},
+            client_info={"Наименование компании": "Demo Company"},
+            security_maturity=50,
+            it_maturity=60,
+            source_app="Test",
+            priorities=[],
+            artifacts=[],
+        )
+        assert orchestrated.status == "success"
+        assert orchestrated.lead_id == 303
+    finally:
+        crm_delivery.create_store = original_create_store
+        crm_delivery.AmoCrmClient = original_client
 
     print("CRM delivery smoke test: OK")
 
