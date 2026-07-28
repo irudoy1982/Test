@@ -31,6 +31,7 @@ from crm_assets import (
 
 
 ADMIN_SESSION_TTL_SECONDS = 30 * 60
+ADMIN_PERSISTENT_SESSION_HOURS = 12
 ADMIN_MAX_FAILED_ATTEMPTS = 5
 ADMIN_LOCK_SECONDS = 60
 ADMIN_PASSWORD_ITERATIONS = 600_000
@@ -40,7 +41,10 @@ ADMIN_RESET_MAX_ATTEMPTS = 5
 
 def is_admin_request() -> bool:
     try:
-        return str(st.query_params.get("admin", "")).lower() in {"1", "true", "yes"}
+        admin_flag = str(st.query_params.get("admin", "")).lower()
+        return admin_flag in {"1", "true", "yes"} or bool(
+            st.query_params.get("admin_session", "")
+        )
     except Exception:
         return False
 
@@ -211,6 +215,75 @@ def _admin_role() -> str:
     return str(st.session_state.get("crm_admin_role", "viewer"))
 
 
+def _admin_session_token() -> str:
+    try:
+        return str(st.query_params.get("admin_session", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def _admin_session_hash(token: str) -> str:
+    return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+
+
+def _clear_admin_session_query_param() -> None:
+    try:
+        if "admin_session" in st.query_params:
+            del st.query_params["admin_session"]
+    except Exception:
+        pass
+
+
+def _set_authenticated_admin(identity: str, display_name: str, role: str) -> None:
+    st.session_state.crm_admin_authenticated = True
+    st.session_state.crm_admin_authenticated_at = time.time()
+    st.session_state.crm_admin_identity = str(identity)
+    st.session_state.crm_admin_display_name = str(display_name or identity)
+    st.session_state.crm_admin_role = (
+        role if role in {"admin", "editor", "viewer"} else "viewer"
+    )
+    st.session_state.crm_admin_failed_attempts = 0
+    st.session_state.crm_admin_locked_until = 0
+
+
+def _restore_persistent_admin_session(store, configured_username: str) -> bool:
+    if store is None:
+        return False
+    token = _admin_session_token()
+    if not token or len(token) < 32 or len(token) > 200:
+        return False
+    token_hash = _admin_session_hash(token)
+    try:
+        session = store.get_admin_session(token_hash)
+    except Exception:
+        return False
+    if not session:
+        _clear_admin_session_query_param()
+        return False
+
+    identity = str(session.get("username") or "").strip()
+    if hmac.compare_digest(identity, configured_username):
+        role = "admin"
+        display_name = str(session.get("display_name") or configured_username)
+    else:
+        try:
+            account = store.get_admin_user(identity)
+        except Exception:
+            account = {}
+        if not account.get("active"):
+            try:
+                store.revoke_admin_session(token_hash)
+            except Exception:
+                pass
+            _clear_admin_session_query_param()
+            return False
+        role = str(account.get("role") or "viewer")
+        display_name = str(account.get("display_name") or identity)
+
+    _set_authenticated_admin(identity, display_name, role)
+    return True
+
+
 def _render_login(secret_getter: Callable[[str, Any], Any], store=None) -> bool:
     configured_username = str(secret_getter("ADMIN_USERNAME", "admin") or "admin").strip()
     configured = str(secret_getter("ADMIN_PASSWORD_HASH", "") or "")
@@ -233,6 +306,10 @@ def _render_login(secret_getter: Callable[[str, Any], Any], store=None) -> bool:
 
     authenticated_at = float(st.session_state.get("crm_admin_authenticated_at", 0) or 0)
     if st.session_state.get("crm_admin_authenticated") and time.time() - authenticated_at < ADMIN_SESSION_TTL_SECONDS:
+        st.session_state.crm_admin_authenticated_at = time.time()
+        return True
+
+    if _restore_persistent_admin_session(store, configured_username):
         return True
 
     st.session_state.crm_admin_authenticated = False
@@ -275,13 +352,23 @@ def _render_login(secret_getter: Callable[[str, Any], Any], store=None) -> bool:
                 authenticated_name = str(account.get("display_name") or identity)
 
         if authenticated_role:
-            st.session_state.crm_admin_authenticated = True
-            st.session_state.crm_admin_authenticated_at = time.time()
-            st.session_state.crm_admin_identity = identity
-            st.session_state.crm_admin_display_name = authenticated_name
-            st.session_state.crm_admin_role = authenticated_role
-            st.session_state.crm_admin_failed_attempts = 0
-            st.session_state.crm_admin_locked_until = 0
+            _set_authenticated_admin(identity, authenticated_name, authenticated_role)
+            if store is not None:
+                token = secrets.token_urlsafe(36)
+                expires_at = datetime.now(timezone.utc) + timedelta(
+                    hours=ADMIN_PERSISTENT_SESSION_HOURS
+                )
+                try:
+                    store.create_admin_session(
+                        _admin_session_hash(token),
+                        identity,
+                        authenticated_role,
+                        authenticated_name,
+                        expires_at.isoformat(),
+                    )
+                    st.query_params["admin_session"] = token
+                except Exception:
+                    pass
             st.rerun()
         else:
             attempts = int(st.session_state.get("crm_admin_failed_attempts", 0) or 0) + 1
@@ -355,7 +442,8 @@ def _render_storage_setup() -> None:
     st.markdown(
         "1. Создайте проект Supabase.\n"
         "2. Выполните по порядку миграции `db/001_crm_admin.sql`, "
-        "`db/002_admin_assets.sql`, `db/003_admin_users.sql`.\n"
+        "`db/002_admin_assets.sql`, `db/003_admin_users.sql`, "
+        "`db/004_admin_password_recovery.sql`, `db/005_admin_sessions.sql`.\n"
         "3. Добавьте в Secrets приложения `SUPABASE_URL` и `SUPABASE_SERVICE_ROLE_KEY`."
     )
 
@@ -720,6 +808,260 @@ def _render_users(store) -> None:
                 st.rerun()
 
 
+def _set_user_notice(message: str, level: str = "success") -> None:
+    st.session_state.admin_user_notice = {"message": str(message), "level": level}
+
+
+def _render_user_notice() -> None:
+    notice = st.session_state.pop("admin_user_notice", None)
+    if not isinstance(notice, dict):
+        return
+    message = str(notice.get("message") or "")
+    if notice.get("level") == "error":
+        st.error(message)
+    else:
+        st.success(message)
+
+
+@st.dialog("Сменить пароль")
+def _change_admin_password_dialog(store, username: str) -> None:
+    st.caption(f"Пользователь: {username}")
+    with st.form(f"change_admin_password_{username}"):
+        password = st.text_input("Новый пароль", type="password")
+        confirmation = st.text_input("Повторите новый пароль", type="password")
+        submitted = st.form_submit_button(
+            "Сохранить новый пароль",
+            type="primary",
+            use_container_width=True,
+        )
+    if not submitted:
+        return
+    if len(password) < 12:
+        st.error("Пароль должен содержать не менее 12 символов.")
+        return
+    if password != confirmation:
+        st.error("Пароли не совпадают.")
+        return
+    account = store.get_admin_user(username)
+    if not account:
+        st.error("Пользователь больше не существует.")
+        return
+    store.save_admin_user(
+        username,
+        str(account.get("display_name") or username),
+        str(account.get("role") or "viewer"),
+        _hash_admin_password(password),
+        _admin_identity(),
+    )
+    store.revoke_admin_sessions_for_user(username)
+    _set_user_notice(f"Пароль пользователя {username} изменён.")
+    st.rerun()
+
+
+@st.dialog("Удалить пользователя")
+def _delete_admin_user_dialog(store, username: str) -> None:
+    st.warning(
+        f"Пользователь {username} потеряет доступ к админке. "
+        "Журнал действий и сформированные отчёты сохранятся."
+    )
+    with st.form(f"delete_admin_user_dialog_{username}"):
+        confirmation = st.text_input(
+            "Для подтверждения введите логин пользователя",
+            placeholder=username,
+        )
+        submitted = st.form_submit_button(
+            "Удалить без возможности восстановления",
+            type="primary",
+            use_container_width=True,
+        )
+    if not submitted:
+        return
+    if not hmac.compare_digest(confirmation.strip(), username):
+        st.error("Логин введён неверно.")
+        return
+    users = store.list_admin_users()
+    selected = next(
+        (row for row in users if str(row.get("username")) == username),
+        {},
+    )
+    active_admins = [
+        row
+        for row in users
+        if row.get("role") == "admin" and bool(row.get("active"))
+    ]
+    if username == _admin_identity():
+        st.error("Нельзя удалить собственную учётную запись.")
+        return
+    if (
+        selected.get("role") == "admin"
+        and bool(selected.get("active"))
+        and len(active_admins) <= 1
+    ):
+        st.error(
+            "Нельзя удалить последнего активного администратора. "
+            "Сначала назначьте другого администратора."
+        )
+        return
+    store.delete_admin_user(username)
+    _set_user_notice(f"Пользователь {username} удалён.")
+    st.rerun()
+
+
+def _render_users_v2(store) -> None:
+    st.subheader("Пользователи админки")
+    st.caption(
+        "Имя, роль и доступ изменяются прямо в строке. "
+        "Пароли хранятся только в виде стойких хешей."
+    )
+    _render_user_notice()
+    users = store.list_admin_users()
+    role_labels = {
+        "admin": "Администратор",
+        "editor": "Редактор",
+        "viewer": "Наблюдатель",
+    }
+
+    with st.expander("Создать пользователя", expanded=not users):
+        with st.form("admin_user_create_v2"):
+            left, right = st.columns(2)
+            username = left.text_input("Логин")
+            display_name = right.text_input("Имя")
+            role = left.selectbox(
+                "Роль",
+                options=["editor", "viewer", "admin"],
+                format_func=lambda value: role_labels[value],
+            )
+            password = right.text_input("Временный пароль", type="password")
+            confirmation = right.text_input("Повторите пароль", type="password")
+            create_user = st.form_submit_button(
+                "Создать пользователя",
+                type="primary",
+            )
+        if create_user:
+            if not _valid_admin_username(username):
+                st.error(
+                    "Логин: 3–80 символов, только латиница, цифры и . _ @ -"
+                )
+            elif len(password) < 12:
+                st.error("Пароль должен содержать не менее 12 символов.")
+            elif password != confirmation:
+                st.error("Пароли не совпадают.")
+            elif store.get_admin_user(username.strip()):
+                st.error("Пользователь с таким логином уже существует.")
+            else:
+                store.save_admin_user(
+                    username.strip(),
+                    display_name.strip() or username.strip(),
+                    role,
+                    _hash_admin_password(password),
+                    _admin_identity(),
+                )
+                _set_user_notice(f"Пользователь {username.strip()} создан.")
+                st.rerun()
+
+    if not users:
+        st.info(
+            "Дополнительных пользователей пока нет. "
+            "Начальный администратор задаётся в Secrets."
+        )
+        return
+
+    header = st.columns([1.35, 2.1, 1.45, 0.8, 2.5])
+    for column, label in zip(
+        header,
+        ["Логин", "Имя", "Роль", "Доступ", "Действия"],
+    ):
+        column.caption(label)
+
+    active_admins = [
+        row
+        for row in users
+        if row.get("role") == "admin" and bool(row.get("active"))
+    ]
+    for row in users:
+        username_value = str(row.get("username") or "")
+        current_role = str(row.get("role") or "viewer")
+        with st.form(f"admin_user_row_{username_value}", border=True):
+            login_col, name_col, role_col, active_col, actions_col = st.columns(
+                [1.35, 2.1, 1.45, 0.8, 2.5],
+                vertical_alignment="center",
+            )
+            login_col.markdown(f"**{username_value}**")
+            display_name = name_col.text_input(
+                "Имя",
+                value=str(row.get("display_name") or ""),
+                label_visibility="collapsed",
+                key=f"admin_user_name_{username_value}",
+            )
+            role = role_col.selectbox(
+                "Роль",
+                options=["admin", "editor", "viewer"],
+                index=["admin", "editor", "viewer"].index(current_role),
+                format_func=lambda value: role_labels[value],
+                label_visibility="collapsed",
+                key=f"admin_user_role_{username_value}",
+            )
+            active = active_col.toggle(
+                "Доступ",
+                value=bool(row.get("active", True)),
+                label_visibility="collapsed",
+                key=f"admin_user_active_{username_value}",
+            )
+            save_col, password_col, delete_col = actions_col.columns(
+                [1.1, 1.0, 0.9]
+            )
+            save_clicked = save_col.form_submit_button(
+                "Сохранить",
+                use_container_width=True,
+            )
+            password_clicked = password_col.form_submit_button(
+                "Пароль",
+                use_container_width=True,
+            )
+            delete_clicked = delete_col.form_submit_button(
+                "Удалить",
+                use_container_width=True,
+            )
+
+        if save_clicked:
+            removes_last_admin = (
+                current_role == "admin"
+                and bool(row.get("active"))
+                and (role != "admin" or not active)
+                and len(active_admins) <= 1
+            )
+            if username_value == _admin_identity() and not active:
+                st.error("Нельзя отключить собственную учётную запись.")
+            elif username_value == _admin_identity() and role != current_role:
+                st.error("Нельзя изменить собственную роль.")
+            elif removes_last_admin:
+                st.error(
+                    "Нельзя отключить или понизить последнего активного "
+                    "администратора."
+                )
+            else:
+                store.save_admin_user(
+                    username_value,
+                    display_name.strip() or username_value,
+                    role,
+                    None,
+                    _admin_identity(),
+                )
+                store.set_admin_user_active(
+                    username_value,
+                    active,
+                    _admin_identity(),
+                )
+                if role != current_role or not active:
+                    store.revoke_admin_sessions_for_user(username_value)
+                _set_user_notice(f"Пользователь {username_value} обновлён.")
+                st.rerun()
+        elif password_clicked:
+            _change_admin_password_dialog(store, username_value)
+        elif delete_clicked:
+            _delete_admin_user_dialog(store, username_value)
+
+
 def _render_amo_settings(store, runtime: dict[str, Any]) -> None:
     config = store.get_provider_config("amocrm")
     settings = config.get("settings") if isinstance(config.get("settings"), dict) else {}
@@ -965,6 +1307,13 @@ def render_crm_admin(app_version: str, secret_getter: Callable[[str, Any], Any])
         f"Выполнен вход: {display_name} · {role_labels.get(_admin_role(), _admin_role())}"
     )
     if top_right.button("Выйти", use_container_width=True):
+        token = _admin_session_token()
+        if token and store is not None:
+            try:
+                store.revoke_admin_session(_admin_session_hash(token))
+            except Exception:
+                pass
+        _clear_admin_session_query_param()
         st.session_state.crm_admin_authenticated = False
         st.session_state.crm_admin_authenticated_at = 0
         st.session_state.crm_admin_role = ""
@@ -1021,7 +1370,7 @@ def render_crm_admin(app_version: str, secret_getter: Callable[[str, Any], Any])
     if _admin_role() == "admin":
         with tabs[tab_index]:
             try:
-                _render_users(store)
+                _render_users_v2(store)
             except CrmConfigurationError as exc:
                 st.error(f"Управление пользователями не готово: {exc}")
                 st.caption("Выполните миграцию db/003_admin_users.sql в Supabase.")

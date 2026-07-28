@@ -449,6 +449,75 @@ class SupabaseCrmStore:
             prefer="return=minimal",
         )
 
+    def delete_admin_user(self, username: str) -> None:
+        username = str(username or "").strip()
+        self.revoke_admin_sessions_for_user(username)
+        self._request(
+            "DELETE",
+            "/rest/v1/admin_users",
+            params={"username": f"eq.{username}"},
+            prefer="return=minimal",
+        )
+
+    def create_admin_session(
+        self,
+        token_hash: str,
+        username: str,
+        role: str,
+        display_name: str,
+        expires_at: str,
+    ) -> None:
+        self._request(
+            "POST",
+            "/rest/v1/admin_sessions",
+            payload={
+                "token_hash": str(token_hash),
+                "username": str(username or "").strip(),
+                "role": role if role in {"admin", "editor", "viewer"} else "viewer",
+                "display_name": str(display_name or username).strip()[:120],
+                "expires_at": str(expires_at),
+            },
+            prefer="return=minimal",
+        )
+
+    def get_admin_session(self, token_hash: str) -> dict[str, Any]:
+        rows = self._request(
+            "GET",
+            "/rest/v1/admin_sessions",
+            params={
+                "token_hash": f"eq.{str(token_hash)}",
+                "expires_at": f"gt.{datetime.now(timezone.utc).isoformat()}",
+                "select": "token_hash,username,role,display_name,expires_at",
+                "limit": "1",
+            },
+        )
+        if not rows:
+            return {}
+        self._request(
+            "PATCH",
+            "/rest/v1/admin_sessions",
+            params={"token_hash": f"eq.{str(token_hash)}"},
+            payload={"last_seen_at": datetime.now(timezone.utc).isoformat()},
+            prefer="return=minimal",
+        )
+        return rows[0]
+
+    def revoke_admin_session(self, token_hash: str) -> None:
+        self._request(
+            "DELETE",
+            "/rest/v1/admin_sessions",
+            params={"token_hash": f"eq.{str(token_hash)}"},
+            prefer="return=minimal",
+        )
+
+    def revoke_admin_sessions_for_user(self, username: str) -> None:
+        self._request(
+            "DELETE",
+            "/rest/v1/admin_sessions",
+            params={"username": f"eq.{str(username or '').strip()}"},
+            prefer="return=minimal",
+        )
+
     def get_asset_metadata(self, asset_key: str) -> dict[str, Any]:
         rows = self._request(
             "GET",

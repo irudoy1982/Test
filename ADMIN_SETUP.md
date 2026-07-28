@@ -1,12 +1,17 @@
 # X3 Admin Setup
 
-The admin console is available only when the `admin` query parameter is present:
+The legacy admin route remains available when the `admin` query parameter is present:
 
 ```text
 https://testkh.streamlit.app/?admin=1
 ```
 
 It is intentionally not linked from the customer questionnaire.
+
+For daily administration, deploy a separate Streamlit Cloud app from the same
+repository and branch with `cloud_admin.py` as its main file. This gives the
+admin console its own HTTPS address while the customer questionnaire remains
+unchanged.
 
 ## 1. Create the storage
 
@@ -17,6 +22,7 @@ It is intentionally not linked from the customer questionnaire.
    - `db/002_admin_assets.sql`
    - `db/003_admin_users.sql`
    - `db/004_admin_password_recovery.sql`
+   - `db/005_admin_sessions.sql`
 4. Keep Row Level Security enabled. The migration grants no table access to `anon` or `authenticated`.
 
 ## 2. Configure Test secrets
@@ -39,6 +45,10 @@ python tools/generate_admin_password.py
 ```
 
 Never commit `.streamlit/secrets.toml`, Supabase server keys, CRM tokens, or admin passwords.
+
+The separate admin app has its own Streamlit Cloud Secrets. Add the same
+Supabase, admin and Telegram recovery values to that app. Persistent browser
+sessions are stored as SHA-256 token hashes and expire after 12 hours.
 
 ## 3. Safe activation flow
 

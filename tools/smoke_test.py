@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "14.2-dev.4", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "15.1-dev.1", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_forced_light_theme() -> None:
@@ -68,6 +68,8 @@ def check_x3_admin_console() -> None:
     migration = ROOT / "db" / "001_crm_admin.sql"
     asset_migration = ROOT / "db" / "002_admin_assets.sql"
     user_migration = ROOT / "db" / "003_admin_users.sql"
+    session_migration = ROOT / "db" / "005_admin_sessions.sql"
+    cloud_admin = ROOT / "cloud_admin.py"
     assets_module = ROOT / "crm_assets.py"
     setup = ROOT / "ADMIN_SETUP.md"
     for path in (
@@ -76,6 +78,8 @@ def check_x3_admin_console() -> None:
         migration,
         asset_migration,
         user_migration,
+        session_migration,
+        cloud_admin,
         assets_module,
         setup,
     ):
@@ -100,6 +104,23 @@ def check_x3_admin_console() -> None:
     assert_true("ADMIN_MAX_FAILED_ATTEMPTS" in admin_text, "Admin login lockout is missing")
     assert_true("audit-admin-assets" in read_text(asset_migration), "Private asset bucket is missing")
     assert_true("admin_users" in read_text(user_migration), "Admin user table is missing")
+    assert_true(
+        "admin_sessions" in read_text(session_migration),
+        "Persistent admin session table is missing",
+    )
+    assert_true(
+        "render_crm_admin(APP_VERSION" in read_text(cloud_admin),
+        "Standalone cloud admin entrypoint is missing",
+    )
+    assert_true(
+        "def _render_users_v2" in admin_text and "@st.dialog" in admin_text,
+        "Inline user management dialogs are missing",
+    )
+    assert_true(
+        "create_admin_session" in store_text
+        and "revoke_admin_sessions_for_user" in store_text,
+        "Persistent admin session storage is incomplete",
+    )
 
 
 def check_customer_changelog() -> None:
