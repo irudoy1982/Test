@@ -154,11 +154,17 @@ def _render_password_recovery(
             if account_exists:
                 code = f"{secrets.randbelow(1_000_000):06d}"
                 expires_at = datetime.now(timezone.utc) + timedelta(minutes=ADMIN_RESET_TTL_MINUTES)
+                code_hash = _hash_reset_code(normalized, code, pepper)
                 store.create_password_reset(
                     normalized,
-                    _hash_reset_code(normalized, code, pepper),
+                    code_hash,
                     expires_at.isoformat(),
                 )
+                st.session_state.crm_admin_recovery_challenge = {
+                    "username": normalized.lower(),
+                    "code_hash": code_hash,
+                    "expires_at": expires_at.isoformat(),
+                }
                 _send_recovery_telegram(secret_getter, normalized, code)
             st.success("Если логин существует, код отправлен администратору в Telegram.")
         except Exception:
@@ -189,17 +195,39 @@ def _render_password_recovery(
         expires_at = datetime.fromisoformat(str(reset.get("expires_at") or "").replace("Z", "+00:00"))
     except ValueError:
         expires_at = datetime.min.replace(tzinfo=timezone.utc)
-    valid = (
+    submitted_hash = _hash_reset_code(normalized, code, pepper)
+    database_valid = (
         bool(reset)
         and not reset.get("used")
         and int(reset.get("attempts") or 0) < ADMIN_RESET_MAX_ATTEMPTS
         and expires_at > datetime.now(timezone.utc)
         and hmac.compare_digest(
             str(reset.get("code_hash") or ""),
-            _hash_reset_code(normalized, code, pepper),
+            submitted_hash,
         )
     )
-    store.register_password_reset_attempt(normalized, used=valid)
+    challenge = st.session_state.get("crm_admin_recovery_challenge", {})
+    try:
+        challenge_expires_at = datetime.fromisoformat(
+            str(challenge.get("expires_at") or "").replace("Z", "+00:00")
+        )
+    except (AttributeError, ValueError):
+        challenge_expires_at = datetime.min.replace(tzinfo=timezone.utc)
+    session_valid = (
+        isinstance(challenge, dict)
+        and hmac.compare_digest(
+            str(challenge.get("username") or ""),
+            normalized.lower(),
+        )
+        and challenge_expires_at > datetime.now(timezone.utc)
+        and hmac.compare_digest(
+            str(challenge.get("code_hash") or ""),
+            submitted_hash,
+        )
+    )
+    valid = database_valid or session_valid
+    if reset:
+        store.register_password_reset_attempt(normalized, used=valid)
     if not valid:
         st.error("Код неверен или срок его действия истёк.")
         return
@@ -214,6 +242,7 @@ def _render_password_recovery(
         "password-recovery",
     )
     store.revoke_admin_sessions_for_user(normalized)
+    st.session_state.pop("crm_admin_recovery_challenge", None)
     st.success("Пароль изменён. Теперь можно войти.")
 
 
