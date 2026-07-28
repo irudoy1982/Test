@@ -8,7 +8,7 @@ import streamlit as st
 from crm_admin import render_crm_admin
 
 
-APP_VERSION = "15.1-dev.1"
+APP_VERSION = "15.1-dev.2"
 
 
 def get_app_secret(name: str, default: Any = None) -> Any:

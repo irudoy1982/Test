@@ -92,6 +92,18 @@ def _hash_reset_code(username: str, code: str, pepper: str) -> str:
     return hmac.new(str(pepper).encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
 
+def _recovery_pepper(secret_getter: Callable[[str, Any], Any]) -> str:
+    # Both the questionnaire and the standalone admin app use the same Supabase
+    # project. Its server key therefore provides a stable HMAC key across apps.
+    return str(
+        secret_getter("SUPABASE_SERVICE_ROLE_KEY", "")
+        or secret_getter("SUPABASE_SECRET_KEY", "")
+        or secret_getter("ADMIN_RECOVERY_PEPPER", "")
+        or secret_getter("TELEGRAM_TOKEN", "")
+        or ""
+    ).strip()
+
+
 def _send_recovery_telegram(
     secret_getter: Callable[[str, Any], Any],
     username: str,
@@ -109,7 +121,8 @@ def _send_recovery_telegram(
                 "🔐 Восстановление доступа к админ-панели Test\n"
                 f"Логин: {username}\n"
                 f"Код: {code}\n"
-                f"Действует: {ADMIN_RESET_TTL_MINUTES} минут"
+                f"Действует: {ADMIN_RESET_TTL_MINUTES} минут\n"
+                "Действителен только последний запрошенный код."
             ),
         },
         timeout=15,
@@ -125,13 +138,9 @@ def _render_password_recovery(
     if store is None:
         st.info("Для восстановления сначала подключите Supabase.")
         return
-    pepper = str(
-        secret_getter("ADMIN_RECOVERY_PEPPER", "")
-        or secret_getter("TELEGRAM_TOKEN", "")
-        or ""
-    ).strip()
+    pepper = _recovery_pepper(secret_getter)
     if not pepper:
-        st.info("Восстановление пароля ещё не настроено: отсутствует Telegram-бот.")
+        st.info("Восстановление пароля ещё не настроено.")
         return
 
     with st.form("crm_admin_recovery_request"):
@@ -157,7 +166,7 @@ def _render_password_recovery(
 
     with st.form("crm_admin_recovery_confirm"):
         identity = st.text_input("Логин", key="recovery_identity")
-        code = st.text_input("Код из письма", max_chars=6)
+        code = st.text_input("Код из Telegram", max_chars=6)
         password = st.text_input("Новый пароль", type="password")
         confirmation = st.text_input("Повторите новый пароль", type="password")
         reset_password = st.form_submit_button(
@@ -204,6 +213,7 @@ def _render_password_recovery(
         _hash_admin_password(password),
         "password-recovery",
     )
+    store.revoke_admin_sessions_for_user(normalized)
     st.success("Пароль изменён. Теперь можно войти.")
 
 
