@@ -49,6 +49,7 @@ def load_ai_first_helper():
 
     namespace["portfolio_vendors_by_categories"] = fake_portfolio_vendors_by_categories
     for name in (
+        "risk_source_label",
         "normalize_vendor_key",
         "result_contains_any",
         "sales_override_for_item",
@@ -136,11 +137,15 @@ def test_ai_first_sales_behavior() -> None:
         {"has_public_web": True},
     )
 
-    assert_true(len(rows) == 1, f"Expected exactly one AI opportunity, got {len(rows)}")
-    assert_true(rows[0]["priority"] == "P2", "WAF should be P2 for this sales playbook")
-    assert_true(rows[0]["source"] == "ИИ", "AI opportunity source must stay visible in playbook")
-    assert_true(rows[0]["vendors"] == "Check Point", "WAF should be selected from portfolio matrix")
-    assert_true("web" in rows[0]["problem"].lower(), "Risk title should be preserved")
+    assert_true(len(rows) == 2, f"Canonical AI and expert findings must both reach sales playbook, got {len(rows)}")
+    waf = next(row for row in rows if "web" in row["problem"].lower())
+    assert_true(waf["priority"] == "P2", "WAF should be P2 for this sales playbook")
+    assert_true(waf["source"] == "ИИ", "AI opportunity source must stay visible in playbook")
+    assert_true(waf["vendors"] == "Check Point", "WAF should be selected from portfolio matrix")
+    assert_true(
+        any(row["source"] == "Базовые правила" for row in rows),
+        "Fact-safe expert fallback must not disappear when AI returned another domain",
+    )
 
 
 def test_sales_overrides_for_mfa_and_legacy_os() -> None:
@@ -864,6 +869,106 @@ def test_presentation_evidence_and_maturity_palette() -> None:
     assert_true(palette(85)[0] == "#13877C", "High maturity must be green")
 
 
+def test_eurasia_questionnaire_fact_contract() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {
+        "re": re,
+        "IT_GAP_LABELS": {
+            "wifi_capacity": "wifi",
+            "network_performance": "wan",
+            "os_inventory": "os",
+            "virtualization": "virtualization",
+            "storage": "storage",
+            "it_monitoring": "monitoring",
+            "itam": "itam",
+            "change_management": "change",
+            "dr": "dr",
+        },
+    }
+    for name in (
+        "is_enabled",
+        "normalize_site_domain",
+        "is_valid_domain",
+        "build_context",
+        "confirmed_it_gap_topics",
+        "build_confirmed_it_gap_risks",
+        "control_confirmed_in_results",
+        "build_confirmed_security_gap_risks",
+        "risk_semantic_key",
+        "risk_conflicts_with_answers",
+    ):
+        exec(extract_function_source(module_text, name), namespace)
+
+    results = {
+        "_user_count": 1500,
+        "_main_speed": 10,
+        "_back_speed": 10,
+        "Интернет канал (осн)": "10 Mbit/s",
+        "Резервный канал": "10 Mbit/s",
+        "ОС АРМ (Windows 11)": 563,
+        "ОС АРМ (Windows 10)": 288,
+        "ОС АРМ (Другое)": 649,
+        "WiFi Точки": 0,
+        "WiFi Контроллер": "Нет",
+        "MFA": "Eset",
+        "EPP": "Eset",
+        "EDR": "Eset",
+        "DLP": "ForcePoint",
+        "Mail Security": "Eset",
+        "WAF": "Нет",
+        "IAM": "Нет",
+        "PAM": "Delinea",
+        "SIEM": "Eventlog Analyzer",
+        "Patch Management": "Manage Engine",
+        "Серверы (физ)": 0,
+        "Серверы (вирт)": 0,
+        "Резервное копирование": "Нет",
+    }
+    context = namespace["build_context"](
+        results,
+        {"Сфера деятельности": "Страхование", "Сайт компании": "eurasia36.kz"},
+    )
+    assert_true(context["has_public_site"], "Public company site must be detected")
+    assert_true(not context["has_public_web"], "A company site must not invent an explicit web-application block")
+    assert_true(context["has_public_presence"], "Public presence must drive a fact-safe WAF assessment")
+
+    it_findings = namespace["build_confirmed_it_gap_risks"](results, context)
+    it_keys = {item["semantic_key"] for item in it_findings}
+    assert_true("network_performance" in it_keys, "10 Mbit/s for 1500 endpoints must trigger WAN capacity review")
+    assert_true("os_inventory" in it_keys, "649 unspecified operating systems must trigger inventory review")
+
+    security_findings = namespace["build_confirmed_security_gap_risks"](results, context)
+    security_keys = {item["semantic_key"] for item in security_findings}
+    assert_true({"iam", "web_waf"}.issubset(security_keys), f"Expected IAM and WAF gaps, got {security_keys}")
+    assert_true(
+        namespace["risk_conflicts_with_answers"]({"risk": "Внедрить MFA"}, results),
+        "Existing MFA must block an implementation recommendation",
+    )
+    assert_true(
+        namespace["risk_conflicts_with_answers"]({"risk": "Внедрить DLP"}, results),
+        "Existing ForcePoint DLP must block an implementation recommendation",
+    )
+    assert_true(
+        namespace["risk_conflicts_with_answers"]({"risk": "Внедрить EDR"}, results),
+        "Existing EDR must block an implementation recommendation",
+    )
+    portfolio = load_portfolio_helpers()
+    wan_vendors = portfolio["portfolio_manufacturers_for_report_item"]({
+        "semantic_key": "network_performance",
+        "risk": "Пропускная способность WAN требует пересмотра",
+        "recommendation": "Проверить каналы и SD-WAN.",
+        "vendors": ["Network Equipment", "SD-WAN"],
+    })
+    assert_true(
+        any(vendor in wan_vendors for vendor in ("Cisco", "Huawei", "Fortinet")),
+        f"WAN must map to network vendors, got: {wan_vendors}",
+    )
+    assert_true(
+        not any(vendor in wan_vendors for vendor in ("Veeam", "Commvault", "Veritas")),
+        f"WAN must never map to backup vendors, got: {wan_vendors}",
+    )
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
@@ -889,6 +994,7 @@ def main() -> None:
         test_security_maturity_is_normalized_and_evidence_capped,
         test_confirmed_it_gaps_must_be_covered_by_ai,
         test_presentation_evidence_and_maturity_palette,
+        test_eurasia_questionnaire_fact_contract,
     ]
     for test in tests:
         test()

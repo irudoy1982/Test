@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.3"
+APP_VERSION = "15.1-dev.4"
 
 
 def get_app_instance_label():
@@ -952,6 +952,7 @@ def ai_quality_gate(items, min_items=6, min_security_items=3, min_it_items=3):
 IT_GAP_LABELS = {
     "wifi_capacity": "емкость, покрытие и централизованное управление Wi-Fi",
     "network_performance": "каналы связи и отказоустойчивость сети",
+    "os_inventory": "полнота инвентаризации и жизненный цикл операционных систем",
     "virtualization": "ресурсный запас и capacity planning виртуализации",
     "storage": "емкость и производительность СХД",
     "it_monitoring": "единый мониторинг ИТ-сервисов и инфраструктуры",
@@ -989,6 +990,9 @@ def confirmed_it_gap_topics(results):
     wifi_controller = str(results.get("WiFi Контроллер", "Нет")).strip().lower()
     overloaded_wifi = users > 0 and access_points > 0 and users / access_points > 30
     weak_backup = main_speed > 0 and (backup_speed <= 0 or backup_speed / main_speed < 0.25)
+    constrained_capacity = users >= 100 and main_speed > 0 and users / main_speed > 12
+    other_os = result_int(results.get("ОС АРМ (Другое)"))
+    opaque_os_share = users > 0 and other_os >= 25 and other_os / users >= 0.15
     wifi_without_controller = (
         access_points >= 4
         and wifi_controller in {"", "нет", "no", "none"}
@@ -1005,7 +1009,7 @@ def confirmed_it_gap_topics(results):
         fact_suffix = f" ({'; '.join(wifi_facts)})" if wifi_facts else ""
         gaps["wifi_capacity"] = IT_GAP_LABELS["wifi_capacity"] + fact_suffix
 
-    if weak_backup or any(
+    if weak_backup or constrained_capacity or any(
         marker in notes
         for marker in (
             "резервный канал слаб", "резервный канал недостаточ", "резервный канал перегруж",
@@ -1013,6 +1017,12 @@ def confirmed_it_gap_topics(results):
         )
     ):
         gaps["network_performance"] = IT_GAP_LABELS["network_performance"]
+
+    if opaque_os_share:
+        gaps["os_inventory"] = (
+            IT_GAP_LABELS["os_inventory"]
+            + f" ({other_os} из {users} АРМ указаны как «Другое» без версии и статуса поддержки)"
+        )
 
     if any(marker in notes for marker in (
         "capacity planning не", "запас вычислительной мощности недостаточ",
@@ -1084,16 +1094,34 @@ def build_confirmed_it_gap_risks(results, context):
             "vendors": ["Wi-Fi", "WLAN"],
         },
         "network_performance": {
-            "level": "HIGH" if main_speed and (backup_speed <= 0 or backup_speed / main_speed < 0.1) else "MEDIUM",
-            "risk": "Резервный канал не обеспечивает подтвержденную отказоустойчивость",
-            "description": (
-                f"Основной канал: {int(main_speed)} Mbit/s; резервный канал: "
-                f"{int(backup_speed)} Mbit/s. Автоматическое переключение и независимость трасс требуют подтверждения."
+            "level": (
+                "CRITICAL"
+                if users >= 500 and main_speed and users / main_speed > 25
+                else ("HIGH" if main_speed and (backup_speed <= 0 or backup_speed / main_speed < 0.25) else "MEDIUM")
             ),
-            "impact": "При отказе основного канала критичные облачные сервисы, удаленная работа и коммуникации могут деградировать или стать недоступными.",
-            "recommendation": "Определить требуемую резервную полосу и SLA, проверить независимость операторов и трасс, затем провести тест автоматического failover под рабочей нагрузкой.",
-            "success_metric": "Резервный канал выдерживает согласованную критичную нагрузку; failover проходит в пределах SLA",
+            "risk": "Пропускная способность и отказоустойчивость WAN требуют пересмотра",
+            "description": (
+                f"Для {users} АРМ указаны основной канал {int(main_speed)} Mbit/s и резервный "
+                f"{int(backup_speed)} Mbit/s. Помимо failover необходимо подтвердить фактическую "
+                "утилизацию, критичную нагрузку, независимость трасс и SLA."
+            ),
+            "impact": "Недостаточная суммарная полоса или неиспытанный failover могут вызывать деградацию облачных сервисов, коммуникаций и удаленной работы.",
+            "recommendation": "Снять 30-дневный профиль загрузки и классы трафика, определить требуемую полосу и SLA, проверить независимость операторов и трасс, затем провести тест автоматического failover под рабочей нагрузкой.",
+            "success_metric": "Оба канала выдерживают согласованную нагрузку, а failover проходит в пределах утвержденного SLA",
             "vendors": ["Network Equipment", "SD-WAN"],
+        },
+        "os_inventory": {
+            "level": "HIGH" if users >= 500 and int(number(results.get("ОС АРМ (Другое)"))) >= users * 0.25 else "MEDIUM",
+            "risk": "Состав и поддерживаемость операционных систем определены не полностью",
+            "description": (
+                f"Из {users} АРМ для {int(number(results.get('ОС АРМ (Другое)')))} указана категория "
+                "«Другое» без наименования, версии и срока поддержки. Это не означает наличие legacy ОС, "
+                "но не позволяет подтвердить управляемость всего парка."
+            ),
+            "impact": "Неопределенный состав ОС затрудняет контроль совместимости агентов защиты, обновлений, лицензий и сроков вывода неподдерживаемых платформ.",
+            "recommendation": "Развернуть категорию «Другое» по ОС и версиям, сопоставить с матрицей поддержки, назначить владельцев исключений и утвердить план стандартизации или изоляции.",
+            "success_metric": "Не менее 98% АРМ имеют подтвержденные ОС, версии, статус поддержки и владельца исключения",
+            "vendors": ["ITAM", "Operating Systems"],
         },
         "virtualization": {
             "level": "HIGH",
@@ -1164,6 +1192,62 @@ def build_confirmed_it_gap_risks(results, context):
             "_source": "Базовые правила",
             "evidence": [templates[key]["description"]],
         })
+    return findings
+
+
+def build_confirmed_security_gap_risks(results, context):
+    """Add material security gaps that follow directly from structured answers."""
+    findings = []
+    users = int(context.get("users", 0) or 0)
+
+    if users >= 250 and not is_enabled(results.get("IAM")):
+        findings.append({
+            "level": "HIGH" if users >= 1000 else "MEDIUM",
+            "risk": "Жизненный цикл учетных записей не объединен в IAM-контур",
+            "description": (
+                f"Для парка из {users} АРМ в анкете указаны MFA и PAM, но IAM не указан. "
+                "Наличие второго фактора и контроля привилегий не заменяет процессы создания, "
+                "изменения и своевременного отключения обычных учетных записей."
+            ),
+            "impact": "Несвоевременно отключенные или избыточные права повышают риск несанкционированного доступа и усложняют регулярный пересмотр полномочий.",
+            "recommendation": "Проверить процессы joiner/mover/leaver, источники кадровых данных и владельцев ролей; затем провести пилот IAM/IGA на одном критичном контуре с автоматическим отзывом доступа.",
+            "success_metric": "Все увольнения и критичные изменения ролей обрабатываются в утвержденный SLA, а права регулярно подтверждаются владельцами",
+            "vendors": ["IAM", "IGA"],
+            "semantic_key": "iam",
+            "_semantic_key": "iam",
+            "_ai_area": "ИБ",
+            "_source": "Базовые правила",
+            "evidence": [f"IAM: {results.get('IAM', 'Нет')}", f"MFA: {results.get('MFA', 'Нет')}", f"PAM: {results.get('PAM', 'Нет')}"],
+        })
+
+    if (
+        context.get("has_public_presence")
+        and not control_confirmed_in_results(results, "WAF")
+    ):
+        domain = context.get("public_site_domain") or "публичный веб-контур"
+        explicit_scope = context.get("has_public_web")
+        findings.append({
+            "level": "HIGH" if explicit_scope else "MEDIUM",
+            "risk": "WAF-защита публичного веб-контура не подтверждена",
+            "description": (
+                f"У компании указан публичный сайт {domain}, а WAF в анкете отмечен как «Нет». "
+                + (
+                    "Публичные приложения и их прикладные политики требуют отдельной проверки."
+                    if explicit_scope
+                    else "Состав внешних приложений и ответственность за защиту площадки в анкете не раскрыты."
+                )
+            ),
+            "impact": "Без подтвержденной прикладной защиты нельзя оценить устойчивость внешнего контура к OWASP-атакам, бот-активности и нарушениям доступности.",
+            "recommendation": "Провести короткий web-perimeter assessment: инвентаризировать домены и приложения, проверить текущий CDN/DDoS/WAF-контур и ответственность хостинг-провайдера; при подтвержденном разрыве выполнить пилот WAF до закупки.",
+            "success_metric": "Все публичные приложения имеют владельца, подтвержденный WAF-профиль и контролируемые журналы блокировок",
+            "vendors": ["WAF", "CDN"],
+            "semantic_key": "web_waf",
+            "_semantic_key": "web_waf",
+            "_ai_area": "ИБ",
+            "_source": "Базовые правила",
+            "evidence": [f"Сайт: {domain}", f"WAF: {results.get('WAF', 'Нет')}"],
+        })
+
     return findings
 
 
@@ -6117,9 +6201,16 @@ def build_context(results, client_info):
     # WEB
     # ==================================
 
-    context["has_public_web"] = (
-        "3.1. Хостинг" in results
-    )
+    explicit_web_values = [
+        value
+        for key, value in results.items()
+        if str(key).startswith(("3.1.", "3.2.", "3.3."))
+    ]
+    context["has_public_web"] = any(is_enabled(value) for value in explicit_web_values)
+    site_domain = normalize_site_domain(client_info.get("Сайт компании", ""))
+    context["has_public_site"] = is_valid_domain(site_domain)
+    context["public_site_domain"] = site_domain if context["has_public_site"] else ""
+    context["has_public_presence"] = context["has_public_web"] or context["has_public_site"]
 
     # ==================================
     # Инфраструктура
@@ -6245,7 +6336,7 @@ def it_context_summary(results, context):
         assets.append("виртуализация")
     if is_enabled(results.get("СХД")):
         assets.append("СХД")
-    if context.get("has_public_web"):
+    if context.get("has_public_presence"):
         assets.append("публичные web-сервисы")
     if context.get("has_critical_systems"):
         assets.append("критичные бизнес-системы")
@@ -6728,6 +6819,7 @@ def solution_categories_for_report_item(item):
         "business_systems": "Обследование бизнес-систем; интеграционный аудит",
         "wifi_capacity": "Обследование Wi-Fi; централизованное WLAN-управление; оптимизация радиопокрытия",
         "network_performance": "Резервирование WAN; SD-WAN; балансировка каналов; контроль SLA",
+        "os_inventory": "ITAM / SAM; инвентаризация ОС; управление жизненным циклом рабочих мест",
         "itam": "ITAM / SAM / управление лицензиями",
     }
     return categories_by_key.get(key, "Уточнить класс решения по результатам пресейла")
@@ -6786,6 +6878,7 @@ def portfolio_manufacturers_for_report_item(item):
         "appsec": (["SAST", "DAST", "SCA", "VM"], ["Qualys", "Checkmarx", "HCL AppScan"], []),
         "wifi_capacity": (["Network Equipment", "Wireless", "Wi-Fi"], ["Cisco", "Huawei", "Fortinet"], []),
         "network_performance": (["Network Equipment", "SD-WAN", "Monitoring", "NMS"], ["Fortinet", "Cisco", "Huawei", "Check Point", "ManageEngine"], ["Broadcom (Symantec)"]),
+        "os_inventory": (["ITAM", "ITSM", "Operating Systems"], ["ManageEngine", "Ivanti", "Microsoft"], []),
         "itam": (["ITAM", "ITSM"], ["ManageEngine", "Ivanti"], []),
     }
 
@@ -7352,9 +7445,6 @@ def build_ai_first_sales_opportunities(risk_sources, results=None, context=None)
     for item in risk_sources:
         if not isinstance(item, dict):
             continue
-        if item.get("source") != "ИИ":
-            continue
-
         override = sales_override_for_item(item, results, context)
         if override:
             opportunities.append(override)
@@ -7381,7 +7471,7 @@ def build_ai_first_sales_opportunities(risk_sources, results=None, context=None)
                 f"Согласовать с заказчиком факты по домену {area}, подтвердить владельца риска, "
                 "оценить текущие ограничения и подготовить короткий план внедрения с бюджетным диапазоном."
             ),
-            "source": "ИИ",
+            "source": risk_source_label(item.get("source")),
         })
 
     return sorted(opportunities, key=lambda item: priority_order.get(item["priority"], 99))[:10]
@@ -7515,6 +7605,11 @@ def sales_account_guidance(item):
             "stakeholders": "ИТ-директор; владелец зависимого бизнес-приложения; инфраструктурная команда; финансы/закупки",
             "qualification": "Количество legacy-узлов, зависимые приложения, допустимое окно миграции, владелец и целевая дата вывода.",
             "meeting_goal": "Согласовать реестр legacy-систем и выбрать первый контур для миграции или временной изоляции.",
+        },
+        "os_inventory": {
+            "0-30 дней": "Развернуть категорию «Другое» по ОС и версиям, определить статус поддержки и владельцев исключений.",
+            "31-60 дней": "Утвердить стандарт рабочих мест и план миграции, замены или изоляции неподдерживаемых исключений.",
+            "61-90 дней": "Автоматизировать сверку реестра ОС и ежемесячный контроль версий, поддержки и исключений.",
         },
         "mfa": {
             "business_value": "Снизить вероятность захвата учетных записей без изменения основных бизнес-процессов.",
@@ -7813,7 +7908,7 @@ def build_sales_conversation_pack(c_info, results, context, roadmap_items, oppor
         add_question("MFA / IAM", "Где MFA можно включить быстрее всего без ломки процессов: VPN, почта, администраторы, облака или бизнес-системы?")
     if results.get("Резервное копирование") != "Нет":
         add_question("Backup", "Когда последний раз делали тестовое восстановление и какой результат можно показать руководству?")
-    if context.get("has_public_web"):
+    if context.get("has_public_presence"):
         add_question("Web", "Какие публичные приложения критичны для выручки или клиентского сервиса, и кто владелец их доступности?")
     if context.get("has_development"):
         add_question("Разработка", "Где в процессе релиза можно поставить security gate: зависимости, SAST, DAST или ручной review?")
@@ -7890,10 +7985,11 @@ def build_expert_conclusion(results, context, final_score, domain_scores, roadma
     profile_title, _ = infrastructure_profile(context)
     users = context.get("users", 0)
     servers = context.get("servers", 0)
+    excluded_domains = {"Резервное копирование", "Инфраструктура"} if servers == 0 else set()
     weak_domains = [
         domain
         for domain, score in sorted(domain_scores.items(), key=lambda item: item[1])
-        if score < 50
+        if score < 50 and domain not in excluded_domains
     ]
     p1_actions = [
         item["action"]
@@ -7904,7 +8000,9 @@ def build_expert_conclusion(results, context, final_score, domain_scores, roadma
     conclusion = [
         (
             f"Профиль ИТ-контура: {profile_title.lower()} "
-            f"({russian_count(users, 'АРМ', 'АРМ', 'АРМ')}, {russian_count(servers, 'сервер', 'сервера', 'серверов')}). "
+            f"({russian_count(users, 'АРМ', 'АРМ', 'АРМ')}"
+            + (f", {russian_count(servers, 'сервер', 'сервера', 'серверов')}" if servers else ", серверный контур не включен в анкету")
+            + "). "
             "Рекомендации сформированы с учетом фактического состава: "
             "для текущего профиля приоритет отдается мерам, которые быстро повышают управляемость, "
             "восстановимость и контроль доступа без избыточного внедрения enterprise-платформ."
@@ -8142,6 +8240,7 @@ def risk_semantic_key(item):
     title_buckets = [
         ("wifi_capacity", ("wi-fi", "wifi", "wlan", "беспроводн", "роуминг", "точек доступа")),
         ("network_performance", ("канал связи", "канала связи", "резервный канал", "wan", "failover")),
+        ("os_inventory", ("состав операционных систем", "инвентаризация операционных систем", "категория «другое»", "категория \"другое\"")),
         ("storage", ("схд", "storage", "дисков", "хранилищ")),
         ("virtualization", ("виртуальн", "гипервизор", "vmware", "hyper-v")),
         ("dr", ("rto", "rpo", "аварийн", "drp", "disaster recovery")),
@@ -8178,6 +8277,10 @@ def risk_semantic_key(item):
         ("itam", (
             "программными активами", "жизненным циклом", "управление активами",
             "лицензи", "инвентаризац", "cmdb", "учет активов",
+        )),
+        ("os_inventory", (
+            "состав ос", "поддерживаемость операционных систем", "статус поддержки ос",
+            "версии ос", "категория «другое»", "категория \"другое\"",
         )),
         ("change_management", ("управления изменениями", "управление изменениями", "change management", "изменениями и конфигурациями")),
         ("patch", ("patch", "обновлен", "cve", "уязвим")),
@@ -8457,6 +8560,17 @@ def professionalize_risk_item(item, results, context):
     legacy_arm = results.get("ОС АРМ (Windows XP/Vista/7/8)", 0)
     legacy_srv = results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0)
 
+    if item.get("_semantic_key") and item.get("evidence"):
+        normalized = dict(item)
+        normalized["_source"] = source
+        normalized.setdefault("level", "MEDIUM")
+        normalized.setdefault("description", normalized.get("risk", "Риск требует дополнительного уточнения."))
+        normalized.setdefault("impact", "Риск может повлиять на устойчивость ИТ/ИБ процессов.")
+        normalized.setdefault("recommendation", "Уточнить текущий процесс и определить измеримый план улучшений.")
+        normalized.setdefault("vendors", [])
+        normalized.setdefault("regulators", ["ISO 27001"])
+        return normalized
+
     if key == "segmentation" and network_segmentation_evidence(results) != "absent":
         normalized = dict(item)
         normalized.update({
@@ -8691,6 +8805,7 @@ def build_report_risk_set(c_info, results, context):
             if isinstance(item, dict)
         ])
     combined_risks.extend(build_confirmed_it_gap_risks(results, context))
+    combined_risks.extend(build_confirmed_security_gap_risks(results, context))
     combined_risks.extend(rule_risks)
 
     priority_order = {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4}
@@ -8763,18 +8878,25 @@ def build_report_risk_set(c_info, results, context):
 def build_audit_observations(results, context, domain_scores, report_risks):
     users = context.get("users", 0)
     servers = context.get("servers", 0)
+    excluded_domains = {"Резервное копирование", "Инфраструктура"} if servers == 0 else set()
     weak_domains = [
         domain
         for domain, score in sorted(domain_scores.items(), key=lambda item: item[1])
-        if score < 50
+        if score < 50 and domain not in excluded_domains
     ][:4]
 
     observations = [
         (
             "Масштаб и управляемость",
-            f"В анкете зафиксировано {russian_count(users, 'АРМ', 'АРМ', 'АРМ')} и "
-            f"{russian_count(servers, 'сервер', 'сервера', 'серверов')}; такой состав требует формализованных процессов "
-            "обновлений, мониторинга, резервного копирования и контроля изменений."
+            (
+                f"В анкете зафиксировано {russian_count(users, 'АРМ', 'АРМ', 'АРМ')} и "
+                f"{russian_count(servers, 'сервер', 'сервера', 'серверов')}. "
+                + (
+                    "Такой состав требует формализованных процессов обновлений, мониторинга, восстановления и контроля изменений."
+                    if servers
+                    else "Серверный контур в анкету не включен; выводы о его мониторинге и резервном копировании без дополнительного обследования не делаются."
+                )
+            )
         )
     ]
 
@@ -8790,10 +8912,10 @@ def build_audit_observations(results, context, domain_scores, report_risks):
             "Backup-контур заявлен, но для управленческого уровня важно проверить RTO/RPO, immutable/offline-копии и факт регулярного тестового восстановления."
         ))
 
-    if context.get("has_public_web"):
+    if context.get("has_public_presence"):
         observations.append((
             "Публичная поверхность",
-            "Интернет-магазин и личный кабинет формируют внешний периметр риска: защиту web-приложений, журналирование и реагирование нужно выделить в отдельный поток работ."
+            "У компании есть публичный веб-контур. Его состав, ответственность хостинг-провайдера, WAF/CDN-защиту, журналирование и реагирование нужно подтвердить отдельно."
         ))
 
     if context.get("has_development"):
@@ -8805,13 +8927,15 @@ def build_audit_observations(results, context, domain_scores, report_risks):
     if report_risks:
         observations.append((
             "Фокус первых действий",
-            "Первые управленческие решения должны закрыть доступы, устаревшие ОС, endpoint detection, patch management и web-периметр."
+            "Первые управленческие решения должны быть привязаны к подтвержденным выводам: "
+            + "; ".join(str(item.get("risk", "")).strip() for item in report_risks[:3] if item.get("risk"))
+            + "."
         ))
 
     return observations[:6]
 
 
-def build_target_operating_model(results, context):
+def build_target_operating_model(results, context, report_risks=None):
     users = context.get("users", 0)
     servers = context.get("servers", 0)
     access_text = (
@@ -8824,35 +8948,38 @@ def build_target_operating_model(results, context):
         if not any(is_enabled(results.get(control)) for control in ("EDR", "XDR", "MDR"))
         else f"Контроль покрытия endpoint-защиты для {users} АРМ: статус агентов, качество телеметрии, сценарии реагирования и метрики MTTD/MTTR."
     )
-    return [
+    model = [
         ("Доступы", access_text),
         ("Рабочие места", endpoint_text),
-        ("Инфраструктура", f"Мониторинг серверов, виртуализации, СХД и каналов связи для {servers} серверов с порогами, владельцами и отчетом по доступности."),
-        ("Восстановление", "Проверенные RTO/RPO, immutable/offline backup и регулярный тест восстановления критичных бизнес-систем."),
-        ("Публичные сервисы", "WAF/CDN, журналирование web-событий, разбор блокировок и связка с процессом реагирования."),
-        ("Процессы", "Ежемесячный цикл patch management, управление изменениями, контроль исключений и регулярный управленческий отчет по рискам."),
     ]
+    risk_keys = {risk_semantic_key(item) for item in (report_risks or []) if isinstance(item, dict)}
+    if "os_inventory" in risk_keys:
+        model.append(("Учет рабочих мест", "Полный реестр ОС и версий, статус поддержки, владельцы исключений и план стандартизации парка."))
+    if "network_performance" in risk_keys:
+        model.append(("Сеть и связь", "Измеряемая емкость WAN, независимый резервный маршрут, автоматический failover и отчетность по SLA."))
+    if servers:
+        model.append(("Инфраструктура", f"Мониторинг {servers} серверов, виртуализации, СХД и каналов связи с порогами, владельцами и отчетом по доступности."))
+        model.append(("Восстановление", "Проверенные RTO/RPO, immutable/offline backup и регулярный тест восстановления критичных бизнес-систем."))
+    if context.get("has_public_presence"):
+        model.append(("Публичные сервисы", "Инвентаризация внешних приложений, подтвержденный WAF/CDN-контур, журналирование и разбор блокировок."))
+    model.append(("Процессы", "Управление изменениями, контроль исключений и регулярный управленческий отчет по остаточным рискам."))
+    return model[:7]
 
 
-def build_management_decisions(results, context):
-    decisions = [
-        "Утвердить владельцев направлений: доступы, рабочие места, инфраструктура, backup/DR, web-периметр.",
-        "Провести пилот EDR/MDR на критичных группах пользователей и серверах, затем принять решение о масштабировании.",
-        "Определить минимальный SOC/MSSP-scope: NGFW, AD/учетки, серверы, endpoint, backup, почта и web.",
-        "Согласовать регулярный отчет для руководства: остаточные риски, выполненные меры, исключения, SLA закрытия критичных уязвимостей.",
-    ]
-    if is_enabled(results.get("MFA")):
-        decisions.insert(
-            1,
-            "Запустить 30-дневный план: проверить покрытие MFA по критичным доступам, закрыть устаревшие ОС, формализовать patch management и проверить backup-восстановление."
-        )
-    else:
-        decisions.insert(
-            1,
-            "Запустить 30-дневный план: включить MFA для критичных доступов, закрыть устаревшие ОС, формализовать patch management и проверить backup-восстановление."
-        )
-    if context.get("has_development"):
-        decisions.append("Добавить требования AppSec в процесс релизов: SAST/DAST, проверка зависимостей и критерии допуска в продуктив.")
+def build_management_decisions(results, context, report_risks=None, roadmap_items=None):
+    decisions = []
+    for item in (roadmap_items or [])[:4]:
+        action = str(item.get("action", "")).strip()
+        if action and action not in decisions:
+            decisions.append(action)
+    if not decisions:
+        for item in (report_risks or [])[:4]:
+            recommendation = str(item.get("recommendation", "")).strip()
+            if recommendation and recommendation not in decisions:
+                decisions.append(recommendation)
+    decisions.append(
+        "Назначить владельцев подтвержденных рисков и ежемесячно контролировать сроки, исключения и измеримые результаты."
+    )
     return decisions[:6]
 
 
@@ -9088,7 +9215,10 @@ def presentation_evidence_for_key(semantic_key, results, context, item):
             f"EDR/XDR/MDR: {results.get('EDR', 'Нет')}/{results.get('XDR', 'Нет')}/{results.get('MDR', 'Нет')}."
         ),
         "backup": f"В анкете резервное копирование: {results.get('Резервное копирование', 'Нет')}. RTO/RPO и результаты тестового восстановления не зафиксированы.",
-        "web_waf": f"Публичные сервисы: {'есть' if context.get('has_public_web') else 'не указаны'}; WAF: {results.get('WAF', 'Нет')}.",
+        "web_waf": (
+            f"Публичный контур: {context.get('public_site_domain') or ('есть' if context.get('has_public_web') else 'не указан')}; "
+            f"WAF: {results.get('WAF', 'Нет')}."
+        ),
         "pam": f"В анкете PAM: {results.get('PAM', 'Нет')}; серверный контур: {servers} серверов.",
         "mail": f"Почтовая система: {results.get('1.5.1. Почтовая система', 'не указана')}; Mail Security: {results.get('Mail Security', 'Нет')}.",
         "appsec": f"Разработка: {'есть' if context.get('has_development') else 'не указана'}; SAST/DAST: {results.get('SAST', 'Нет')}/{results.get('DAST', 'Нет')}.",
@@ -9101,6 +9231,10 @@ def presentation_evidence_for_key(semantic_key, results, context, item):
         "nac": f"В анкете NAC: {results.get('NAC', 'Нет')}. Требуется подтвердить контроль допуска проводных, Wi-Fi и неизвестных устройств.",
         "dlp": f"В анкете DLP: {results.get('DLP', 'Нет')}. Обработка персональных данных указана; контролируемые каналы передачи не подтверждены.",
         "itam": "В анкете не подтверждены единый реестр ПО, лицензий, владельцев активов и сроки поддержки.",
+        "os_inventory": (
+            f"Всего АРМ: {users}; ОС категории «Другое»: {results.get('ОС АРМ (Другое)', 0)}. "
+            "Версии и статус поддержки этой части парка не указаны."
+        ),
         "change_management": "В анкете не подтверждены единый процесс согласования изменений, тестирования и плана отката.",
         "it_monitoring": "В анкете не подтверждены единые метрики доступности, производительности и емкости для критичных сервисов.",
         "virtualization": f"В анкете виртуальных серверов: {results.get('Серверы (вирт)', 0)}; HA/DRS и резервы ресурсов не описаны.",
@@ -9137,6 +9271,11 @@ def presentation_presales_profile(item):
             "title": "Производительность сети требует подтверждения измерениями",
             "impact": "Без замеров загрузки каналов, задержек и отказоустойчивости нельзя достоверно оценить запас производительности сети.",
             "action": "Провести аудит топологии и загрузки каналов, определить узкие места и подготовить целевую архитектуру сети.",
+        },
+        "os_inventory": {
+            "title": "Состав операционных систем определен не полностью",
+            "impact": "Неопределенные ОС и версии затрудняют контроль поддержки, обновлений, лицензий и совместимости агентов защиты.",
+            "action": "Развернуть категорию «Другое» по ОС и версиям, сопоставить со сроками поддержки и утвердить план стандартизации или изоляции исключений.",
         },
         "change_management": {
             "title": "Изменения и конфигурации управляются неформально",
@@ -9184,9 +9323,9 @@ def presentation_presales_profile(item):
             "action": "Проверить покрытие EPP, провести пилот EDR или MDR на критичных группах и утвердить регламент реагирования.",
         },
         "web_waf": {
-            "title": "Публичные веб-сервисы требуют прикладной защиты",
-            "impact": "Интернет-магазин и личный кабинет подвержены прикладным атакам, бот-активности и нарушениям доступности.",
-            "action": "Оценить веб-периметр, проверить действующие политики и внедрить WAF с контролем блокировок и доступности.",
+            "title": "WAF-защита публичного веб-контура не подтверждена",
+            "impact": "Без инвентаризации внешних приложений и проверки действующих политик нельзя подтвердить защиту от прикладных атак и бот-активности.",
+            "action": "Оценить веб-периметр и действующие CDN/DDoS/WAF-политики; при подтвержденном разрыве провести пилот WAF до закупки.",
         },
         "patch": {
             "title": "Уязвимости и обновления требуют управляемого цикла",
@@ -9260,6 +9399,7 @@ def presentation_success_metric(semantic_key):
         "mail": "Защитные политики применены ко всем почтовым ящикам",
         "appsec": "Критичные релизы проходят обязательные проверки безопасности",
         "network_performance": "Емкость каналов подтверждена замерами и SLA",
+        "os_inventory": "Не менее 98% АРМ имеют подтвержденные ОС, версии и статус поддержки",
         "itam": "Не менее 95% активов имеют владельца и актуальный статус",
         "change_management": "Все продуктивные изменения имеют согласование и план отката",
         "it_monitoring": "Критичные сервисы имеют метрики, пороги и владельцев реакции",
@@ -9362,6 +9502,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
     phase_order = ("0-30 дней", "31-60 дней", "61-90 дней")
     preferred_phase = {
         "legacy_os": "0-30 дней",
+        "os_inventory": "0-30 дней",
         "virtualization": "0-30 дней",
         "storage": "0-30 дней",
         "network_performance": "0-30 дней",
@@ -9392,6 +9533,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
     }
     domain_by_key = {
         "legacy_os": "Конечные устройства",
+        "os_inventory": "Учет рабочих мест",
         "virtualization": "ИТ-инфраструктура",
         "storage": "Хранение данных",
         "network_performance": "Сеть и связь",
@@ -9411,8 +9553,9 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
 
     roadmap_key_order = {
         "legacy_os": 0,
-        "network_performance": 1,
-        "wifi_capacity": 2,
+        "os_inventory": 1,
+        "network_performance": 2,
+        "wifi_capacity": 3,
         "virtualization": 3,
         "storage": 4,
         "dr": 5,
@@ -9654,10 +9797,14 @@ def presentation_focus_items(context, business_systems):
         ),
         (
             "Управляемость среды",
-            f"{users} рабочих мест и серверный контур требуют единого контроля обновлений, изменений и конфигураций.",
+            (
+                f"{users} рабочих мест"
+                + (f" и {servers} серверов" if servers else "")
+                + " требуют единого контроля активов, обновлений, изменений и конфигураций."
+            ),
         ),
     ]
-    if context.get("has_public_web"):
+    if context.get("has_public_presence"):
         focus.append((
             "Цифровой периметр",
             "Публичные сервисы требуют проверки WAF/DDoS, внешних доступов и мониторинга событий.",
@@ -9786,6 +9933,12 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         results=results,
         context=context,
     )
+    canonical_decisions = build_management_decisions(
+        results,
+        context,
+        normalized_risks,
+        canonical_roadmap,
+    )
     roadmap_by_phase = {"0-30": [], "31-60": [], "61-90": []}
     for item in canonical_roadmap:
         phase_key = next(
@@ -9823,7 +9976,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         "SUMMARY_TITLE": presentation_text(summary_title, 120),
         "USERS": str(context.get("users", 0)),
         "SERVERS": str(context.get("servers", 0)),
-        "PUBLIC": "Есть" if context.get("has_public_web") else "Нет",
+        "PUBLIC": "Есть" if context.get("has_public_presence") else "Нет",
         "BUSINESS": str(business_systems),
         "PROFILE": presentation_text(f"{profile_title}. {profile_text}", 240),
         "SEC_LEVEL": get_maturity_level(final_score)[0],
@@ -9844,19 +9997,25 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         ("Endpoint", domain_scores.get("Защита конечных точек", 0)),
         ("Доступы", domain_scores.get("Идентификация и доступ", 0)),
         ("Мониторинг", domain_scores.get("Мониторинг и SOC", 0)),
-        ("Восстановление", domain_scores.get("Резервное копирование", 0)),
-        ("Инфраструктура", domain_scores.get("Инфраструктура", 0)),
+        ("Восстановление", domain_scores.get("Резервное копирование", 0) if context.get("servers", 0) else None),
+        ("Инфраструктура", domain_scores.get("Инфраструктура", 0) if context.get("servers", 0) else None),
     ]
-    coverage_values = [max(0, min(100, int(score or 0))) for _, score in threat_domains]
+    applicable_domains = [(label, score) for label, score in threat_domains if score is not None]
+    coverage_values = [max(0, min(100, int(score or 0))) for _, score in applicable_domains]
     replacements["COVERAGE_AVERAGE"] = str(round(sum(coverage_values) / max(1, len(coverage_values))))
-    strongest_label, strongest_score = max(threat_domains, key=lambda item: int(item[1] or 0))
-    weakest_label, weakest_score = min(threat_domains, key=lambda item: int(item[1] or 0))
+    strongest_label, strongest_score = max(applicable_domains, key=lambda item: int(item[1] or 0))
+    weakest_label, weakest_score = min(applicable_domains, key=lambda item: int(item[1] or 0))
     replacements["COVERAGE_INSIGHT"] = presentation_text(
         f"Сильнейший домен: {strongest_label} — {int(strongest_score or 0)}%. "
         f"Главный резерв улучшения: {weakest_label} — {int(weakest_score or 0)}%.",
         150,
     )
     for index, (label, score) in enumerate(threat_domains, start=1):
+        if score is None:
+            replacements[f"THREAT_{index}_LABEL"] = label
+            replacements[f"THREAT_{index}_VALUE"] = "N/A"
+            replacements[f"THREAT_{index}_FILL"] = "#98A2B3"
+            continue
         coverage = max(0, min(100, int(score or 0)))
         if coverage < 40:
             fill = "#D92D20"
@@ -9927,9 +10086,9 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         replacements[f"RISK_{index + 1}_RECOMMENDATION"] = risk_entry["action"]
         replacements[f"RISK_{index + 1}_FILL"] = risk_entry["fill_color"]
         replacements[f"RISK_{index + 1}_TEXT"] = risk_entry["text_color"]
-        if index < len(ai_narrative.get("management_decisions", [])):
+        if index < len(canonical_decisions):
             replacements[f"DECISION_{index + 1}"] = presentation_text(
-                ai_narrative["management_decisions"][index],
+                canonical_decisions[index],
                 205,
             )
 
@@ -10447,13 +10606,16 @@ def make_expert_excel(c_info, results, final_score):
             else:
                 summary_text.append("• Требуется централизованный мониторинг событий по минимальному scope: NGFW, учетные записи, серверы, endpoint, backup, почта и web.")
 
-        if results.get("Резервное копирование") == "Нет":
+        if context.get("servers", 0) > 0 and results.get("Резервное копирование") == "Нет":
             summary_text.append("• Не обнаружено централизованное резервное копирование")
-        else:
+        elif context.get("servers", 0) > 0:
             summary_text.append("• Backup заявлен, но управленчески важно подтвердить RTO/RPO, immutable/offline-копии и результаты тестового восстановления.")
 
         if results.get("_user_count", 0) > 100:
-            summary_text.append("• Масштаб 100+ АРМ требует формализации patch management, endpoint response, мониторинга инфраструктуры и регулярного отчета по остаточным рискам.")
+            if is_enabled(results.get("EDR")) and is_enabled(results.get("Patch Management")):
+                summary_text.append("• Для парка 100+ АРМ важно подтвердить полноту инвентаризации ОС, покрытие действующих EDR/patch management и регулярный отчет по исключениям.")
+            else:
+                summary_text.append("• Масштаб 100+ АРМ требует управляемого учета ОС, endpoint response, обновлений и регулярного отчета по остаточным рискам.")
 
         if not summary_text:
             summary_text.append("• Базовые меры информационной безопасности реализованы")
@@ -10494,8 +10656,13 @@ def make_expert_excel(c_info, results, final_score):
             ws.cell(row=row, column=col).border = border
 
     observations = ai_narrative.get("audit_observations") or build_audit_observations(results, context, domain_scores, report_risks)
-    target_model = build_target_operating_model(results, context)
-    management_decisions = ai_narrative.get("management_decisions") or build_management_decisions(results, context)
+    target_model = build_target_operating_model(results, context, report_risks)
+    management_decisions = ai_narrative.get("management_decisions") or build_management_decisions(
+        results,
+        context,
+        report_risks,
+        roadmap_items,
+    )
 
     current_row = conclusion_end_row + 2
 
@@ -10706,21 +10873,27 @@ def make_expert_excel(c_info, results, final_score):
     current_row += 1
 
     for domain, score in domain_scores.items():
-
-        if score >= 80:
+        if context.get("servers", 0) == 0 and domain in {"Резервное копирование", "Инфраструктура"}:
+            status = "⚪ Вне подтвержденного scope"
+            score_display = "N/A"
+            fill = gray_fill
+        elif score >= 80:
             status = "🟢 Сильный"
+            score_display = f"{score}%"
             fill = light_blue_fill
 
         elif score >= 50:
             status = "🟠 Средний"
+            score_display = f"{score}%"
             fill = medium_fill
 
         else:
             status = "🔴 Слабый"
+            score_display = f"{score}%"
             fill = critical_fill
 
         ws.cell(row=current_row, column=1, value=domain).border = border
-        ws.cell(row=current_row, column=2, value=f"{score}%").border = border
+        ws.cell(row=current_row, column=2, value=score_display).border = border
         ws.cell(row=current_row, column=3, value=status).border = border
 
         for c in range(1, 4):
