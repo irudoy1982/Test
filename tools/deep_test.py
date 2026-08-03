@@ -476,9 +476,18 @@ def test_mature_controls_drive_fact_safe_scores_and_sales() -> None:
 
 def test_ready_report_is_linked_from_sidebar() -> None:
     text = APP.read_text(encoding="utf-8")
+    cockpit = extract_function_source(text, "render_audit_cockpit")
     sidebar_link = extract_function_source(text, "render_ready_report_sidebar_link")
     assert_true('href="#audit-report"' in sidebar_link, "Ready report link is missing from sidebar")
-    assert_true("render_ready_report_sidebar_link()" in text, "Ready report link is not rendered after generation")
+    assert_true(
+        "else:\n        render_ready_report_sidebar_link()" in cockpit,
+        "Report link must be shown only when questionnaire validation has no errors",
+    )
+    finalized_block = text.split('if st.session_state.generation_state == "finalized":', 1)[1]
+    assert_true(
+        "render_ready_report_sidebar_link()" not in finalized_block,
+        "Report navigation must not depend on starting or finishing generation",
+    )
     assert_true('id="audit-report"' in text, "Report destination anchor is missing")
 
 

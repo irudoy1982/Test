@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.6"
+APP_VERSION = "15.1-dev.7"
 
 
 def get_app_instance_label():
@@ -11750,11 +11750,13 @@ def render_audit_cockpit(client_info, results, validation_errors, final_score, i
                 f'</a>',
                 unsafe_allow_html=True
             )
+    else:
+        render_ready_report_sidebar_link()
 
 def render_ready_report_sidebar_link():
     st.sidebar.markdown("#### Результат")
     st.sidebar.markdown(
-        '<a class="sidebar-step sidebar-step-link" href="#audit-report" title="Перейти к готовому отчету">'
+        '<a class="sidebar-step sidebar-step-link" href="#audit-report" title="Перейти к формированию отчета">'
         '<span class="sidebar-dot green"></span><span><strong>Отчет</strong></span></a>',
         unsafe_allow_html=True,
     )
@@ -12092,6 +12094,7 @@ with st.expander("Открыть полный предварительный а�
     render_analysis_preview(preview_results, preview_score)
 
 # --- ФИНАЛ ---
+st.markdown('<div id="audit-report"></div>', unsafe_allow_html=True)
 st.divider()
 if validation_errors:
     render_validation_summary(validation_errors)
@@ -12500,9 +12503,6 @@ if st.session_state.generation_state == "ai_failed":
 
 # --- СЦЕНАРИЙ 4: ВЫВОД ГОТОВОГО РЕЗУЛЬТАТА ---
 if st.session_state.generation_state == "finalized":
-
-    render_ready_report_sidebar_link()
-    st.markdown('<div id="audit-report"></div>', unsafe_allow_html=True)
     st.success("🎉 Экспертное заключение сформировано и проверено системой контроля качества Khalil Consulting!")
 
     brand_file_label = "BTG" if presentation_brand_key() == "btg" else "Khalil"

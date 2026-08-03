@@ -3,9 +3,9 @@
 This changelog is intended for production release notes that can be shown to customers.
 Keep this file focused only on customer-visible questionnaire and report changes.
 
-## v15.1-dev.6
+## v15.1-dev.7
 
-- Added an “Отчет” shortcut to the audit navigator once the conclusion is ready.
+- Added an “Отчет” shortcut once the questionnaire is valid, so users can jump directly to report generation.
 - Improved fact consistency for mature IAM, WAF, backup, and disaster-recovery controls.
 - Added a concise explanation of which confirmed controls contribute to each domain score.
 
