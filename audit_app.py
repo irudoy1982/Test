@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.7"
+APP_VERSION = "15.1-dev.8"
 
 
 def get_app_instance_label():
@@ -1031,11 +1031,20 @@ def confirmed_it_gap_topics(results):
         gaps["virtualization"] = IT_GAP_LABELS["virtualization"]
 
     storage_fill = re.search(r"(?:схд|хранилищ\w*)[^.]{0,60}(\d{2,3})\s*%", notes)
+    storage_pressure_markers = (
+        "прогноз исчерпания не ведется",
+        "порог расширения не определен",
+        "емкость исчерп",
+        "не хватает емкост",
+        "высокая latency",
+        "latency превыш",
+        "latency раст",
+        "задержка схд",
+        "задержки схд",
+    )
     if (
         storage_fill and int(storage_fill.group(1)) >= 80
-    ) or any(marker in notes for marker in (
-        "прогноз исчерпания не", "порог расширения", "latency",
-    )):
+    ) or any(marker in notes for marker in storage_pressure_markers):
         gaps["storage"] = IT_GAP_LABELS["storage"]
 
     if any(marker in notes for marker in (
@@ -1059,7 +1068,12 @@ def confirmed_it_gap_topics(results):
     continuity_gap = (
         ("rto" in notes or "rpo" in notes)
         and any(marker in notes for marker in ("не согласован", "не определен", "не утвержден"))
-    ) or ("восстанов" in notes and "нерегуляр" in notes)
+    ) or ("восстанов" in notes and "нерегуляр" in notes) or (
+        results.get("DR-план") in {"Нет", "Разрабатывается", "Утвержден, но не тестировался"}
+    ) or (
+        is_enabled(results.get("Резервное копирование"))
+        and results.get("Периодичность тестового восстановления") == "Не проводится"
+    )
     if continuity_gap:
         gaps["dr"] = IT_GAP_LABELS["dr"]
 
@@ -1251,6 +1265,129 @@ def build_confirmed_security_gap_risks(results, context):
     return findings
 
 
+def build_mature_security_assurance_risks(results, context):
+    """Create assurance work for a mature control set without inventing missing controls."""
+    enabled_controls, _ = security_control_snapshot(results)
+    if len(enabled_controls) < 12:
+        return []
+
+    findings = [{
+        "level": "MEDIUM",
+        "risk": "Эффективность защитного контура требует регулярного подтверждения",
+        "description": (
+            "Анкета подтверждает развитый набор превентивных и детективных контролей. "
+            "Следующий уровень зрелости определяется не количеством продуктов, а измеримой "
+            "эффективностью сценариев обнаружения, эскалации и сдерживания атак."
+        ),
+        "impact": "Без регулярной проверки покрытие лицензиями и наличие средств защиты не доказывают готовность процессов к реальному инциденту.",
+        "recommendation": "Ежеквартально проводить контрольные сценарии purple-team: компрометация учетной записи, ransomware и утечка данных; фиксировать MTTD, MTTR, полноту телеметрии и корректирующие действия.",
+        "success_metric": "Критичные сценарии проходят проверку ежеквартально, а корректирующие действия закрываются в согласованный срок",
+        "vendors": [],
+        "semantic_key": "control_assurance",
+        "_semantic_key": "control_assurance",
+        "_ai_area": "ИБ",
+        "_source": "Экспертная модель",
+        "evidence": [f"Подтверждено зрелых ИБ-контролей: {len(enabled_controls)}"],
+    }]
+
+    if is_enabled(results.get("PAM")) and is_enabled(results.get("IAM")) and is_enabled(results.get("MFA")):
+        findings.append({
+            "level": "LOW",
+            "risk": "Контроль привилегий требует периодической аттестации",
+            "description": "В анкете подтверждены IAM, MFA и PAM; остаточный риск связан с полнотой охвата привилегированных учетных записей и регулярностью пересмотра прав.",
+            "impact": "Неучтенные сервисные, аварийные или локальные администраторские учетные записи могут обходить целевой контур контроля.",
+            "recommendation": "Ежеквартально сверять PAM с каталогами, CMDB и владельцами систем, пересматривать привилегии и тестировать аварийный доступ с последующей проверкой журналов.",
+            "success_metric": "Не менее 98% привилегированных учетных записей находятся под контролем, исключения имеют владельца и срок",
+            "vendors": [],
+            "semantic_key": "pam_assurance",
+            "_semantic_key": "pam_assurance",
+            "_ai_area": "ИБ",
+            "_source": "Экспертная модель",
+            "evidence": [f"IAM: {results.get('IAM')}", f"MFA: {results.get('MFA')}", f"PAM: {results.get('PAM')}"],
+        })
+
+    if has_security_monitoring(results):
+        findings.append({
+            "level": "LOW",
+            "risk": "Сценарии мониторинга и реагирования требуют проверки покрытия",
+            "description": "SIEM или ОЦИБ подтверждены анкетой; дальнейшее улучшение связано с качеством use-case, источников событий и передачей инцидентов владельцам систем.",
+            "impact": "Формально работающий мониторинг может пропускать атаки при неполной телеметрии или неактуальных правилах корреляции.",
+            "recommendation": "Вести матрицу use-case к критичным активам и MITRE ATT&CK, ежемесячно контролировать полноту источников, ложные срабатывания и SLA расследования.",
+            "success_metric": "Все критичные активы покрыты актуальными use-case, полнота обязательных источников не ниже 98%",
+            "vendors": [],
+            "semantic_key": "soc_assurance",
+            "_semantic_key": "soc_assurance",
+            "_ai_area": "ИБ",
+            "_source": "Экспертная модель",
+            "evidence": [f"SIEM: {results.get('SIEM')}", f"ОЦИБ: {results.get('ОЦИБ') or results.get('Модель ОЦИБ')}"],
+        })
+
+    return findings
+
+def build_industry_assurance_risks(c_info, results):
+    """Add standards-specific assurance only when questionnaire facts establish scope."""
+    industry = str(c_info.get("Сфера деятельности", "") or "")
+    notes = " ".join(str(value or "") for value in results.values()).lower()
+    if industry != "Финтех / Банки" or "pci dss" not in notes:
+        return []
+
+    scope_confirmed = any(marker in notes for marker in (
+        "включены в pci dss scope", "включен в pci dss scope", "cde определен", "cde определён",
+    ))
+    return [{
+        "level": "LOW" if scope_confirmed else "MEDIUM",
+        "risk": (
+            "Доказательная база соответствия PCI DSS требует регулярного подтверждения"
+            if scope_confirmed
+            else "Применимость и границы PCI DSS требуют документального подтверждения"
+        ),
+        "description": (
+            "Анкета указывает обработку платежных карт и подтвержденный PCI DSS scope."
+            if scope_confirmed
+            else "Анкета указывает обслуживание платежных карт, но границы cardholder data environment и способ подтверждения соответствия не определены."
+        ),
+        "impact": "Неполный scope или недоказанные контроли создают риск замечаний эквайера, ограничений карточных операций и дополнительных расходов при инциденте.",
+        "recommendation": "Определить роль организации и CDE, выбрать применимый SAQ либо ROC, провести gap assessment PCI DSS v4.0.1 и сформировать единый реестр доказательств по требованиям стандарта и нормам РК.",
+        "success_metric": "CDE, способ подтверждения соответствия и владельцы требований утверждены; доказательства актуализируются по графику",
+        "vendors": [],
+        "legal_ids": ["BANK_IS", "FINANCE_IS"],
+        "frameworks": ["PCI DSS v4.0.1"],
+        "semantic_key": "pci_assurance",
+        "_semantic_key": "pci_assurance",
+        "_ai_area": "ИБ",
+        "_source": "Экспертная модель",
+        "evidence": ["В анкете указаны операции с платежными картами / PCI DSS scope"],
+    }]
+
+def apply_industry_references(item, c_info, results):
+    normalized = dict(item)
+    industry = str(c_info.get("Сфера деятельности", "") or "")
+    notes = " ".join(str(value or "") for value in results.values()).lower()
+    key = risk_semantic_key(normalized)
+    if industry == "Финтех / Банки":
+        legal_ids = list(normalized.get("legal_ids", []))
+        for legal_id in ("BANK_IS", "FINANCE_IS"):
+            if legal_id not in legal_ids:
+                legal_ids.append(legal_id)
+        normalized["legal_ids"] = legal_ids[:3]
+        if "pci dss" in notes:
+            pci_by_key = {
+                "pam": "PCI DSS v4.0.1, Requirements 7 and 8",
+                "pam_assurance": "PCI DSS v4.0.1, Requirements 7 and 8",
+                "mfa": "PCI DSS v4.0.1, Requirement 8.4",
+                "siem_soc": "PCI DSS v4.0.1, Requirement 10",
+                "soc_assurance": "PCI DSS v4.0.1, Requirements 10 and 12.10",
+                "patch": "PCI DSS v4.0.1, Requirements 6.3 and 11.3",
+                "web_waf": "PCI DSS v4.0.1, Requirement 6.4.2",
+                "pci_assurance": "PCI DSS v4.0.1",
+            }
+            if key in pci_by_key:
+                frameworks = list(normalized.get("frameworks", []))
+                if pci_by_key[key] not in frameworks:
+                    frameworks.append(pci_by_key[key])
+                normalized["frameworks"] = frameworks[:3]
+    return normalized
+
 def ai_it_gap_coverage(items, expected_gaps):
     covered = set()
     coverage_markers = {
@@ -1324,16 +1461,30 @@ def security_control_snapshot(results):
 def control_confirmed_in_results(results, control):
     if is_enabled(results.get(control)):
         return True
-    note_values = [
+    control_key = str(control).lower()
+    for key, value in results.items():
+        key_text = str(key).lower()
+        value_text = str(value or "").strip().lower()
+        if (
+            control_key in key_text
+            and any(marker in key_text for marker in ("производитель", "решение", "продукт", "вендор"))
+            and value_text not in {"", "нет", "none", "false", "-", "n/a"}
+        ):
+            return True
+    searchable_values = [
         str(value)
         for key, value in results.items()
         if any(marker in str(key).lower() for marker in ("примеч", "комментар", "дополн"))
     ]
-    notes = " ".join(note_values).lower()
+    notes = " ".join(searchable_values).lower()
     aliases = {
         "WAF": ("waf", "web application firewall", "fortiweb", "cloudflare waf", "imperva waf", "f5 asm"),
         "EDR": ("edr", "endpoint detection and response"),
         "MFA": ("mfa", "многофактор"),
+        "DLP": (
+            "dlp", "data loss prevention", "forcepoint dlp", "symantec dlp",
+            "broadcom dlp", "check point dlp", "checkpoint dlp", "гарда dlp",
+        ),
     }.get(control, (control.lower(),))
     positive = ("есть", "включ", "использ", "внедр", "настро", "работает", "защищ")
     for alias in aliases:
@@ -1349,6 +1500,38 @@ def control_confirmed_in_results(results, control):
 def risk_conflicts_with_answers(item, results):
     key = risk_semantic_key(item)
 
+    confirmed_it_gaps = confirmed_it_gap_topics(results)
+    if key in {
+        "wifi_capacity", "network_performance", "virtualization", "storage",
+        "it_monitoring", "itam", "change_management", "os_inventory",
+    } and key not in confirmed_it_gaps:
+        return f"No questionnaire evidence for {key}"
+
+    if key == "appsec" and not any(
+        str(result_key).startswith("4.1.") for result_key in results
+    ):
+        return "No internal development scope reported"
+
+    if key == "ztna":
+        if is_enabled(results.get("ZTNA")):
+            return "ZTNA already enabled"
+        questionnaire_text = " ".join(str(value or "") for value in results.values()).lower()
+        remote_access_markers = (
+            "удаленный доступ", "удалённый доступ", "удаленная работа", "удалённая работа",
+            "remote access", "remote work", "ssl vpn", "ipsec vpn", "vpn-доступ",
+            "доступ вне периметра", "доступ из интернета",
+        )
+        if not any(marker in questionnaire_text for marker in remote_access_markers):
+            return "No questionnaire evidence for remote access or ZTNA scope"
+
+    if key == "physical_security":
+        notes = " ".join(str(value or "") for value in results.values()).lower()
+        if not any(marker in notes for marker in (
+            "физическая защита отсутств", "контроль доступа в цод отсутств",
+            "нет контроля доступа в цод", "пожаротушение отсутств",
+        )):
+            return "No questionnaire evidence for physical security gap"
+
     if key == "legacy_os":
         legacy_arm = int(results.get("ОС АРМ (Windows XP/Vista/7/8)", 0) or 0)
         legacy_servers = int(results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0) or 0)
@@ -1361,16 +1544,18 @@ def risk_conflicts_with_answers(item, results):
         return "IAM already enabled"
     if key == "pam" and is_enabled(results.get("PAM")):
         return "PAM already enabled"
-    if key == "siem_soc" and is_enabled(results.get("SIEM")):
-        return "SIEM already enabled"
+    if key == "siem_soc" and has_security_monitoring(results):
+        return "SIEM or OCIB monitoring already enabled"
     if key == "patch" and is_enabled(results.get("Patch Management")):
         return "Patch Management already enabled"
     if key == "web_waf" and control_confirmed_in_results(results, "WAF"):
         return "WAF already enabled"
     if key == "mail" and is_enabled(results.get("Mail Security")):
         return "Mail Security already enabled"
-    if key == "dlp" and is_enabled(results.get("DLP")):
+    if key == "dlp" and control_confirmed_in_results(results, "DLP"):
         return "DLP already enabled"
+    if key == "nac" and control_confirmed_in_results(results, "NAC"):
+        return "NAC already enabled"
     if key == "backup" and is_enabled(results.get("Резервное копирование")):
         combined = " ".join(
             str(item.get(field, ""))
@@ -1388,6 +1573,16 @@ def risk_conflicts_with_answers(item, results):
         )
         if any(marker in combined for marker in absence_markers):
             return "Backup already enabled"
+        if (
+            results.get("Периодичность тестового восстановления") not in {"", None, "Не проводится"}
+            and any(marker in combined for marker in (
+                "не проверяется", "не тестируется", "не подтверждено",
+                "тестовое восстановление не проводится",
+            ))
+        ):
+            return "Backup restore testing already reported"
+    if key == "dr" and results.get("DR-план") == "Утвержден и регулярно тестируется":
+        return "Tested DR plan already reported"
     if key == "endpoint_detection" and any(
         control_confirmed_in_results(results, control)
         for control in ("EDR", "XDR", "MDR")
@@ -1552,16 +1747,16 @@ REGULATORY_CATALOG = {
         "status": "Обязательное для КВОИКИ",
     },
     "FINANCE_IS": {
-        "title": "Минимальные требования по обеспечению ИБ на финансовом рынке, № 38505",
-        "short": "Требования ИБ финансового рынка № 38505",
+        "title": "Минимальные требования по обеспечению ИБ на финансовом рынке, постановление АРРФР № 81 (рег. № 38505)",
+        "short": "Постановление АРРФР № 81 (рег. № 38505)",
         "url": "https://adilet.zan.kz/rus/docs/V2600038505",
         "scope": "Финансовые организации и регулируемые участники финансового рынка.",
         "status": "Отраслевое обязательное требование",
     },
     "BANK_IS": {
-        "title": "Требования к ИБ банков и организаций, осуществляющих отдельные банковские операции, № 16772",
-        "short": "Требования ИБ банков № 16772",
-        "url": "https://adilet.zan.kz/rus/docs/V1800016772",
+        "title": "Требования к ИБ банков и организаций, осуществляющих отдельные банковские операции, постановление АРРФР № 53 (рег. № 38336)",
+        "short": "Постановление АРРФР № 53 (рег. № 38336)",
+        "url": "https://adilet.zan.kz/rus/docs/V2600038336",
         "scope": "Банки, филиалы банков-нерезидентов и отдельные банковские операции.",
         "status": "Отраслевое обязательное требование",
     },
@@ -1767,14 +1962,14 @@ INDUSTRY_REGULATORY_IDS = {
 
 
 INDUSTRY_FRAMEWORKS = {
-    "Финтех / Банки": ["ISO/IEC 27001", "PCI DSS (при обработке карточных данных)", "GDPR (при обработке данных субъектов ЕЭЗ)"],
-    "Страхование": ["ISO/IEC 27001", "NIST CSF", "GDPR (при обработке данных субъектов ЕЭЗ)"],
-    "Ритейл / E-commerce": ["OWASP ASVS", "PCI DSS (при обработке карточных данных)", "GDPR (при обработке данных субъектов ЕЭЗ)", "ISO/IEC 27001"],
+    "Финтех / Банки": ["ISO/IEC 27001", "PCI DSS v4.0.1 (при обработке карточных данных)", "GDPR, ст. 3 (при применимости к данным субъектов ЕЭЗ)", "ISO 22301"],
+    "Страхование": ["ISO/IEC 27001", "NIST CSF 2.0", "GDPR, ст. 3 (при применимости к данным субъектов ЕЭЗ)", "ISO 22301"],
+    "Ритейл / E-commerce": ["OWASP ASVS", "PCI DSS v4.0.1 (при обработке карточных данных)", "GDPR, ст. 3 (при применимости к данным субъектов ЕЭЗ)", "ISO/IEC 27001"],
     "Здравоохранение / Медицинская организация": ["ISO/IEC 27001", "ISO 27799", "GDPR (при обработке данных субъектов ЕЭЗ)"],
     "Госсектор": ["СТ РК ISO/IEC 27002", "ISO/IEC 27001"],
     "Квазигосударственный сектор": ["СТ РК ISO/IEC 27002", "ISO/IEC 27001"],
-    "КВОИКИ / Критическая инфраструктура": ["ISO/IEC 27001", "NIST CSF", "CIS Controls"],
-    "Телеком / Связь": ["ISO/IEC 27001", "NIST CSF"],
+    "КВОИКИ / Критическая инфраструктура": ["ISO/IEC 27001", "NIST CSF 2.0", "CIS Controls", "ISO 22301"],
+    "Телеком / Связь": ["ISO/IEC 27001", "NIST CSF 2.0", "ISO 22301"],
     "Энергетика / Коммунальная инфраструктура": ["IEC 62443", "ISO/IEC 27001"],
     "Транспорт / Логистика": ["ISO/IEC 27001", "ISO 22301"],
     "Производство / АСУ ТП": ["IEC 62443", "ISO/IEC 27001"],
@@ -1884,7 +2079,7 @@ def generate_rule_based_risks(results, context):
     # NO SIEM
     # =========================
 
-    if results.get("SIEM") == "Нет":
+    if not has_security_monitoring(results):
 
         severity = "LOW"
         recommendation = (
@@ -1986,6 +2181,7 @@ def generate_rule_based_risks(results, context):
     if results.get("Резервное копирование") != "Нет" and results.get("Immutable Backup") == "Нет":
 
         risks.append({
+            "semantic_key": "backup",
             "level": "HIGH",
             "risk": "Backup не защищен от ransomware",
             "description": "Отсутствует immutable/offline backup.",
@@ -1995,8 +2191,33 @@ def generate_rule_based_risks(results, context):
             "vendors": ["Veeam", "Commvault", "Rubrik"]
         })
 
+    if (
+        results.get("Резервное копирование") != "Нет"
+        and results.get("Периодичность тестового восстановления") == "Не проводится"
+    ):
+        risks.append({
+            "semantic_key": "backup_restore",
+            "level": "HIGH",
+            "risk": "Восстановление из резервных копий не проверяется",
+            "description": (
+                f"В анкете указан backup-контур {results.get('Резервное копирование')}, "
+                "но тестовое восстановление не проводится."
+            ),
+            "impact": (
+                "Успешное выполнение задания backup не подтверждает возможность восстановить "
+                "критичные сервисы в согласованные сроки и без потери целостности данных."
+            ),
+            "recommendation": (
+                "Согласовать перечень критичных сервисов и RTO/RPO; провести контрольное "
+                "восстановление; зафиксировать фактические сроки, полноту данных и корректирующие действия."
+            ),
+            "regulators": ["ISO 22301", "ISO 27001", "NIST CSF"],
+            "vendors": ["Backup"],
+        })
+
     if results.get("Резервное копирование") == "Нет" and servers > 0:
         risks.append({
+            "semantic_key": "backup",
             "level": "CRITICAL",
             "risk": "Не указан контур резервного копирования серверов",
             "description": f"В инфраструктуре указано {servers} серверов, но резервное копирование не описано.",
@@ -2006,15 +2227,22 @@ def generate_rule_based_risks(results, context):
             "vendors": ["Veeam", "Commvault", "Veritas"]
         })
 
-    if servers >= 10 and results.get("Резервное копирование") != "Нет" and results.get("DR") == "Нет":
+    if servers >= 10 and results.get("DR") == "Нет":
         risks.append({
+            "semantic_key": "dr",
             "level": "HIGH",
-            "risk": "Не описан план аварийного восстановления ИТ-сервисов",
-            "description": f"В инфраструктуре указано {servers} серверов и backup-контур, но не описаны DR-сценарии, RTO/RPO и регулярные тесты восстановления.",
+            "risk": "Отсутствует план аварийного восстановления ИТ-сервисов",
+            "description": (
+                f"В инфраструктуре указано {servers} серверов, а в анкете прямо отмечено "
+                "отсутствие утвержденного DR-плана."
+            ),
             "impact": "При сбое площадки, СХД или критичных виртуальных машин восстановление может занять дольше допустимого для бизнеса.",
-            "recommendation": "Описать критичные сервисы, определить RTO/RPO, провести тест восстановления и подготовить поэтапный DR-план для ERP, CRM, почты и файловых сервисов.",
+            "recommendation": (
+                "Провести BIA; определить критичные сервисы и зависимости; утвердить RTO/RPO; "
+                "подготовить DR-сценарии и проверить их на учениях."
+            ),
             "regulators": ["ISO 22301", "ISO 27001", "NIST CSF"],
-            "vendors": ["Veeam", "Commvault", "Rubrik"]
+            "vendors": []
         })
 
     if servers >= 10 and results.get("Мониторинг") == "Нет":
@@ -5931,6 +6159,11 @@ def calculate_it_maturity_score(
     wifi_enabled=False,
     wifi_ctrl_enabled=False,
     operational_notes=None,
+    backup_storage_locations=None,
+    backup_immutable=False,
+    restore_test_frequency="Не проводится",
+    rto_rpo_defined=False,
+    dr_plan_status="Нет",
 ):
     earned = 0.0
     available = 20.0
@@ -5957,10 +6190,18 @@ def calculate_it_maturity_score(
         earned += 6 if str(ngfw_vendor).strip().lower() not in {"", "нет", "no", "none"} else 0
 
     if server_active:
-        available += 24
+        available += 32
         earned += 5 if (phys_count + virt_count) > 0 else 0
         earned += 5 if virt_count > 0 and selected_virt_sys else 0
-        earned += 10 if str(backup_vendor).strip().lower() not in {"", "нет", "no", "none"} else 0
+        has_backup = str(backup_vendor).strip().lower() not in {"", "нет", "no", "none"}
+        earned += 6 if has_backup else 0
+        earned += 2 if has_backup and backup_storage_locations else 0
+        earned += 2 if has_backup and backup_immutable else 0
+        earned += 3 if has_backup and restore_test_frequency not in {"", "Не проводится"} else 0
+        earned += 2 if rto_rpo_defined else 0
+        earned += 3 if dr_plan_status == "Утвержден и регулярно тестируется" else (
+            1 if dr_plan_status in {"Разрабатывается", "Утвержден, но не тестировался"} else 0
+        )
         earned += 4 if phys_count > 0 and virt_count > 0 else 0
 
     if storage_active:
@@ -6238,6 +6479,18 @@ def build_context(results, client_info):
             "Нет"
         ) != "Нет"
     )
+    context["backup_restore_tested"] = (
+        results.get("Периодичность тестового восстановления", "Не проводится")
+        not in {"", "Не проводится"}
+    )
+    context["has_immutable_backup"] = is_enabled(
+        results.get("Immutable / offline backup")
+    )
+    context["rto_rpo_defined"] = is_enabled(results.get("RTO / RPO утверждены"))
+    context["dr_plan_status"] = str(results.get("DR-план", "Нет") or "Нет")
+    context["has_tested_dr"] = (
+        context["dr_plan_status"] == "Утвержден и регулярно тестируется"
+    )
 
     # ==================================
     # Безопасность
@@ -6250,12 +6503,7 @@ def build_context(results, client_info):
         ) != "Нет"
     )
 
-    context["has_siem"] = (
-        results.get(
-            "SIEM",
-            "Нет"
-        ) != "Нет"
-    )
+    context["has_siem"] = has_security_monitoring(results)
 
     context["has_edr"] = (
         results.get(
@@ -6450,7 +6698,7 @@ def build_contextual_roadmap(results, context, domain_scores, risks):
             effort="Средняя",
         )
 
-    if results.get("SIEM") == "Нет":
+    if not has_security_monitoring(results):
         if is_enterprise:
             action = "Запустить проект SIEM/SOC с корреляцией событий и регламентами реагирования."
             phase = "61-90 дней"
@@ -6811,6 +7059,7 @@ def solution_categories_for_report_item(item):
         "mail": "Mail Security / Anti-Phishing",
         "segmentation": "Сегментация сети; VLAN / ACL; NGFW policies",
         "nac": "NAC / Network Access Control; профилирование устройств",
+        "ztna": "ZTNA / доступ к приложениям по принципу Zero Trust",
         "it_monitoring": "IT-мониторинг; capacity management",
         "virtualization": "Виртуализация; lifecycle management",
         "storage": "СХД health-check; capacity management",
@@ -6821,12 +7070,18 @@ def solution_categories_for_report_item(item):
         "network_performance": "Резервирование WAN; SD-WAN; балансировка каналов; контроль SLA",
         "os_inventory": "ITAM / SAM; инвентаризация ОС; управление жизненным циклом рабочих мест",
         "itam": "ITAM / SAM / управление лицензиями",
+        "pci_assurance": "PCI DSS gap assessment; CDE scoping; подготовка доказательств соответствия",
+        "control_assurance": "Purple Team / контроль эффективности защитных мер",
+        "pam_assurance": "Аттестация привилегий; проверка охвата PAM",
+        "soc_assurance": "SOC use-case assessment; проверка полноты телеметрии",
     }
     return categories_by_key.get(key, "Уточнить класс решения по результатам пресейла")
 
 
 def portfolio_manufacturers_for_report_item(item):
     key = risk_semantic_key(item)
+    if key in {"pci_assurance", "control_assurance", "pam_assurance", "soc_assurance"}:
+        return "Экспертная услуга; производитель не требуется"
     text = normalize_vendor_key(" ".join([
         str(item.get("risk", "")),
         str(item.get("description", "")),
@@ -6872,6 +7127,7 @@ def portfolio_manufacturers_for_report_item(item):
         "mail": (["Email", "Mail Security"], ["Check Point", "Fortinet", "Trend Micro", "Forcepoint"], []),
         "segmentation": (["NAC", "NGFW", "Network Equipment"], ["Fortinet", "Cisco", "Huawei", "Check Point"], []),
         "nac": (["NAC"], ["Fortinet", "Cisco", "Check Point"], []),
+        "ztna": (["ZTNA", "SASE", "Zero Trust"], ["Cisco", "Fortinet", "Palo Alto", "Cloudflare", "Check Point"], []),
         "virtualization": (["Virtualization"], [], []),
         "storage": (["Storage", "Backup"], [], []),
         "dr": (["Backup", "DR"], [], []),
@@ -7100,7 +7356,7 @@ def build_sales_opportunities(results, context, roadmap_items):
             "Предложить инвентаризацию и отчет по критичным CVE за 1-2 недели.",
         )
 
-    if results.get("SIEM") == "Нет" and not context.get("small_company"):
+    if not has_security_monitoring(results) and not context.get("small_company"):
         add(
             "P2",
             "Нет централизованного мониторинга событий ИБ",
@@ -7159,6 +7415,35 @@ def build_sales_opportunities(results, context, roadmap_items):
             "Предложить быстрый health-check мониторинга и пилот с 10-15 критичными объектами.",
         )
 
+    existing_pain_keys = {
+        risk_semantic_key({
+            "risk": pain.get("pain", ""),
+            "description": pain.get("evidence", ""),
+            "recommendation": pain.get("commercial_angle", ""),
+        })
+        for pain in pains
+    }
+    for item in opportunities[:4]:
+        item_key = risk_semantic_key({
+            "risk": item.get("problem", ""),
+            "description": item.get("trigger", ""),
+            "recommendation": item.get("offer", ""),
+        })
+        if not item_key or item_key in existing_pain_keys:
+            continue
+        guidance = sales_account_guidance(item)
+        add_pain(
+            item.get("priority", "P2"),
+            item.get("problem", "Требуется подтвердить выявленную гипотезу."),
+            item.get("trigger", "Факт и фактический охват нужно подтвердить на рабочей сессии."),
+            item.get("offer", "Экспертный assessment подтвержденной зоны риска."),
+            (
+                "Какие факты, исключения и метрики подтверждают текущую эффективность контроля, "
+                f"и что из следующего требует уточнения: {guidance['qualification']}"
+            ),
+        )
+        existing_pain_keys.add(item_key)
+
     if results.get("Виртуализация") != "Нет" and results.get("Кластеризация") == "Нет":
         add(
             "P3",
@@ -7210,6 +7495,94 @@ def result_contains_any(results, markers):
 
 
 def sales_override_for_item(item, results, context):
+    conflict = risk_conflicts_with_answers(item, results)
+    if conflict:
+        return None
+
+    semantic_key = risk_semantic_key(item)
+    if semantic_key == "wifi_capacity":
+        return {
+            "priority": "P2" if context.get("users", 0) >= 250 else "P3",
+            "problem": item.get("risk") or "Емкость и управляемость корпоративного Wi-Fi требуют улучшения",
+            "offer": (
+                "Провести радиообследование и замеры пиковой нагрузки; определить требуемую плотность точек доступа, "
+                "архитектуру контроллера и параметры роуминга; затем выполнить пилот WLAN на проблемной зоне."
+            ),
+            "trigger": item.get("impact") or item.get("description") or "Анкета подтверждает недостаточную емкость или управляемость Wi-Fi.",
+            "vendors": portfolio_vendors_by_categories(
+                ["Network Equipment", "Wireless", "Wi-Fi"],
+                preferred=["Cisco", "Huawei", "Fortinet"],
+            ),
+            "next_step": (
+                "Запросить план помещений, число одновременных клиентов, модели точек и контроллера; "
+                "согласовать радиообследование и пилот на наиболее загруженной зоне."
+            ),
+            "semantic_key": semantic_key,
+            "source": item.get("source", item.get("_source", "Базовые правила")),
+        }
+    if semantic_key == "segmentation" and network_segmentation_evidence(results) != "absent":
+        return {
+            "priority": "P3",
+            "problem": "Архитектура сетевой сегментации требует подтверждения",
+            "offer": (
+                "Провести архитектурную проверку VLAN/VRF, ACL, политик NGFW и матрицы потоков. "
+                "Сначала подтвердить конкретный разрыв; проект микросегментации формировать только по результатам проверки."
+            ),
+            "trigger": (
+                "Анкета не содержит достаточных данных о межсегментных правилах. Наличие или отсутствие NAC "
+                "само по себе не доказывает качество сегментации."
+            ),
+            "vendors": "Экспертная услуга; производитель определяется после подтверждения разрыва",
+            "next_step": (
+                "Запросить схему VLAN/VRF, матрицу разрешенных потоков и правила NGFW; провести контрольные "
+                "тесты доступа между пользовательским, серверным, гостевым и критичным контурами."
+            ),
+            "semantic_key": semantic_key,
+            "source": item.get("source", item.get("_source", "Базовые правила")),
+        }
+    assurance_sales_profiles = {
+        "control_assurance": {
+            "priority": "P2",
+            "problem": "Проверка фактической эффективности защитного контура",
+            "offer": "Провести контрольные purple-team сценарии без замены действующих средств защиты: компрометация учетной записи, ransomware и утечка данных; измерить MTTD/MTTR и полноту телеметрии.",
+            "next_step": "Согласовать 2-3 критичных сценария, источники телеметрии, владельцев реакции и критерии контрольной проверки.",
+        },
+        "pam_assurance": {
+            "priority": "P2",
+            "problem": "Проверка охвата действующих IAM, MFA и PAM",
+            "offer": "Провести аттестацию привилегированных доступов: сверить PAM с каталогами и CMDB, проверить сервисные и аварийные учетные записи, исключения и периодический пересмотр прав.",
+            "next_step": "Запросить выгрузку привилегированных учетных записей и провести рабочую сессию по охвату PAM, исключениям и аварийному доступу.",
+        },
+        "soc_assurance": {
+            "priority": "P2",
+            "problem": "Развитие действующего мониторинга до измеримого SOC-процесса",
+            "offer": "Проверить покрытие критичных источников, актуальность use-case, SLA расследования и качество передачи инцидентов владельцам систем; новые лицензии предлагать только после выявления подтвержденного разрыва.",
+            "next_step": "Согласовать список критичных активов и провести use-case assessment с проверкой полноты телеметрии и SLA реагирования.",
+        },
+        "pci_assurance": {
+            "priority": "P2",
+            "problem": "Подтверждение применимого PCI DSS scope и доказательной базы",
+            "offer": (
+                "Провести PCI DSS assessment: определить роль организации и границы CDE, выполнить gap analysis, "
+                "сформировать remediation plan и подготовить доказательства по применимым требованиям. "
+                "Внешнюю оценку или аттестацию планировать отдельно, если она требуется ролью организации или эквайером."
+            ),
+            "next_step": (
+                "Согласовать владельца платежного контура, роль организации, границы CDE и применимый способ "
+                "подтверждения; затем провести scope workshop и gap analysis."
+            ),
+        },
+    }
+    if semantic_key in assurance_sales_profiles:
+        profile = assurance_sales_profiles[semantic_key]
+        return {
+            **profile,
+            "semantic_key": semantic_key,
+            "trigger": item.get("impact") or item.get("description") or "Требуется подтвердить эффективность действующих контролей.",
+            "vendors": "Экспертная услуга; производитель не требуется",
+            "source": item.get("source", item.get("_source", "Базовые правила")),
+        }
+
     combined = normalize_vendor_key(" ".join([
         str(item.get("risk", "")),
         str(item.get("description", "")),
@@ -7275,6 +7648,8 @@ def sales_override_for_item(item, results, context):
         }
 
     if has("mail security", "почт", "email", "фишинг", "phishing"):
+        if is_enabled(results.get("Mail Security")):
+            return None
         return {
             "priority": "P1" if has_m365 else "P2",
             "problem": "Защита облачной почты и anti-phishing",
@@ -7318,6 +7693,8 @@ def sales_override_for_item(item, results, context):
         }
 
     if has("edr", "xdr", "endpoint", "конечн"):
+        if any(is_enabled(results.get(control)) for control in ("EDR", "XDR", "MDR")):
+            return None
         return {
             "priority": "P2",
             "problem": item.get("risk") or "Endpoint-защита требует обнаружения и реагирования",
@@ -7333,6 +7710,16 @@ def sales_override_for_item(item, results, context):
         }
 
     if has("siem", "soc", "mssp", "мониторинг событий"):
+        if has_security_monitoring(results):
+            return {
+                "priority": "P2",
+                "problem": "Развитие действующего SIEM до управляемого SOC-процесса",
+                "offer": "Проверить покрытие источников, сценарии корреляции, SLA реагирования и готовность к SOAR для повторяемых операций.",
+                "trigger": "SIEM уже используется; коммерческая возможность связана с качеством эксплуатации, а не с повторной продажей платформы.",
+                "vendors": portfolio_vendors_by_categories(["SOAR", "UEBA"], limit=4),
+                "next_step": "Запросить перечень источников и use cases, статистику инцидентов и SLA; провести workshop по развитию SOC.",
+                "source": item.get("source", "ИИ"),
+            }
         return {
             "priority": "P2",
             "problem": item.get("risk") or "Нужен управляемый мониторинг событий ИБ",
@@ -7347,7 +7734,7 @@ def sales_override_for_item(item, results, context):
             "source": item.get("source", "ИИ"),
         }
 
-    if has("sast", "dast", "appsec", "разработ"):
+    if has("sast", "dast", "appsec", "безопасность прилож", "исходный код", "ci/cd"):
         return {
             "priority": "P3",
             "problem": item.get("risk") or "Безопасность разработки требует уточнения",
@@ -7376,32 +7763,56 @@ def sales_override_for_item(item, results, context):
             "source": item.get("source", "ИИ"),
         }
 
-    if has("wifi", "wi fi", "wi-fi", "nac", "сегментац", "vlan", "acl"):
+    if has("dr", "drp", "аварийн", "rto", "rpo", "восстановлен"):
+        return {
+            "priority": "P1",
+            "problem": item.get("risk") or "Нужен проверяемый план аварийного восстановления",
+            "offer": (
+                "DR assessment и BIA: критичные сервисы, зависимости, RTO/RPO, варианты резервной "
+                "площадки и сценарий контрольного восстановления."
+            ),
+            "trigger": item.get("impact") or "Без проверенного DR-плана сроки восстановления критичных сервисов не подтверждены.",
+            "vendors": portfolio_vendors_by_categories(
+                ["Backup", "Disaster Recovery"],
+                preferred=["Veeam", "Commvault", "Rubrik"],
+                limit=4,
+            ),
+            "next_step": "Провести BIA-сессию, выбрать 2-3 критичных сервиса и согласовать сценарий DR-учений.",
+            "source": item.get("source", "ИИ"),
+        }
+
+    if has("wifi", "wi fi", "wi-fi", "сегментац", "vlan", "acl"):
         return {
             "priority": "P3",
             "problem": "Требуется уточнить архитектуру сегментации сети и Wi-Fi",
             "offer": "Не трактовать отсутствие NAC как отсутствие сегментации. Проверить VLAN/ACL/FortiGate policies, guest Wi-Fi, доступ AP и правила между сегментами.",
             "trigger": "В анкете есть UniFi/Wi-Fi 6/FortiGate/Cisco/Huawei, но нет фактов о VLAN/ACL и межсегментных политиках.",
-            "vendors": portfolio_vendors_by_categories(
-                ["NGFW", "Network Equipment", "NAC"],
-                preferred=["Fortinet", "Cisco", "Huawei"],
-            ),
+            "vendors": "Экспертная услуга; производитель определяется после подтверждения разрыва",
             "next_step": "Попросить схему VLAN, правила FortiGate, SSID/guest Wi-Fi и список критичных сегментов.",
             "source": item.get("source", "ИИ"),
         }
 
     if has("pam", "привилег"):
+        mfa_ready = is_enabled(results.get("MFA"))
         return {
-            "priority": "P3",
+            "priority": "P1" if mfa_ready else "P2",
             "problem": item.get("risk") or "PAM для привилегированных учетных записей",
-            "offer": "PAM рассматривать после MFA: инвентаризация админов, vault, session recording и регулярный пересмотр прав.",
-            "trigger": item.get("impact") or "PAM важен для серверов и критичных систем, но коммерчески должен идти после закрытия MFA.",
+            "offer": "Инвентаризация администраторов, vault, контроль сессий, аварийный доступ и регулярный пересмотр прав для критичных систем.",
+            "trigger": item.get("impact") or (
+                "MFA уже внедрена, поэтому PAM является логичным следующим уровнем контроля привилегированных доступов."
+                if mfa_ready else
+                "PAM нужен для критичных систем; проект следует синхронизировать с закрытием MFA."
+            ),
             "vendors": portfolio_vendors_by_categories(
                 ["PAM"],
                 preferred=["Wallix", "CyberArk", "BeyondTrust"],
                 exclude=["ManageEngine"],
             ),
-            "next_step": "Сначала закрыть MFA, затем собрать список привилегированных учетных записей и предложить PAM-пилот.",
+            "next_step": (
+                "Собрать список привилегированных учетных записей и предложить PAM-пилот на одном критичном контуре."
+                if mfa_ready else
+                "Параллельно с закрытием MFA собрать список привилегированных учетных записей и подготовить PAM-пилот."
+            ),
             "source": item.get("source", "ИИ"),
         }
 
@@ -7444,6 +7855,8 @@ def build_ai_first_sales_opportunities(risk_sources, results=None, context=None)
 
     for item in risk_sources:
         if not isinstance(item, dict):
+            continue
+        if risk_conflicts_with_answers(item, results):
             continue
         override = sales_override_for_item(item, results, context)
         if override:
@@ -7541,6 +7954,17 @@ def ensure_sales_playbook_priorities(opportunities, results, context):
             }
         )
 
+    if context.get("servers", 0) >= 10 and results.get("DR-план") == "Нет":
+        add_if_missing(
+            ("dr", "аварийн", "rto", "rpo"),
+            {
+                "risk": "Отсутствует проверяемый DR-план",
+                "impact": "Сроки восстановления критичных сервисов после отказа площадки не подтверждены.",
+                "recommendation": "Провести BIA, определить RTO/RPO и подготовить сценарий DR-учений.",
+                "vendors": ["Backup", "Disaster Recovery"],
+            },
+        )
+
     if results.get("EDR") == "Нет":
         add_if_missing(
             ("edr", "xdr", "endpoint"),
@@ -7552,7 +7976,7 @@ def ensure_sales_playbook_priorities(opportunities, results, context):
             }
         )
 
-    if results.get("SIEM") == "Нет" and not context.get("small_company"):
+    if not has_security_monitoring(results) and not context.get("small_company"):
         add_if_missing(
             ("siem", "soc", "mssp"),
             {
@@ -7593,7 +8017,7 @@ def ensure_sales_playbook_priorities(opportunities, results, context):
 
 
 def sales_account_guidance(item):
-    key = risk_semantic_key({
+    key = str(item.get("semantic_key") or item.get("_semantic_key") or "").strip() or risk_semantic_key({
         "risk": item.get("problem", item.get("risk", "")),
         "description": item.get("trigger", item.get("description", "")),
         "impact": item.get("business_value", item.get("impact", "")),
@@ -7616,6 +8040,30 @@ def sales_account_guidance(item):
             "stakeholders": "ИТ-директор; руководитель ИБ; владельцы Microsoft 365/AD/VPN; служба поддержки",
             "qualification": "IdP, охват пользователей, критичные доступы, исключения, способы аутентификации и требования к пользовательскому опыту.",
             "meeting_goal": "Определить 1-2 критичных контура для быстрого MFA-пилота и критерии его успешности.",
+        },
+        "control_assurance": {
+            "business_value": "Подтвердить, что действующие средства защиты обнаруживают и сдерживают реалистичные сценарии атак.",
+            "stakeholders": "Руководитель ИБ; SOC/ОЦИБ; владельцы endpoint, почты, сети и критичных приложений",
+            "qualification": "Критичные сценарии, источники телеметрии, MTTD/MTTR, владельцы реакции и порядок закрытия выявленных разрывов.",
+            "meeting_goal": "Согласовать 2-3 purple-team сценария и критерии проверки эффективности без преждевременной замены продуктов.",
+        },
+        "pam_assurance": {
+            "business_value": "Подтвердить полноту контроля привилегий и исключить обход PAM через сервисные, локальные и аварийные учетные записи.",
+            "stakeholders": "Руководитель ИБ; IAM/PAM-команда; AD; владельцы критичных систем; внутренний аудит",
+            "qualification": "Реестр привилегированных учетных записей, охват PAM, исключения, аварийный доступ, пересмотр прав и журналирование сессий.",
+            "meeting_goal": "Согласовать аттестацию охвата PAM и перечень доказательств, а не новый MFA-пилот.",
+        },
+        "soc_assurance": {
+            "business_value": "Повысить измеримое покрытие критичных активов сценариями обнаружения и сократить время расследования.",
+            "stakeholders": "Руководитель ИБ; SOC/ОЦИБ; владельцы SIEM, AD, NGFW, endpoint и критичных систем",
+            "qualification": "Матрица активов и use-case, полнота источников, качество корреляции, MTTD/MTTR и SLA передачи инцидентов.",
+            "meeting_goal": "Провести use-case assessment и определить подтвержденные разрывы до обсуждения новых лицензий.",
+        },
+        "pci_assurance": {
+            "business_value": "Подтвердить применимый PCI DSS scope и обеспечить воспроизводимый комплект доказательств соответствия.",
+            "stakeholders": "Руководитель ИБ; compliance; владелец платежного контура; ИТ; внутренний аудит",
+            "qualification": "Границы CDE, роль организации, способ подтверждения SAQ/ROC, владельцы требований и актуальность доказательств.",
+            "meeting_goal": "Согласовать границы CDE и провести PCI DSS gap assessment по применимым требованиям.",
         },
         "patch": {
             "business_value": "Сделать технический долг по уязвимостям измеримым и сократить время закрытия критичных CVE.",
@@ -7740,7 +8188,7 @@ def build_sales_conversation_pack(c_info, results, context, roadmap_items, oppor
             "Есть ли сейчас возможность понять цепочку атаки: пользователь, файл, процесс, сеть, сервер?"
         )
 
-    if results.get("SIEM") == "Нет" and not context.get("small_company"):
+    if not has_security_monitoring(results) and not context.get("small_company"):
         add_pain(
             "P2",
             "События ИБ разрознены, поэтому инциденты сложно обнаруживать и расследовать.",
@@ -7766,35 +8214,6 @@ def build_sales_conversation_pack(c_info, results, context, roadmap_items, oppor
             "Мониторинг серверов, сети, СХД, виртуализации и бизнес-сервисов.",
             "Какие показатели сейчас отслеживаются: доступность, диски, latency, backup jobs, сервисы?"
         )
-
-    existing_pain_keys = {
-        risk_semantic_key({
-            "risk": pain.get("pain", ""),
-            "description": pain.get("evidence", ""),
-            "recommendation": pain.get("commercial_angle", ""),
-        })
-        for pain in pains
-    }
-    for item in opportunities[:4]:
-        item_key = risk_semantic_key({
-            "risk": item.get("problem", ""),
-            "description": item.get("trigger", ""),
-            "recommendation": item.get("offer", ""),
-        })
-        if not item_key or item_key in existing_pain_keys:
-            continue
-        guidance = sales_account_guidance(item)
-        add_pain(
-            item.get("priority", "P2"),
-            item.get("problem", "Требуется подтвердить выявленную гипотезу."),
-            item.get("trigger", "Факт и фактический охват нужно подтвердить на рабочей сессии."),
-            item.get("offer", "Экспертный assessment подтвержденной зоны риска."),
-            (
-                "Какие факты, исключения и метрики подтверждают текущую эффективность контроля, "
-                f"и что из следующего требует уточнения: {guidance['qualification']}"
-            ),
-        )
-        existing_pain_keys.add(item_key)
 
     if not pains:
         add_pain(
@@ -7931,7 +8350,7 @@ def build_sales_conversation_pack(c_info, results, context, roadmap_items, oppor
         add_question("Patch / CVE", "Есть ли сейчас отчет, какие критичные CVE открыты на АРМ и серверах дольше допустимого срока?")
     if results.get("EDR") == "Нет":
         add_question("Endpoint", "Если на АРМ сработает подозрительный процесс, сможете ли вы восстановить цепочку: пользователь, файл, процесс, сеть, сервер?")
-    if results.get("SIEM") == "Нет" and not context.get("small_company"):
+    if not has_security_monitoring(results) and not context.get("small_company"):
         add_question("Логи / SOC", "Какие источники логов вы готовы подключить первыми: NGFW, AD/учетки, серверы, EPP, backup или почту?")
     if results.get("MFA") == "Нет":
         add_question("MFA / IAM", "Где MFA можно включить быстрее всего без ломки процессов: VPN, почта, администраторы, облака или бизнес-системы?")
@@ -8088,7 +8507,7 @@ def build_expert_conclusion(results, context, final_score, domain_scores, roadma
             "а не как замену существующему EPP."
         )
 
-    if results.get("SIEM") == "Нет":
+    if not has_security_monitoring(results):
         if context.get("small_company"):
             conclusion.append(
                 "Полноценный SIEM не является первоочередной инвестицией при текущем составе источников. "
@@ -8123,79 +8542,72 @@ def is_enabled(value):
     return True
 
 
+def has_security_monitoring(results):
+    """Return True when SIEM or an operational own/external OCIB is reported."""
+    return (
+        is_enabled(results.get("SIEM"))
+        or is_enabled(results.get("ОЦИБ"))
+        or is_enabled(results.get("Модель ОЦИБ"))
+        or is_enabled(results.get("SOC"))
+    )
+
 def any_result_enabled(results, *keys):
     return any(is_enabled(results.get(key)) for key in keys)
 
 
 def backup_assurance_status(results, context=None):
     context = context or {}
-    restore_period = str(results.get("Периодичность тестового восстановления", "") or "").strip()
-    dr_status = str(results.get("DR-план", "") or "").strip()
-    checks = [
-        (
-            "immutable/offline-копии",
-            bool(context.get("has_immutable_backup"))
-            or any_result_enabled(results, "Immutable Backup", "Immutable / offline backup"),
-        ),
-        (
-            "утвержденные RTO/RPO",
-            bool(context.get("rto_rpo_defined"))
-            or any_result_enabled(results, "RTO / RPO утверждены"),
-        ),
-        (
-            "регулярное тестовое восстановление",
-            bool(context.get("backup_restore_tested"))
-            or restore_period not in {"", "Не проводится", "Нет"},
-        ),
-        (
-            "утвержденный и проверяемый DR-план",
-            bool(context.get("has_tested_dr"))
-            or dr_status == "Утвержден и регулярно тестируется",
-        ),
-    ]
-    missing = [label for label, confirmed in checks if not confirmed]
+    immutable = bool(context.get("has_immutable_backup")) or any_result_enabled(
+        results, "Immutable Backup", "Immutable / offline backup"
+    )
+    rto_rpo = bool(context.get("rto_rpo_defined")) or any_result_enabled(
+        results, "RTO / RPO утверждены"
+    )
+    restore_frequency = str(results.get("Периодичность тестового восстановления", "")).strip().lower()
+    restore_tested = bool(context.get("backup_restore_tested")) or restore_frequency not in {
+        "", "нет", "не проводится", "не определено", "none", "-"
+    }
+    dr_status = str(context.get("dr_plan_status") or results.get("DR-план", "")).strip().lower()
+    tested_dr = bool(context.get("has_tested_dr")) or "регулярно тестируется" in dr_status
+    missing = []
+    if not immutable:
+        missing.append("immutable/offline-копии")
+    if not rto_rpo:
+        missing.append("утвержденные RTO/RPO")
+    if not restore_tested:
+        missing.append("регулярные тесты восстановления")
+    if not tested_dr:
+        missing.append("утвержденный и тестируемый DR-план")
     return not missing, missing
 
 
 DOMAIN_SCORE_CONTROLS = {
     "Сетевая безопасность": [
-        ("NGFW", 25, ("NGFW",)),
-        ("WAF", 15, ("WAF",)),
-        ("Anti-DDoS", 15, ("Anti-DDoS",)),
-        ("VPN", 10, ("VPN",)),
-        ("NAC", 20, ("NAC",)),
-        ("сегментация", 15, ("Сегментация сети",)),
+        ("NGFW", 25, ("NGFW",)), ("WAF", 15, ("WAF",)),
+        ("Anti-DDoS", 15, ("Anti-DDoS",)), ("VPN", 10, ("VPN",)),
+        ("NAC", 20, ("NAC",)), ("сегментация", 15, ("Сегментация сети",)),
     ],
     "Защита конечных точек": [
-        ("EPP", 20, ("Антивирус", "EPP")),
-        ("EDR/XDR/MDR", 40, ("EDR", "XDR", "MDR")),
-        ("patch management", 20, ("Patch Management",)),
-        ("MDM", 10, ("MDM",)),
+        ("EPP", 20, ("Антивирус", "EPP")), ("EDR/XDR/MDR", 40, ("EDR", "XDR", "MDR")),
+        ("patch management", 20, ("Patch Management",)), ("MDM", 10, ("MDM",)),
         ("device control", 10, ("Device Control",)),
     ],
     "Идентификация и доступ": [
-        ("MFA", 35, ("MFA",)),
-        ("IAM/IDM", 25, ("IAM", "IDM")),
-        ("PAM", 25, ("PAM",)),
-        ("SSO", 15, ("SSO",)),
+        ("MFA", 35, ("MFA",)), ("IAM/IDM", 25, ("IAM", "IDM")),
+        ("PAM", 25, ("PAM",)), ("SSO", 15, ("SSO",)),
     ],
     "Мониторинг и SOC": [
-        ("SIEM", 40, ("SIEM",)),
-        ("SOC/ОЦИБ", 30, ("SOC", "Сторонний ОЦИБ", "ОЦИБ")),
-        ("NAD", 15, ("NAD",)),
-        ("Threat Intelligence", 15, ("Threat Intelligence",)),
+        ("SIEM", 40, ("SIEM",)), ("SOC/ОЦИБ", 30, ("SOC", "Сторонний ОЦИБ", "ОЦИБ", "Модель ОЦИБ")),
+        ("NAD", 15, ("NAD",)), ("Threat Intelligence", 15, ("Threat Intelligence",)),
     ],
     "Резервное копирование": [
         ("backup", 30, ("Резервное копирование",)),
         ("immutable/offline", 30, ("Immutable Backup", "Immutable / offline backup")),
-        ("DR", 20, ("DR", "Аварийное восстановление")),
-        ("air-gap", 20, ("Air-Gap Backup",)),
+        ("DR", 20, ("DR", "Аварийное восстановление")), ("air-gap", 20, ("Air-Gap Backup",)),
     ],
     "Инфраструктура": [
-        ("виртуализация", 25, ("Виртуализация",)),
-        ("СХД", 25, ("СХД",)),
-        ("мониторинг", 20, ("Мониторинг",)),
-        ("резервный канал", 15, ("Резервный канал",)),
+        ("виртуализация", 25, ("Виртуализация",)), ("СХД", 25, ("СХД",)),
+        ("мониторинг", 20, ("Мониторинг",)), ("резервный канал", 15, ("Резервный канал",)),
         ("кластеризация", 15, ("Кластеризация",)),
     ],
 }
@@ -8204,11 +8616,9 @@ DOMAIN_SCORE_CONTROLS = {
 def calculate_domain_score_details(results):
     details = {}
     for domain, controls in DOMAIN_SCORE_CONTROLS.items():
-        confirmed = []
-        missing = []
+        confirmed, missing = [], []
         for label, weight, keys in controls:
-            target = confirmed if any_result_enabled(results, *keys) else missing
-            target.append((label, weight))
+            (confirmed if any_result_enabled(results, *keys) else missing).append((label, weight))
         details[domain] = {"confirmed": confirmed, "missing": missing}
     return details
 
@@ -8224,10 +8634,9 @@ def domain_score_basis(results, domain, max_length=220):
 
 
 def calculate_domain_scores(results):
-    details = calculate_domain_score_details(results)
     return {
         domain: min(100, sum(weight for _, weight in detail["confirmed"]))
-        for domain, detail in details.items()
+        for domain, detail in calculate_domain_score_details(results).items()
     }
 
 
@@ -8252,13 +8661,21 @@ def risk_source_label(source):
 
 
 def risk_semantic_key(item):
+    title = str(item.get("risk", "")).strip().lower()
+    if any(marker in title for marker in ("pci dss", "cardholder data environment", "cde")):
+        return "pci_assurance"
+
     explicit_key = str(
         item.get("semantic_key") or item.get("_semantic_key") or ""
     ).strip()
     if explicit_key:
-        return explicit_key
+        aliases = {
+            "backup_restore": "dr",
+            "restore_testing": "dr",
+            "disaster_recovery": "dr",
+        }
+        return aliases.get(explicit_key, explicit_key)
 
-    title = str(item.get("risk", "")).strip().lower()
     if "сегментац" in title and not any(marker in title for marker in ("nac", "network access control")):
         return "segmentation"
 
@@ -8271,6 +8688,9 @@ def risk_semantic_key(item):
         ("dr", ("rto", "rpo", "аварийн", "drp", "disaster recovery")),
         ("it_monitoring", ("мониторинг ит", "мониторинга ит", "мониторинг инфраструктур", "наблюдаемост")),
         ("change_management", ("управления изменениями", "управление изменениями", "change management")),
+        ("ztna", ("ztna", "zero trust network access", "доступ по принципу нулевого доверия")),
+        ("pci_assurance", ("pci dss", "cardholder data environment", "cde")),
+        ("physical_security", ("физическая защит", "контроль доступа в цод", "пожаротуш")),
     ]
     for key, markers in title_buckets:
         if any(marker in title for marker in markers):
@@ -8288,6 +8708,7 @@ def risk_semantic_key(item):
         ("pam", ("pam", "привилегирован", "администраторск")),
         ("iam", ("iam", "identity and access management", "централизованному управлению учетными", "централизованное управление учетными", "управление идентификацией", "жизненный цикл учетных записей")),
         ("nac", ("nac", "контроль подключения устройств", "контроль доступа устройств к сети", "network access control")),
+        ("ztna", ("ztna", "zero trust network access", "доступ по принципу нулевого доверия")),
         ("dlp", ("dlp", "утеч", "эксфильтрац", "data loss")),
         ("siem_soc", ("siem", "soc", "soar", "мониторинг событий", "централизованный мониторинг")),
         ("wifi_capacity", (
@@ -8318,7 +8739,7 @@ def risk_semantic_key(item):
         ("virtualization", ("виртуализац", "гипервизор", "vm", "хост")),
         ("storage", ("схд", "storage", "raid", "snapshot", "iops")),
         ("it_monitoring", ("эксплуатационный мониторинг", "доступности", "производительности", "capacity")),
-        ("appsec", ("sast", "dast", "appsec", "разработ", "безопасность прилож")),
+        ("appsec", ("sast", "dast", "appsec", "безопасность прилож", "исходный код", "ci/cd")),
         ("business_systems", ("erp", "crm", "бизнес-систем")),
     ]
 
@@ -8399,22 +8820,45 @@ def sanitize_ai_audit_narrative(narrative, results):
                 "OSPF описывает маршрутизацию, а отсутствие NAC/ZTNA не доказывает отсутствие "
                 "VLAN, ACL, VRF или межсегментных политик; требуется анализ схемы и правил NGFW."
             )
+        semantic_key = risk_semantic_key({"risk": text, "description": text})
+        strict_presence_keys = {
+            "mfa", "iam", "pam", "siem_soc", "patch", "web_waf", "mail",
+            "dlp", "endpoint_detection", "backup",
+        }
+        absence_or_purchase = any(marker in lowered for marker in (
+            "отсутств", "не внедр", "не используется", "нет ",
+            "внедрить", "развернуть", "закупить",
+        ))
+        fact_check_required = semantic_key in {
+            "wifi_capacity", "network_performance", "virtualization", "storage",
+            "it_monitoring", "itam", "change_management", "os_inventory",
+            "physical_security", "ztna", "appsec",
+        } or (semantic_key in strict_presence_keys and absence_or_purchase)
+        if fact_check_required and risk_conflicts_with_answers(
+            {"risk": text, "description": text, "semantic_key": semantic_key},
+            results,
+        ):
+            return ""
         return text
 
     cleaned = dict(narrative)
-    cleaned["executive_summary"] = [
+    cleaned["executive_summary"] = list(filter(None, (
         clean_text(item) for item in narrative.get("executive_summary", []) if str(item).strip()
-    ]
-    cleaned["management_decisions"] = [
+    )))
+    cleaned["management_decisions"] = list(filter(None, (
         clean_text(item) for item in narrative.get("management_decisions", []) if str(item).strip()
-    ]
+    )))
     cleaned["audit_observations"] = [
         {
             "title": clean_text(item.get("title", "Наблюдение")),
             "text": clean_text(item.get("text", "")),
         }
         for item in narrative.get("audit_observations", [])
-        if isinstance(item, dict) and str(item.get("text", "")).strip()
+        if (
+            isinstance(item, dict)
+            and str(item.get("text", "")).strip()
+            and clean_text(item.get("text", ""))
+        )
     ]
     cleaned["roadmap"] = [
         {
@@ -8540,7 +8984,11 @@ def enforce_audit_fact_policy(item, results, context):
             "vendors": ["DLP"],
         })
 
-    if key == "backup" and context.get("has_backup"):
+    if (
+        key == "backup"
+        and context.get("has_backup")
+        and not context.get("backup_restore_tested")
+    ):
         normalized.update({
             "risk": "Восстановление из резервных копий не подтверждено регулярными тестами",
             "description": (
@@ -8558,7 +9006,7 @@ def enforce_audit_fact_policy(item, results, context):
             ),
             "evidence": [
                 f"Резервное копирование: {results.get('Резервное копирование', 'указано')}",
-                "RTO/RPO и результаты тестового восстановления в анкете не зафиксированы",
+                f"Тестовое восстановление: {results.get('Периодичность тестового восстановления', 'не проводится')}",
             ],
             "success_metric": (
                 "Все критичные сервисы проходят тест восстановления в пределах утвержденных RTO/RPO"
@@ -8585,7 +9033,7 @@ def professionalize_risk_item(item, results, context):
     legacy_arm = results.get("ОС АРМ (Windows XP/Vista/7/8)", 0)
     legacy_srv = results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0)
 
-    if item.get("_semantic_key") and item.get("evidence"):
+    if item.get("_semantic_key") and item.get("evidence") and key not in {"segmentation", "pci_assurance"}:
         normalized = dict(item)
         normalized["_source"] = source
         normalized.setdefault("level", "MEDIUM")
@@ -8616,6 +9064,44 @@ def professionalize_risk_item(item, results, context):
             ),
             "vendors": [],
             "regulators": ["CIS Controls", "ISO 27001"],
+            "_source": source,
+        })
+        return normalized
+
+    if key == "pci_assurance":
+        notes = " ".join(str(value or "") for value in results.values()).lower()
+        scope_confirmed = any(marker in notes for marker in (
+            "pci dss scope", "pci scope", "cde", "среда карточных данных",
+            "среда данных держателей карт", "обработка платежных карт",
+        ))
+        normalized = dict(item)
+        normalized.update({
+            "level": "LOW" if scope_confirmed else "MEDIUM",
+            "risk": (
+                "Доказательная база соответствия PCI DSS требует регулярного подтверждения"
+                if scope_confirmed else
+                "Применимость и границы PCI DSS требуют документального подтверждения"
+            ),
+            "description": (
+                "Анкета указывает обработку платежных карт и подтвержденный PCI DSS scope."
+                if scope_confirmed else
+                "Платежный контур указан, но роль организации, границы CDE и применимый способ подтверждения не раскрыты."
+            ),
+            "impact": (
+                "Неполный scope или недоказанные контроли создают риск замечаний эквайера, ограничений карточных "
+                "операций и дополнительных расходов при устранении несоответствий."
+            ),
+            "recommendation": (
+                "Определить роль организации и границы CDE; выбрать применимый SAQ либо ROC; провести PCI DSS "
+                "assessment и gap analysis; сформировать remediation plan и реестр доказательств. Внешнюю оценку "
+                "или аттестацию проводить отдельно, если она требуется ролью организации или эквайером."
+            ),
+            "success_metric": (
+                "PCI DSS scope, способ подтверждения, план устранения отклонений и владельцы доказательств утверждены"
+            ),
+            "vendors": [],
+            "regulators": ["PCI DSS v4.0.1"],
+            "frameworks": ["PCI DSS v4.0.1"],
             "_source": source,
         })
         return normalized
@@ -8773,6 +9259,10 @@ def align_report_vendors(item, results, context):
     has_fortinet = any(marker in facts_text for marker in ("fortinet", "fortigate", "forti"))
     has_cloudflare = "cloudflare" in facts_text
 
+    if key == "segmentation" and network_segmentation_evidence(results) != "absent":
+        normalized["vendors"] = []
+        return normalized
+
     vendor_profiles = {
         "legacy_os": ["Microsoft", "Qualys", "Tenable", "Rapid7"],
         "mfa": ["Fortinet", "Microsoft", "Cisco"],
@@ -8785,6 +9275,7 @@ def align_report_vendors(item, results, context):
         "storage": ["Veeam"],
         "segmentation": ["Fortinet", "Cisco", "Huawei"],
         "nac": ["Fortinet", "Cisco", "Check Point"],
+        "ztna": ["Cisco", "Fortinet", "Palo Alto", "Cloudflare", "Check Point"],
     }
 
     if key == "web_waf":
@@ -8802,6 +9293,57 @@ def align_report_vendors(item, results, context):
 
     return normalized
 
+
+def consolidate_continuity_risks(items, results):
+    """Keep one management finding when backup exists but recovery is unproven."""
+    normalized = [dict(item) for item in items if isinstance(item, dict)]
+    if not is_enabled(results.get("Резервное копирование")):
+        return normalized
+
+    by_key = {risk_semantic_key(item): item for item in normalized}
+    if "dr" not in by_key:
+        return normalized
+
+    level_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    dr_item = by_key["dr"]
+    backup_item = by_key.get("backup")
+    backup_evidence = backup_item.get("evidence", []) if backup_item else []
+    dr_evidence = dr_item.get("evidence", [])
+    if not isinstance(backup_evidence, list):
+        backup_evidence = [backup_evidence] if backup_evidence else []
+    if not isinstance(dr_evidence, list):
+        dr_evidence = [dr_evidence] if dr_evidence else []
+    strongest = max(
+        tuple(item for item in (backup_item, dr_item) if item),
+        key=lambda item: level_rank.get(str(item.get("level", "MEDIUM")).upper(), 2),
+    )
+    merged = dict(dr_item)
+    merged.update({
+        "semantic_key": "dr",
+        "level": strongest.get("level", "HIGH"),
+        "risk": "Аварийное восстановление и контрольные тесты не формализованы",
+        "description": (
+            "Backup-контур заявлен, однако согласованные RTO/RPO, единый DR-runbook "
+            "и регулярные контрольные восстановления критичных сервисов не подтверждены."
+        ),
+        "impact": (
+            "При сбое площадки или ransomware фактическое время и полнота восстановления "
+            "могут не соответствовать требованиям бизнеса и применимым нормативам."
+        ),
+        "recommendation": (
+            "Провести BIA, согласовать RTO/RPO, утвердить DR-runbook и выполнить контрольное "
+            "восстановление 2-3 критичных сервисов; затем закрепить график учений и учет отклонений."
+        ),
+        "success_metric": (
+            "Критичные сервисы регулярно восстанавливаются в пределах утвержденных RTO/RPO; "
+            "результаты и отклонения протоколируются."
+        ),
+        "evidence": list(dict.fromkeys([
+            *backup_evidence,
+            *dr_evidence,
+        ])),
+    })
+    return [merged if risk_semantic_key(item) == "dr" else item for item in normalized if risk_semantic_key(item) != "backup"]
 
 def build_report_risk_set(c_info, results, context):
     rule_risks = generate_rule_based_risks(
@@ -8831,6 +9373,8 @@ def build_report_risk_set(c_info, results, context):
         ])
     combined_risks.extend(build_confirmed_it_gap_risks(results, context))
     combined_risks.extend(build_confirmed_security_gap_risks(results, context))
+    combined_risks.extend(build_mature_security_assurance_risks(results, context))
+    combined_risks.extend(build_industry_assurance_risks(c_info, results))
     combined_risks.extend(rule_risks)
 
     priority_order = {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 3, "LOW": 4}
@@ -8844,6 +9388,7 @@ def build_report_risk_set(c_info, results, context):
                 f"{risk_semantic_key(item)}: {conflict}"
             )
             continue
+        item = apply_industry_references(item, c_info, results)
         item = enforce_audit_fact_policy(item, results, context)
         item = professionalize_risk_item(item, results, context)
         item = align_report_vendors(item, results, context)
@@ -8855,6 +9400,7 @@ def build_report_risk_set(c_info, results, context):
         unique_risks.append(item)
         seen_risks.add(semantic_key)
 
+    unique_risks = consolidate_continuity_risks(unique_risks, results)
     st.session_state.last_report_skipped_conflicts = skipped_conflicting_risks
 
     sorted_risks = sorted(
@@ -9009,20 +9555,57 @@ def build_target_operating_model(results, context, report_risks=None):
     return model[:7]
 
 
-def build_management_decisions(results, context, report_risks=None, roadmap_items=None):
+def build_management_decisions(results, context):
     decisions = []
-    for item in (roadmap_items or [])[:4]:
-        action = str(item.get("action", "")).strip()
-        if action and action not in decisions:
-            decisions.append(action)
-    if not decisions:
-        for item in (report_risks or [])[:4]:
-            recommendation = str(item.get("recommendation", "")).strip()
-            if recommendation and recommendation not in decisions:
-                decisions.append(recommendation)
-    decisions.append(
-        "Назначить владельцев подтвержденных рисков и ежемесячно контролировать сроки, исключения и измеримые результаты."
-    )
+
+    if not is_enabled(results.get("MFA")):
+        decisions.append(
+            "В течение 30 дней включить MFA для администраторов, удаленного доступа, почты и критичных систем."
+        )
+    if not any(is_enabled(results.get(control)) for control in ("EDR", "XDR", "MDR")):
+        decisions.append(
+            "Провести пилот EDR/MDR на согласованной группе рабочих мест и серверов; решение о масштабировании принять по результатам теста."
+        )
+    if not is_enabled(results.get("Patch Management")):
+        decisions.append(
+            "Утвердить единый цикл обновлений: инвентаризация, SLA для критичных уязвимостей, исключения и отчетность."
+        )
+    if (
+        int(results.get("ОС АРМ (Windows XP/Vista/7/8)", 0) or 0)
+        + int(results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0) or 0)
+    ) > 0:
+        decisions.append(
+            "Утвердить план миграции систем без поддержки; до миграции применить изоляцию и контроль компенсирующих мер."
+        )
+    if context.get("has_backup") and not context.get("backup_restore_tested"):
+        decisions.append(
+            "Согласовать RTO/RPO и провести контрольное восстановление критичных сервисов с фиксацией фактических сроков."
+        )
+    if context.get("dr_plan_status") in {"Нет", "Разрабатывается", "Утвержден, но не тестировался"}:
+        decisions.append(
+            "Завершить DR-план: провести BIA, определить зависимости и владельцев, затем проверить сценарий на учениях."
+        )
+    if not is_enabled(results.get("PAM")) and (
+        context.get("servers", 0) >= 10 or context.get("has_critical_systems")
+    ):
+        decisions.append(
+            "Инвентаризировать привилегированные учетные записи и согласовать пилот PAM на критичном контуре."
+        )
+    if not has_security_monitoring(results):
+        decisions.append(
+            "Определить минимальный SOC/MSSP-scope и владельцев реагирования для критичных источников событий."
+        )
+
+    decisions.extend([
+        "Назначить владельцев подтвержденных рисков и утвердить сроки, бюджетные рамки и критерии приемки.",
+        "Ввести регулярный отчет руководству: остаточные риски, выполненные меры, исключения и просроченные действия.",
+    ])
+    if (
+        context.get("has_development")
+        and not is_enabled(results.get("SAST"))
+        and not is_enabled(results.get("DAST"))
+    ):
+        decisions.append("Добавить требования AppSec в процесс релизов: SAST/DAST, проверка зависимостей и критерии допуска в продуктив.")
     return decisions[:6]
 
 
@@ -9272,6 +9855,7 @@ def presentation_evidence_for_key(semantic_key, results, context, item):
         "network_performance": f"Основной канал: {results.get('Интернет канал (осн)', 'не указан')}; резервный: {results.get('Резервный канал', 'Нет')}; маршрутизация: {results.get('Маршрутизация', 'Нет')}.",
         "segmentation": "В анкете не приведены схема VLAN/VRF, ACL и матрица межсегментных потоков; OSPF сам по себе не подтверждает сегментацию.",
         "nac": f"В анкете NAC: {results.get('NAC', 'Нет')}. Требуется подтвердить контроль допуска проводных, Wi-Fi и неизвестных устройств.",
+        "ztna": f"В анкете ZTNA: {results.get('ZTNA', 'Нет')}. Удаленный доступ должен быть явно подтвержден до выбора архитектуры Zero Trust.",
         "dlp": f"В анкете DLP: {results.get('DLP', 'Нет')}. Обработка персональных данных указана; контролируемые каналы передачи не подтверждены.",
         "itam": "В анкете не подтверждены единый реестр ПО, лицензий, владельцев активов и сроки поддержки.",
         "os_inventory": (
@@ -9288,6 +9872,9 @@ def presentation_evidence_for_key(semantic_key, results, context, item):
 
 
 def presentation_recommendation_key(item):
+    explicit_key = str(item.get("semantic_key") or item.get("_semantic_key") or "").strip()
+    if explicit_key:
+        return explicit_key
     normalized = {
         "risk": item.get("risk") or item.get("domain") or "",
         "description": item.get("description") or "",
@@ -9395,6 +9982,11 @@ def presentation_presales_profile(item):
             "impact": "Без централизованного профилирования и политики допуска неизвестные или несоответствующие требованиям устройства могут попасть в корпоративную сеть.",
             "action": "Провести пилот NAC на Wi-Fi и одном проводном сегменте, настроить профилирование, проверку соответствия и изоляцию неизвестных устройств.",
         },
+        "ztna": {
+            "title": "Удаленный доступ требует контекстного контроля",
+            "impact": "При подтвержденном удаленном доступе компрометация учетной записи или устройства может открыть путь к внутренним приложениям.",
+            "action": "Инвентаризировать сценарии удаленного доступа, приложения и группы пользователей; затем провести пилот ZTNA с проверкой идентичности, состояния устройства и минимально необходимых прав.",
+        },
         "dlp": {
             "title": "Отсутствие DLP повышает риск утечки персональных данных",
             "impact": "Неконтролируемая передача данных может привести к утечке, регуляторным последствиям и репутационному ущербу.",
@@ -9436,6 +10028,7 @@ def presentation_success_metric(semantic_key):
         "web_waf": "Все публичные приложения защищены и проходят регулярную проверку",
         "pam": "Привилегированные учетные записи учтены и контролируются",
         "nac": "100% подключений идентифицируются; неизвестные устройства изолируются",
+        "ztna": "100% подтвержденных удаленных подключений проходят контекстную проверку и имеют минимально необходимые права",
         "wifi_capacity": "Покрытие и емкость Wi-Fi подтверждены радиообследованием; пиковая загрузка точек остается в целевых пределах",
         "dlp": "Политики DLP контролируют согласованные каналы передачи персональных данных",
         "segmentation": "Матрица VLAN/ACL подтверждена тестом межсегментного доступа",
@@ -9449,6 +10042,7 @@ def presentation_success_metric(semantic_key):
         "virtualization": "Запас ресурсов подтвержден для отказа одного хоста и прогнозируемого роста",
         "storage": "Емкость и производительность контролируются по утвержденным порогам и прогнозу",
         "dr": "Критичные сервисы проходят тест восстановления в пределах утвержденных RTO/RPO",
+        "pci_assurance": "PCI DSS scope, способ подтверждения, план устранения отклонений и владельцы доказательств утверждены",
     }
     return metrics.get(semantic_key, "Владелец, срок и измеримый критерий результата утверждены")
 
@@ -9507,6 +10101,11 @@ def canonical_roadmap_action(item, phase):
             "31-60 дней": "Провести ограниченное DR-учение и скорректировать runbook по фактическим результатам.",
             "61-90 дней": "Утвердить DR-runbook, периодичность учений и контроль выполнения целевых RTO/RPO.",
         },
+        "ztna": {
+            "0-30 дней": "Инвентаризировать удаленные подключения, приложения, пользователей и требования к состоянию устройств.",
+            "31-60 дней": "Провести ограниченный пилот ZTNA на одном сценарии удаленного доступа и проверить политики минимальных прав.",
+            "61-90 дней": "Расширить подтвержденные политики ZTNA и включить контроль исключений, доступности и качества пользовательского доступа.",
+        },
         "pam": {
             "0-30 дней": "Инвентаризировать привилегированные доступы, критичные системы и границы пилота PAM.",
             "31-60 дней": "Провести пилот PAM и проверить vault, контроль сессий, аварийный доступ и интеграцию с SIEM.",
@@ -9521,6 +10120,31 @@ def canonical_roadmap_action(item, phase):
             "0-30 дней": "Определить категории данных, каналы контроля и измеримые критерии пилота DLP.",
             "31-60 дней": "Провести ограниченный пилот DLP и скорректировать политики по фактическим результатам.",
             "61-90 дней": "Масштабировать подтвержденные политики DLP и включить контроль инцидентов и исключений.",
+        },
+        "control_assurance": {
+            "0-30 дней": "Согласовать критичные сценарии атак, источники телеметрии, владельцев реакции и исходные MTTD/MTTR.",
+            "31-60 дней": "Провести purple-team проверку и оформить корректирующие действия по подтвержденным разрывам.",
+            "61-90 дней": "Повторно проверить закрытые разрывы и утвердить регулярный цикл контроля эффективности защиты.",
+        },
+        "pam_assurance": {
+            "0-30 дней": "Сверить PAM с каталогами, CMDB и перечнем сервисных, локальных и аварийных учетных записей.",
+            "31-60 дней": "Проверить исключения, аварийный доступ, журналирование сессий и фактический охват критичных систем.",
+            "61-90 дней": "Ввести ежеквартальную аттестацию привилегий и контроль сроков закрытия исключений.",
+        },
+        "soc_assurance": {
+            "0-30 дней": "Сопоставить критичные активы, источники событий, use-case и владельцев расследования.",
+            "31-60 дней": "Проверить обнаружение приоритетных сценариев, полноту телеметрии и соблюдение SLA реагирования.",
+            "61-90 дней": "Ввести регулярную отчетность по покрытию use-case, MTTD/MTTR и качеству источников событий.",
+        },
+        "pci_assurance": {
+            "0-30 дней": "Уточнить роль организации, границы CDE, способ подтверждения и владельцев требований PCI DSS.",
+            "31-60 дней": "Провести gap assessment применимых требований и согласовать план устранения отклонений.",
+            "61-90 дней": "Подтвердить закрытие приоритетных отклонений и утвердить регулярное обновление доказательств.",
+        },
+        "segmentation": {
+            "0-30 дней": "Сверить VLAN, VRF, ACL, зоны NGFW и матрицу разрешенных потоков критичных контуров.",
+            "31-60 дней": "Проверить межсегментные потоки и устранить подтвержденные избыточные маршруты и правила доступа.",
+            "61-90 дней": "Ввести периодический пересмотр матрицы потоков, правил NGFW и исключений сегментации.",
         },
     }
     if key in actions:
@@ -9558,6 +10182,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "iam": "31-60 дней",
         "pam": "31-60 дней",
         "nac": "31-60 дней",
+        "ztna": "31-60 дней",
         "endpoint_detection": "31-60 дней",
         "mail": "31-60 дней",
         "web_waf": "31-60 дней",
@@ -9588,6 +10213,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "dr": "Непрерывность",
         "pam": "Привилегированный доступ",
         "nac": "Сетевой доступ",
+        "ztna": "Удаленный доступ",
         "dlp": "Защита данных",
     }
     phase_counts = {phase: 0 for phase in phase_order}
@@ -9740,18 +10366,15 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
         "it_monitoring": "Централизованный мониторинг ИТ",
     }
     raw_title = str(normalized["risk"] or "Рекомендация").strip()
-    if profile.get("title") and not ai_authored:
-        raw_title = profile["title"]
-    elif raw_title.lower() in generic_titles:
+    if raw_title.lower() in generic_titles:
         raw_title = title_by_key.get(semantic_key, "Практическая мера улучшения")
     title = presentation_title_text(raw_title, 88)
-    action = (
-        presentation_action_text(normalized["recommendation"], 190)
-        if ai_authored
-        else profile.get("action") or presentation_action_text(normalized["recommendation"], 190)
-    )
+    action = presentation_action_text(normalized["recommendation"], 190)
     solution = presentation_text(solution_categories_for_report_item(normalized), 88)
     vendors = portfolio_manufacturers_for_report_item(normalized)
+    if semantic_key == "segmentation" and results is not None and network_segmentation_evidence(results) != "absent":
+        solution = "Архитектурная проверка сегментации и матрицы потоков"
+        vendors = "Экспертная услуга; производитель определяется после подтверждения разрыва"
     if "матрице" in str(vendors).lower() or "нет подходящего" in str(vendors).lower():
         vendors = "Подбор после уточнения требований"
     else:
@@ -9775,8 +10398,16 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
         value for value in item.get("legal_ids", [])
         if value in REGULATORY_CATALOG
     ]
+    frameworks = [
+        str(value).strip() for value in item.get("frameworks", [])
+        if str(value).strip()
+    ]
     if legal_ids:
-        legal = "; ".join(REGULATORY_CATALOG[value]["short"] for value in legal_ids[:2])
+        legal_parts = [REGULATORY_CATALOG[value]["short"] for value in legal_ids[:2]]
+        legal_parts.extend(frameworks[:1])
+        legal = "; ".join(legal_parts)
+    elif frameworks:
+        legal = "; ".join(frameworks[:2])
     elif regulatory_profile:
         legal = presentation_legal_basis(semantic_key, regulatory_profile)
         if not legal:
@@ -9794,7 +10425,7 @@ def presentation_recommendation_entry(item, regulatory_profile=None, results=Non
         "vendors": vendors,
         "evidence": presentation_action_text(evidence, 165),
         "legal": presentation_text(legal, 130),
-        "metric": presentation_text(item.get("success_metric") or presentation_success_metric(semantic_key), 125),
+        "metric": presentation_text(normalized.get("success_metric") or presentation_success_metric(semantic_key), 125),
         "fill_color": fill_color,
         "text_color": text_color,
     }
@@ -9806,18 +10437,15 @@ def presentation_risk_entry(item):
         if field in normalized:
             normalized[field] = expand_regulatory_references(normalized[field])
     normalized["recommendation"] = normalized.get("recommendation") or normalized.get("action") or normalized.get("description")
-    _, profile = presentation_presales_profile(normalized)
     raw_level, fill_color, text_color = presentation_severity_style(normalized.get("level"))
     return {
         "level": presentation_text(risk_level_label(raw_level), 16).upper(),
-        "title": profile.get("title") or presentation_title_text(
-            normalized.get("risk", "Риск требует внимания"), 88
-        ),
-        "impact": profile.get("impact") or presentation_action_text(
+        "title": presentation_title_text(normalized.get("risk", "Риск требует внимания"), 88),
+        "impact": presentation_action_text(
             normalized.get("impact") or normalized.get("description") or "Требуется уточнить влияние риска.",
             155,
         ),
-        "action": profile.get("action") or presentation_action_text(normalized["recommendation"], 135),
+        "action": presentation_action_text(normalized["recommendation"], 135),
         "fill_color": fill_color,
         "text_color": text_color,
     }
@@ -9979,8 +10607,6 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
     canonical_decisions = build_management_decisions(
         results,
         context,
-        normalized_risks,
-        canonical_roadmap,
     )
     roadmap_by_phase = {"0-30": [], "31-60": [], "61-90": []}
     for item in canonical_roadmap:
@@ -10056,11 +10682,7 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
         "Восстановление": "Резервное копирование",
         "Инфраструктура": "Инфраструктура",
     }
-    weakest_basis = domain_score_basis(
-        results,
-        coverage_domain_keys.get(weakest_label, ""),
-        105,
-    )
+    weakest_basis = domain_score_basis(results, coverage_domain_keys.get(weakest_label, ""), 105)
     replacements["COVERAGE_INSIGHT"] = presentation_text(
         f"Сильнейший домен: {strongest_label} — {int(strongest_score or 0)}%. "
         f"Главный резерв: {weakest_label} — {int(weakest_score or 0)}%. "
@@ -10640,6 +11262,8 @@ def make_expert_excel(c_info, results, final_score):
     ws['A11'].fill = dark_blue_fill
     ws['A11'].alignment = Alignment(horizontal='center')
 
+    enabled_controls, _ = security_control_snapshot(results)
+    mature_control_profile = final_score >= 75 and len(enabled_controls) >= 12
     summary_text = []
     if ai_narrative.get("executive_summary"):
         summary_text = [
@@ -10649,7 +11273,14 @@ def make_expert_excel(c_info, results, final_score):
         ]
     else:
         summary_text.append(f"• Профиль инфраструктуры: {profile_text}")
-        summary_text.append("• Общий вывод: текущий уровень зрелости требует не точечных закупок, а короткой программы стабилизации ИТ и ИБ с владельцами, сроками и метриками контроля.")
+        if mature_control_profile:
+            summary_text.append(
+                "• Общий вывод: базовый защитный контур развит. Приоритет следующего этапа — "
+                "не покупка дублирующих средств, а проверка охвата, эффективности сценариев, "
+                "остаточных исключений и доказательств выполнения контролей."
+            )
+        else:
+            summary_text.append("• Общий вывод: текущий уровень зрелости требует не точечных закупок, а короткой программы стабилизации ИТ и ИБ с владельцами, сроками и метриками контроля.")
 
         if results.get("NGFW") != "Нет":
             summary_text.append("• Сильная сторона: используется NGFW, его нужно включить в единый контур мониторинга, журналирования и реагирования.")
@@ -10657,7 +11288,7 @@ def make_expert_excel(c_info, results, final_score):
         if results.get("MFA") == "Нет":
             summary_text.append("• Критичный разрыв: MFA не указана для критичных доступов, поэтому компрометация пароля остается одним из наиболее вероятных сценариев инцидента.")
 
-        if results.get("SIEM") == "Нет":
+        if not has_security_monitoring(results):
             if context.get("small_company"):
                 summary_text.append("• Для текущего масштаба приоритетнее сбор критичных журналов и регламент реакции, чем тяжелый SIEM-проект")
             else:
@@ -10673,9 +11304,7 @@ def make_expert_excel(c_info, results, final_score):
                     "фокус — доказательная база и контроль закрытия отклонений."
                 )
             else:
-                summary_text.append(
-                    "• Backup заявлен; требуют подтверждения: " + ", ".join(backup_missing) + "."
-                )
+                summary_text.append("• Backup заявлен; требуют подтверждения: " + ", ".join(backup_missing) + ".")
 
         if results.get("_user_count", 0) > 100:
             if is_enabled(results.get("EDR")) and is_enabled(results.get("Patch Management")):
@@ -10685,6 +11314,13 @@ def make_expert_excel(c_info, results, final_score):
 
         if not summary_text:
             summary_text.append("• Базовые меры информационной безопасности реализованы")
+
+    if mature_control_profile and any("стабилизац" in item.lower() for item in summary_text):
+        summary_text = [
+            f"• Профиль инфраструктуры: {profile_text}",
+            "• Общий вывод: базовый защитный контур развит. Следующий этап — проверка охвата, эффективности сценариев и доказательств выполнения контролей.",
+            "• Приоритет: контрольные учения, аттестация привилегий, качество телеметрии и закрытие исключений без дублирующих закупок.",
+        ]
 
     ws.merge_cells('A12:D19')
     ws['A12'] = "\n".join(summary_text)
@@ -10726,8 +11362,6 @@ def make_expert_excel(c_info, results, final_score):
     management_decisions = ai_narrative.get("management_decisions") or build_management_decisions(
         results,
         context,
-        report_risks,
-        roadmap_items,
     )
 
     current_row = conclusion_end_row + 2
@@ -11007,10 +11641,19 @@ def make_expert_excel(c_info, results, final_score):
                 ("Влияние", item.get('impact', '-')),
                 ("Рекомендация", item.get('recommendation', '-')),
                 (
-                    "Регуляторы",
-                    ", ".join(item.get('regulators', []))
-                    if isinstance(item.get('regulators'), list)
-                    else "-"
+                    "Нормативные основания и стандарты",
+                    "; ".join(list(dict.fromkeys([
+                        *[
+                            REGULATORY_CATALOG[value]["short"]
+                            for value in item.get("legal_ids", [])
+                            if value in REGULATORY_CATALOG
+                        ],
+                        *[
+                            str(value).strip()
+                            for value in item.get("frameworks", [])
+                            if str(value).strip()
+                        ],
+                    ]))) or "Применимость подтверждается по отрасли и составу данных"
                 ),
                 (
                     "Решения",
@@ -11590,6 +12233,10 @@ def build_report_results(
 
     results["MFA"] = results.get("Блок 2. MFA", "Нет")
     results["SIEM"] = results.get("Блок 2. SIEM", "Нет")
+    results["Модель ОЦИБ"] = results.get("Блок 2. Модель ОЦИБ", "Нет")
+    results["ОЦИБ"] = results.get("Блок 2. ОЦИБ", "Нет")
+    results["Режим ОЦИБ"] = results.get("Блок 2. Режим ОЦИБ", "Не указано")
+    results["SOC"] = results["ОЦИБ"] if is_enabled(results["ОЦИБ"]) else "Нет"
     results["WAF"] = results.get("Блок 2. WAF", "Нет")
     results["Anti-DDoS"] = results.get("Блок 2. Anti-DDoS", "Нет")
     results["EPP"] = results.get("Блок 2. EPP", "Нет")
@@ -11610,6 +12257,8 @@ def build_report_results(
     results["SOAR"] = results.get("Блок 2. SOAR", "Нет")
     results["NAD"] = results.get("Блок 2. NAD", "Нет")
     results["Patch Management"] = results.get("Блок 2. Patch Management", "Нет")
+    results["Immutable Backup"] = results.get("Immutable / offline backup", "Нет")
+    results["DR"] = results.get("DR-план", "Нет")
     for control in ("WAF", "EDR", "MFA"):
         if not is_enabled(results.get(control)) and control_confirmed_in_results(results, control):
             results[control] = "Есть (подтверждено в примечании анкеты)"
@@ -11633,7 +12282,7 @@ def _quick_win_signals(results):
     if results.get("MFA") == "Нет":
         signals.append(("critical", "MFA", "Внедрение MFA обычно быстрее всего снижает риск компрометации учетных записей."))
 
-    if results.get("SIEM") == "Нет":
+    if not has_security_monitoring(results):
         signals.append(("warn", "SIEM / SOC", "Нет централизованного мониторинга: инциденты сложнее обнаруживать и расследовать."))
 
     if results.get("EDR") == "Нет":

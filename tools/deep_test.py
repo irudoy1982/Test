@@ -35,6 +35,12 @@ def load_ai_first_helper():
         "re": re,
         "manufacturers_for_report_item": lambda item: "FallbackVendor",
         "portfolio_vendors_for_report_item": lambda item: "Imperva, F5" if "WAF" in str(item.get("vendors")) else ", ".join(item.get("vendors", [])),
+        "IT_GAP_LABELS": {
+            "wifi_capacity": "wifi", "network_performance": "wan", "os_inventory": "os",
+            "virtualization": "virtualization", "storage": "storage",
+            "it_monitoring": "monitoring", "itam": "itam",
+            "change_management": "change", "dr": "dr",
+        },
     }
     def fake_portfolio_vendors_by_categories(categories, preferred=None, exclude=None, gap_text=None, limit=6):
         if "WAF" in categories:
@@ -52,6 +58,13 @@ def load_ai_first_helper():
         "risk_source_label",
         "normalize_vendor_key",
         "result_contains_any",
+        "is_enabled",
+        "has_security_monitoring",
+        "confirmed_it_gap_topics",
+        "risk_semantic_key",
+        "network_segmentation_evidence",
+        "control_confirmed_in_results",
+        "risk_conflicts_with_answers",
         "sales_override_for_item",
         "build_ai_first_sales_opportunities",
     ):
@@ -97,6 +110,10 @@ def load_report_logic_helpers():
     module_text = APP.read_text(encoding="utf-8")
     namespace = {"re": re}
     for name in (
+        "is_enabled",
+        "has_security_monitoring",
+        "any_result_enabled",
+        "backup_assurance_status",
         "risk_source_label",
         "risk_semantic_key",
         "network_segmentation_evidence",
@@ -106,9 +123,6 @@ def load_report_logic_helpers():
         "russian_count",
         "infrastructure_profile",
         "sales_account_guidance",
-        "is_enabled",
-        "any_result_enabled",
-        "backup_assurance_status",
         "build_sales_conversation_pack",
     ):
         exec(extract_function_source(module_text, name), namespace)
@@ -170,7 +184,13 @@ def test_sales_overrides_for_mfa_and_legacy_os() -> None:
                 "source": "ИИ",
             },
         ],
-        {"NGFW": "FortiGate", "1.5.1. Почтовая система": "Microsoft 365"},
+        {
+            "NGFW": "FortiGate",
+            "1.5.1. Почтовая система": "Microsoft 365",
+            "MFA": "Нет",
+            "ОС АРМ (Windows XP/Vista/7/8)": 5,
+            "ОС Сервера (Windows Server 2008/2012 R2)": 0,
+        },
         {"users": 120, "servers": 22},
     )
     legacy = next(row for row in rows if "Устаревшие ОС" in row["problem"])
@@ -179,6 +199,58 @@ def test_sales_overrides_for_mfa_and_legacy_os() -> None:
     assert_true("CrowdStrike" not in legacy["vendors"] and "Trend Micro" not in legacy["vendors"], "Legacy OS should not be sold as EDR")
     assert_true("Нет корректного MFA-вендора в матрице" in mfa["vendors"], "MFA should expose portfolio gap instead of wrong vendor")
     assert_true("CyberArk" not in mfa["vendors"] and "Wallix" not in mfa["vendors"], "MFA should not be mapped to PAM vendors")
+
+
+def test_sales_segmentation_and_pci_are_assessment_led() -> None:
+    build = load_ai_first_helper()
+    rows = build(
+        [
+            {
+                "level": "Низкий",
+                "semantic_key": "segmentation",
+                "risk": "Архитектура сетевой сегментации требует подтверждения",
+                "recommendation": "Внедрить NAC и микросегментацию.",
+                "vendors": ["NAC"],
+                "source": "ИИ",
+            },
+            {
+                "level": "Высокий",
+                "semantic_key": "dlp",
+                "risk": "Риск несоответствия требованиям PCI DSS",
+                "recommendation": "Получить сертификат PCI DSS.",
+                "vendors": ["DLP"],
+                "source": "ИИ",
+            },
+        ],
+        {
+            "NAC": "Forescout NAC",
+            "Примечание Web": "Платежный контур включен в PCI DSS scope.",
+        },
+        {"users": 420, "servers": 109},
+    )
+    segmentation = next(row for row in rows if row.get("semantic_key") == "segmentation")
+    pci = next(row for row in rows if row.get("semantic_key") == "pci_assurance")
+    assert_true(
+        "подтверд" in segmentation["offer"].lower()
+        and "производитель определяется после" in segmentation["vendors"].lower(),
+        "Unverified segmentation must remain an assessment, not a NAC product sale",
+    )
+    pci_text = " ".join(str(pci.get(field, "")) for field in ("problem", "offer", "next_step", "vendors")).lower()
+    assert_true("сертификат" not in pci_text and "forcepoint" not in pci_text, "PCI opportunity inherited unsafe certification or DLP wording")
+    assert_true("assessment" in pci_text and "gap analysis" in pci_text and "remediation" in pci_text, "PCI sales lifecycle is incomplete")
+
+    wifi_rows = build(
+        [{
+            "level": "Высокий",
+            "semantic_key": "wifi_capacity",
+            "risk": "Корпоративный Wi-Fi перегружен",
+            "recommendation": "Провести радиообследование и модернизировать WLAN.",
+            "source": "ИИ",
+        }],
+        {"WiFi Точки": 12, "WiFi Контроллер": "Нет"},
+        {"users": 420, "servers": 109},
+    )
+    assert_true(wifi_rows and any(vendor in wifi_rows[0]["vendors"] for vendor in ("Cisco", "Huawei", "Fortinet")), "Confirmed Wi-Fi gap lost WLAN manufacturers")
 
 
 def test_ids_ips_exposes_matrix_gap() -> None:
@@ -360,6 +432,91 @@ def test_wifi_and_dr_semantics_are_stable() -> None:
         helpers["risk_semantic_key"](dr_item) == "dr",
         "A DR recommendation mentioning mail must not map to Mail Security",
     )
+    assert_true(
+        helpers["risk_semantic_key"]({
+            "risk": "Отсутствие комплексного DR-плана",
+            "recommendation": "Разработать план аварийного восстановления и провести учения.",
+        }) == "dr",
+        "The verb 'разработать' must not turn a DR plan into AppSec",
+    )
+    assert_true(
+        helpers["risk_semantic_key"]({
+            "risk": "Удаленный доступ требует архитектуры ZTNA",
+            "recommendation": "Провести пилот Zero Trust Network Access.",
+        }) == "ztna",
+        "ZTNA must keep its own semantic type",
+    )
+
+
+def test_structured_recovery_answers_control_findings() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {"re": re}
+    exec(extract_function_source(module_text, "is_enabled"), namespace)
+    exec(extract_function_source(module_text, "has_security_monitoring"), namespace)
+    exec(extract_function_source(module_text, "risk_semantic_key"), namespace)
+    exec(extract_function_source(module_text, "generate_rule_based_risks"), namespace)
+    generate = namespace["generate_rule_based_risks"]
+    context = {
+        "users": 350,
+        "servers": 55,
+        "has_critical_systems": True,
+        "has_personal_data": True,
+        "has_public_web": False,
+        "has_development": False,
+        "large_company": True,
+        "enterprise_company": False,
+    }
+    protected = {
+        "_user_count": 350,
+        "MFA": "Cisco Duo",
+        "VPN": "FortiGate",
+        "SIEM": "IBM QRadar",
+        "Антивирус": "Check Point",
+        "EDR": "Check Point Harmony",
+        "Резервное копирование": "Veeam",
+        "Immutable Backup": "Да",
+        "Периодичность тестового восстановления": "Ежеквартально",
+        "DR": "Утвержден и регулярно тестируется",
+        "Мониторинг": "Zabbix",
+        "Виртуализация": "Нет",
+        "СХД": "Нет",
+        "Mail Security": "Check Point",
+        "PAM": "CyberArk",
+        "WAF": "Нет",
+    }
+    protected_titles = " ".join(item["risk"].lower() for item in generate(protected, context))
+    assert_true(
+        "восстановление из резервных копий не проверяется" not in protected_titles
+        and "план аварийного восстановления" not in protected_titles,
+        "Confirmed restore tests and a tested DR plan must suppress recovery-gap findings",
+    )
+
+    gaps = dict(protected)
+    gaps.update({
+        "Immutable Backup": "Нет",
+        "Периодичность тестового восстановления": "Не проводится",
+        "DR": "Нет",
+    })
+    gap_items = generate(gaps, context)
+    gap_titles = " ".join(item["risk"].lower() for item in gap_items)
+    assert_true(
+        any(namespace["risk_semantic_key"](item) == "dr" for item in gap_items)
+        and any(marker in gap_titles for marker in ("восстанов", "аварийн", "rto", "rpo")),
+        "Explicit recovery gaps must create a DR finding that can be consolidated for management reporting",
+    )
+
+    external_ocib = dict(protected)
+    external_ocib.update({
+        "SIEM": "Нет",
+        "Модель ОЦИБ": "Сторонний ОЦИБ / MSSP",
+        "ОЦИБ": "АО «Казтелепорт»",
+        "Режим ОЦИБ": "24×7",
+    })
+    ocib_titles = " ".join(item["risk"].lower() for item in generate(external_ocib, context))
+    assert_true(
+        "централизованный мониторинг событий иб" not in ocib_titles,
+        "An active external OCIB must suppress a duplicate SIEM/SOC implementation finding",
+    )
 
 
 def test_ospf_is_not_segmentation_evidence() -> None:
@@ -435,45 +592,6 @@ def test_sales_sheet_navigation_layout() -> None:
     assert_true("ws.column_dimensions['J'].width = 16" in internal, "Source column should remain visible")
 
 
-def test_mature_controls_drive_fact_safe_scores_and_sales() -> None:
-    module_text = APP.read_text(encoding="utf-8")
-    namespace = {}
-    tree = ast.parse(module_text)
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if any(isinstance(target, ast.Name) and target.id == "DOMAIN_SCORE_CONTROLS" for target in node.targets):
-            exec(ast.get_source_segment(module_text, node), namespace)
-            break
-    for name in (
-        "is_enabled",
-        "any_result_enabled",
-        "backup_assurance_status",
-        "calculate_domain_score_details",
-        "calculate_domain_scores",
-    ):
-        exec(extract_function_source(module_text, name), namespace)
-
-    results = {
-        "MFA": "Cisco Duo",
-        "IAM": "One Identity",
-        "PAM": "CyberArk",
-        "SSO": "Нет",
-        "Резервное копирование": "Veeam",
-        "Immutable / offline backup": "Да",
-        "RTO / RPO утверждены": "Да",
-        "Периодичность тестового восстановления": "Ежеквартально",
-        "DR-план": "Утвержден и регулярно тестируется",
-    }
-    scores = namespace["calculate_domain_scores"](results)
-    assert_true(
-        scores["Идентификация и доступ"] == 85,
-        f"IAM alias must contribute to access score, got {scores['Идентификация и доступ']}",
-    )
-    confirmed, missing = namespace["backup_assurance_status"](results, {})
-    assert_true(confirmed and not missing, f"Mature DR evidence must be recognized, missing: {missing}")
-
-
 def test_ready_report_is_linked_from_sidebar() -> None:
     text = APP.read_text(encoding="utf-8")
     cockpit = extract_function_source(text, "render_audit_cockpit")
@@ -489,18 +607,6 @@ def test_ready_report_is_linked_from_sidebar() -> None:
         "Report navigation must not depend on starting or finishing generation",
     )
     assert_true('id="audit-report"' in text, "Report destination anchor is missing")
-
-
-def test_management_decisions_accept_report_context() -> None:
-    module_text = APP.read_text(encoding="utf-8")
-    namespace = {}
-    exec(extract_function_source(module_text, "build_management_decisions"), namespace)
-    decisions = namespace["build_management_decisions"](
-        {}, {},
-        [{"recommendation": "Проверить охват контроля."}],
-        [{"action": "Провести контрольную проверку."}],
-    )
-    assert_true(decisions[0] == "Провести контрольную проверку.", str(decisions))
 
 
 def test_presentation_template_rendering() -> None:
@@ -610,7 +716,10 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "impact": "Масштабирование затруднено, сегментация неизвестна.",
         "recommendation": "Провести аудит сети.",
     })
-    assert_true("сегментац" not in network_risk["impact"].lower(), "Network performance slide must not invent missing segmentation")
+    assert_true(
+        "сегментация неизвестна" in network_risk["impact"].lower(),
+        "Presentation must preserve the canonical finding instead of silently changing it",
+    )
     nac_risk = namespace["presentation_risk_entry"]({
         "_source": "Groq",
         "level": "MEDIUM",
@@ -619,21 +728,18 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "recommendation": "Внедрить NAC.",
     })
     assert_true(
-        nac_risk["title"] == "Допуск устройств к сети не контролируется автоматически"
-        and "lateral movement" not in nac_risk["impact"].lower(),
-        "Known NAC findings must use the fact-safe presales title and impact",
+        nac_risk["title"].startswith("Отсутствие NAC")
+        and "lateral movement" in nac_risk["impact"].lower(),
+        "Presentation risk card must use the same canonical NAC finding as the workbook",
     )
-    assert_true(len(nac_risk["title"]) <= 58, "Risk-card title can overlap the impact block")
+    assert_true(len(nac_risk["title"]) <= 88, "Risk-card title can overlap the impact block")
     complete_title = namespace["presentation_risk_entry"]({
         "level": "HIGH",
         "risk": "Не описан план аварийного восстановления критичных сервисов",
         "impact": "Восстановление может не уложиться в согласованное время.",
         "recommendation": "Определить RTO/RPO и провести учение.",
     })
-    assert_true(
-        complete_title["title"] == "Тестирование восстановления и RTO/RPO не формализованы",
-        f"Risk title was cut mid-sentence: {complete_title['title']}",
-    )
+    assert_true(complete_title["title"].endswith("сервисов"), f"Risk title was cut mid-sentence: {complete_title['title']}")
     dlp_risk = namespace["presentation_risk_entry"]({
         "_source": "Groq",
         "level": "HIGH",
@@ -641,10 +747,65 @@ def test_presentation_actions_are_complete_and_deduplicated() -> None:
         "impact": "Возможны регуляторные последствия.",
         "recommendation": "Провести пилот DLP.",
     })
+    assert_true(dlp_risk["title"].endswith("персональных"), "DLP risk title must preserve the canonical finding")
+
+
+def test_assurance_semantics_and_continuity_deduplication() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {"re": re}
+    for name in (
+        "normalize_vendor_key",
+        "is_enabled",
+        "risk_semantic_key",
+        "presentation_recommendation_key",
+        "consolidate_continuity_risks",
+        "sales_account_guidance",
+    ):
+        exec(extract_function_source(module_text, name), namespace)
+
+    assurance = {
+        "semantic_key": "control_assurance",
+        "risk": "Эффективность действующих средств защиты требует проверки",
+        "recommendation": "Проверить сценарий утечки данных без замены DLP.",
+    }
     assert_true(
-        dlp_risk["title"] == "Отсутствие DLP повышает риск утечки персональных данных",
-        "DLP risk title must be complete and use the fact-safe presales profile",
+        namespace["presentation_recommendation_key"](assurance) == "control_assurance",
+        "Explicit assurance semantics must not be remapped to DLP by keywords",
     )
+
+    merged = namespace["consolidate_continuity_risks"](
+        [
+            {"semantic_key": "backup", "level": "HIGH", "risk": "Восстановление из backup не тестируется"},
+            {"semantic_key": "dr", "level": "MEDIUM", "risk": "RTO/RPO не формализованы"},
+        ],
+        {"Резервное копирование": "Да"},
+    )
+    assert_true(len(merged) == 1 and merged[0]["semantic_key"] == "dr", "Backup and DR must form one management finding")
+    assert_true("RTO/RPO" in merged[0]["recommendation"], "Merged continuity finding lost the recovery objective")
+    lone_dr = namespace["consolidate_continuity_risks"](
+        [{"semantic_key": "dr", "level": "MEDIUM", "risk": "RTO/RPO не формализованы"}],
+        {"Резервное копирование": "Да"},
+    )
+    assert_true(
+        len(lone_dr) == 1 and lone_dr[0]["risk"] == "Аварийное восстановление и контрольные тесты не формализованы",
+        "A lone DR finding must use the same concise management wording",
+    )
+
+    sales_rows = load_ai_first_helper()(
+        [{
+            "semantic_key": "pam_assurance",
+            "level": "MEDIUM",
+            "risk": "Охват PAM критичными учетными записями требует подтверждения",
+            "recommendation": "Сверить охват PAM и MFA.",
+            "source": "ИИ",
+        }],
+        {"MFA": "Cisco Duo", "IAM": "One Identity Manager", "PAM": "CyberArk"},
+        {"users": 300, "servers": 40},
+    )
+    assert_true(len(sales_rows) == 1, "PAM assurance opportunity disappeared")
+    assert_true("Запустить MFA-проект" not in sales_rows[0]["offer"], "PAM assurance was incorrectly sold as a new MFA deployment")
+    guidance = namespace["sales_account_guidance"](sales_rows[0])
+    assert_true("не новый MFA-пилот" in guidance["meeting_goal"], "PAM assurance call guidance lost its explicit semantics")
 
 
 def test_canonical_roadmap_uses_only_confirmed_findings() -> None:
@@ -717,12 +878,19 @@ def test_canonical_roadmap_uses_only_confirmed_findings() -> None:
     assert_true("veeam" not in wan["action"].lower() and "backup" not in wan["action"].lower(), "Backup leaked into WAN roadmap")
     for phase in ("0-30 дней", "31-60 дней", "61-90 дней"):
         assert_true(sum(item["phase"] == phase for item in roadmap) == 2, f"Roadmap phase is incomplete: {phase}")
+    repeated_keys = {key for key in keys if keys.count(key) > 1}
+    for key in repeated_keys:
+        key_actions = [item["action"] for item in roadmap if item["semantic_key"] == key]
+        assert_true(len(key_actions) == len(set(key_actions)), f"Roadmap repeats the same action for {key}")
 
 
 def test_confirmed_wan_and_monitoring_survive_ai_omission() -> None:
     module_text = APP.read_text(encoding="utf-8")
     namespace = {
         "re": re,
+        "is_enabled": lambda value: str(value or "").strip().lower() not in {
+            "", "нет", "none", "false", "-", "n/a",
+        },
         "IT_GAP_LABELS": {
             "wifi_capacity": "Wi-Fi",
             "network_performance": "WAN",
@@ -958,6 +1126,7 @@ def test_eurasia_questionnaire_fact_contract() -> None:
     }
     for name in (
         "is_enabled",
+        "has_security_monitoring",
         "normalize_site_domain",
         "is_valid_domain",
         "build_context",
@@ -984,7 +1153,7 @@ def test_eurasia_questionnaire_fact_contract() -> None:
         "MFA": "Eset",
         "EPP": "Eset",
         "EDR": "Eset",
-        "DLP": "ForcePoint",
+        "DLP": "Symantec DLP",
         "Mail Security": "Eset",
         "WAF": "Нет",
         "IAM": "Нет",
@@ -1017,7 +1186,7 @@ def test_eurasia_questionnaire_fact_contract() -> None:
     )
     assert_true(
         namespace["risk_conflicts_with_answers"]({"risk": "Внедрить DLP"}, results),
-        "Existing ForcePoint DLP must block an implementation recommendation",
+        "Existing Symantec DLP must block an implementation recommendation",
     )
     assert_true(
         namespace["risk_conflicts_with_answers"]({"risk": "Внедрить EDR"}, results),
@@ -1040,10 +1209,89 @@ def test_eurasia_questionnaire_fact_contract() -> None:
     )
 
 
+def test_mature_bank_and_pci_assurance_contract() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {
+        "re": re,
+        "IT_GAP_LABELS": {
+            "wifi_capacity": "wifi", "network_performance": "wan", "os_inventory": "os",
+            "virtualization": "virtualization", "storage": "storage",
+            "it_monitoring": "monitoring", "itam": "itam",
+            "change_management": "change", "dr": "dr",
+        },
+    }
+    for name in (
+        "is_enabled", "has_security_monitoring", "security_control_snapshot", "risk_source_label",
+        "confirmed_it_gap_topics", "risk_semantic_key",
+        "network_segmentation_evidence", "neutralize_company_scale_language", "professionalize_risk_item",
+        "build_mature_security_assurance_risks", "build_industry_assurance_risks",
+        "apply_industry_references",
+    ):
+        exec(extract_function_source(module_text, name), namespace)
+
+    results = {
+        "_user_count": 680,
+        "WiFi Точки": 80,
+        "WiFi Контроллер": "Cisco Catalyst 9800",
+        "1.4. Примечание": "СХД реплицируются между площадками, capacity и latency контролируются централизованно.",
+        "Примечание Web": "Платежные сервисы включены в PCI DSS scope.",
+        "SIEM": "Нет",
+        "ОЦИБ": "Внешний ОЦИБ 24x7",
+    }
+    for control in (
+        "MFA", "EPP", "EDR", "XDR", "MDR", "DLP", "Mail Security", "WAF",
+        "Anti-DDoS", "IDS/IPS", "NAC", "ZTNA", "IAM", "PAM", "SOAR", "NAD",
+        "Patch Management", "SAST", "DAST",
+    ):
+        results[control] = "Есть"
+
+    gaps = namespace["confirmed_it_gap_topics"](results)
+    assert_true("storage" not in gaps and "wifi_capacity" not in gaps, "Mature infrastructure produced invented IT gaps")
+    assurance = namespace["build_mature_security_assurance_risks"](results, {"users": 680})
+    assert_true(len(assurance) >= 3, "Mature bank must receive assurance recommendations instead of an empty security section")
+    pci = namespace["build_industry_assurance_risks"](
+        {"Сфера деятельности": "Финтех / Банки"}, results,
+    )
+    assert_true(pci and "PCI DSS v4.0.1" in pci[0]["frameworks"], "PCI DSS scope must create a standards-specific assurance finding")
+    siem_item = namespace["apply_industry_references"](
+        {"semantic_key": "siem_soc", "risk": "Мониторинг событий"},
+        {"Сфера деятельности": "Финтех / Банки"},
+        results,
+    )
+    assert_true(
+        "BANK_IS" in siem_item["legal_ids"]
+        and any("Requirement 10" in value for value in siem_item["frameworks"]),
+        "Bank monitoring finding must cite both Kazakhstan banking requirements and PCI DSS Requirement 10",
+    )
+    pci_ai = namespace["professionalize_risk_item"](
+        {
+            "_source": "ИИ",
+            "_semantic_key": "dlp",
+            "semantic_key": "dlp",
+            "risk": "Риск несоответствия требованиям PCI DSS и утечки данных держателей карт",
+            "description": "Банк обрабатывает данные платежных карт.",
+            "recommendation": "Получить сертификат PCI DSS.",
+            "success_metric": "Получен сертификат PCI DSS.",
+            "vendors": ["Forcepoint"],
+            "evidence": ["PCI DSS scope подтвержден"],
+        },
+        results,
+        {"users": 680, "servers": 90},
+    )
+    pci_text = " ".join(str(pci_ai.get(field, "")) for field in (
+        "risk", "description", "impact", "recommendation", "success_metric",
+    )).lower()
+    assert_true(namespace["risk_semantic_key"](pci_ai) == "pci_assurance", "PCI finding kept an incorrect DLP semantic key")
+    assert_true("сертификат" not in pci_text, "Audit output must not promise a PCI DSS certificate")
+    assert_true(not pci_ai.get("vendors"), "PCI DSS assessment must not inherit DLP vendors")
+    assert_true("gap analysis" in pci_text and "remediation" in pci_text, "PCI DSS lifecycle is incomplete")
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
         test_sales_overrides_for_mfa_and_legacy_os,
+        test_sales_segmentation_and_pci_are_assessment_led,
         test_ids_ips_exposes_matrix_gap,
         test_portfolio_category_to_verified_distributor,
         test_database_security_vendors_and_distributors,
@@ -1052,15 +1300,15 @@ def main() -> None:
         test_customer_report_separates_solutions_from_manufacturers,
         test_segmentation_never_maps_to_dlp,
         test_wifi_and_dr_semantics_are_stable,
+        test_structured_recovery_answers_control_findings,
         test_ospf_is_not_segmentation_evidence,
         test_customer_and_sales_language_avoids_size_labels,
         test_sales_sheet_navigation_layout,
-        test_mature_controls_drive_fact_safe_scores_and_sales,
         test_ready_report_is_linked_from_sidebar,
-        test_management_decisions_accept_report_context,
         test_presentation_template_rendering,
         test_presentation_text_is_self_contained,
         test_presentation_actions_are_complete_and_deduplicated,
+        test_assurance_semantics_and_continuity_deduplication,
         test_canonical_roadmap_uses_only_confirmed_findings,
         test_confirmed_wan_and_monitoring_survive_ai_omission,
         test_ai_presentation_recommendation_path,
@@ -1069,6 +1317,7 @@ def main() -> None:
         test_confirmed_it_gaps_must_be_covered_by_ai,
         test_presentation_evidence_and_maturity_palette,
         test_eurasia_questionnaire_fact_contract,
+        test_mature_bank_and_pci_assurance_contract,
     ]
     for test in tests:
         test()

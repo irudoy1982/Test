@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "15.1-dev.7", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "15.1-dev.8", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_forced_light_theme() -> None:
@@ -519,6 +519,7 @@ def check_presentation_fact_guards() -> None:
         "is_enabled",
         "risk_semantic_key",
         "control_confirmed_in_results",
+        "confirmed_it_gap_topics",
         "risk_conflicts_with_answers",
         "network_segmentation_evidence",
         "enforce_audit_fact_policy",
@@ -533,6 +534,7 @@ def check_presentation_fact_guards() -> None:
         "is_enabled",
         "risk_semantic_key",
         "control_confirmed_in_results",
+        "confirmed_it_gap_topics",
         "risk_conflicts_with_answers",
         "network_segmentation_evidence",
         "enforce_audit_fact_policy",
