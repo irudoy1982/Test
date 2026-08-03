@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.4"
+APP_VERSION = "15.1-dev.5"
 
 
 def get_app_instance_label():
@@ -7767,6 +7767,35 @@ def build_sales_conversation_pack(c_info, results, context, roadmap_items, oppor
             "Какие показатели сейчас отслеживаются: доступность, диски, latency, backup jobs, сервисы?"
         )
 
+    existing_pain_keys = {
+        risk_semantic_key({
+            "risk": pain.get("pain", ""),
+            "description": pain.get("evidence", ""),
+            "recommendation": pain.get("commercial_angle", ""),
+        })
+        for pain in pains
+    }
+    for item in opportunities[:4]:
+        item_key = risk_semantic_key({
+            "risk": item.get("problem", ""),
+            "description": item.get("trigger", ""),
+            "recommendation": item.get("offer", ""),
+        })
+        if not item_key or item_key in existing_pain_keys:
+            continue
+        guidance = sales_account_guidance(item)
+        add_pain(
+            item.get("priority", "P2"),
+            item.get("problem", "Требуется подтвердить выявленную гипотезу."),
+            item.get("trigger", "Факт и фактический охват нужно подтвердить на рабочей сессии."),
+            item.get("offer", "Экспертный assessment подтвержденной зоны риска."),
+            (
+                "Какие факты, исключения и метрики подтверждают текущую эффективность контроля, "
+                f"и что из следующего требует уточнения: {guidance['qualification']}"
+            ),
+        )
+        existing_pain_keys.add(item_key)
+
     if not pains:
         add_pain(
             "P3",
@@ -7907,7 +7936,20 @@ def build_sales_conversation_pack(c_info, results, context, roadmap_items, oppor
     if results.get("MFA") == "Нет":
         add_question("MFA / IAM", "Где MFA можно включить быстрее всего без ломки процессов: VPN, почта, администраторы, облака или бизнес-системы?")
     if results.get("Резервное копирование") != "Нет":
-        add_question("Backup", "Когда последний раз делали тестовое восстановление и какой результат можно показать руководству?")
+        backup_confirmed, backup_missing = backup_assurance_status(results, context)
+        if backup_confirmed:
+            add_question(
+                "Backup / DR",
+                "Какие протоколы последних восстановлений и DR-учений подтверждают достижение утвержденных RTO/RPO?",
+                "Проверить доказательность зрелого процесса, не ставя под сомнение наличие резервного копирования.",
+            )
+        else:
+            add_question(
+                "Backup / DR",
+                "Какие элементы восстановления уже подтверждены и когда будут закрыты оставшиеся разрывы: "
+                + ", ".join(backup_missing)
+                + "?",
+            )
     if context.get("has_public_presence"):
         add_question("Web", "Какие публичные приложения критичны для выручки или клиентского сервиса, и кто владелец их доступности?")
     if context.get("has_development"):
@@ -8080,130 +8122,113 @@ def is_enabled(value):
 
     return True
 
+
+def any_result_enabled(results, *keys):
+    return any(is_enabled(results.get(key)) for key in keys)
+
+
+def backup_assurance_status(results, context=None):
+    context = context or {}
+    restore_period = str(results.get("Периодичность тестового восстановления", "") or "").strip()
+    dr_status = str(results.get("DR-план", "") or "").strip()
+    checks = [
+        (
+            "immutable/offline-копии",
+            bool(context.get("has_immutable_backup"))
+            or any_result_enabled(results, "Immutable Backup", "Immutable / offline backup"),
+        ),
+        (
+            "утвержденные RTO/RPO",
+            bool(context.get("rto_rpo_defined"))
+            or any_result_enabled(results, "RTO / RPO утверждены"),
+        ),
+        (
+            "регулярное тестовое восстановление",
+            bool(context.get("backup_restore_tested"))
+            or restore_period not in {"", "Не проводится", "Нет"},
+        ),
+        (
+            "утвержденный и проверяемый DR-план",
+            bool(context.get("has_tested_dr"))
+            or dr_status == "Утвержден и регулярно тестируется",
+        ),
+    ]
+    missing = [label for label, confirmed in checks if not confirmed]
+    return not missing, missing
+
+
+DOMAIN_SCORE_CONTROLS = {
+    "Сетевая безопасность": [
+        ("NGFW", 25, ("NGFW",)),
+        ("WAF", 15, ("WAF",)),
+        ("Anti-DDoS", 15, ("Anti-DDoS",)),
+        ("VPN", 10, ("VPN",)),
+        ("NAC", 20, ("NAC",)),
+        ("сегментация", 15, ("Сегментация сети",)),
+    ],
+    "Защита конечных точек": [
+        ("EPP", 20, ("Антивирус", "EPP")),
+        ("EDR/XDR/MDR", 40, ("EDR", "XDR", "MDR")),
+        ("patch management", 20, ("Patch Management",)),
+        ("MDM", 10, ("MDM",)),
+        ("device control", 10, ("Device Control",)),
+    ],
+    "Идентификация и доступ": [
+        ("MFA", 35, ("MFA",)),
+        ("IAM/IDM", 25, ("IAM", "IDM")),
+        ("PAM", 25, ("PAM",)),
+        ("SSO", 15, ("SSO",)),
+    ],
+    "Мониторинг и SOC": [
+        ("SIEM", 40, ("SIEM",)),
+        ("SOC/ОЦИБ", 30, ("SOC", "Сторонний ОЦИБ", "ОЦИБ")),
+        ("NAD", 15, ("NAD",)),
+        ("Threat Intelligence", 15, ("Threat Intelligence",)),
+    ],
+    "Резервное копирование": [
+        ("backup", 30, ("Резервное копирование",)),
+        ("immutable/offline", 30, ("Immutable Backup", "Immutable / offline backup")),
+        ("DR", 20, ("DR", "Аварийное восстановление")),
+        ("air-gap", 20, ("Air-Gap Backup",)),
+    ],
+    "Инфраструктура": [
+        ("виртуализация", 25, ("Виртуализация",)),
+        ("СХД", 25, ("СХД",)),
+        ("мониторинг", 20, ("Мониторинг",)),
+        ("резервный канал", 15, ("Резервный канал",)),
+        ("кластеризация", 15, ("Кластеризация",)),
+    ],
+}
+
+
+def calculate_domain_score_details(results):
+    details = {}
+    for domain, controls in DOMAIN_SCORE_CONTROLS.items():
+        confirmed = []
+        missing = []
+        for label, weight, keys in controls:
+            target = confirmed if any_result_enabled(results, *keys) else missing
+            target.append((label, weight))
+        details[domain] = {"confirmed": confirmed, "missing": missing}
+    return details
+
+
+def domain_score_basis(results, domain, max_length=220):
+    detail = calculate_domain_score_details(results).get(domain, {})
+    confirmed = ", ".join(label for label, _ in detail.get("confirmed", [])) or "нет подтвержденных контролей"
+    missing = ", ".join(label for label, _ in detail.get("missing", [])) or "нет незакрытых элементов модели"
+    return presentation_text(
+        f"Учтено: {confirmed}. Резерв оценки: {missing}.",
+        max_length,
+    )
+
+
 def calculate_domain_scores(results):
-
-    domains = {
-        "Сетевая безопасность": 0,
-        "Защита конечных точек": 0,
-        "Идентификация и доступ": 0,
-        "Мониторинг и SOC": 0,
-        "Резервное копирование": 0,
-        "Инфраструктура": 0
+    details = calculate_domain_score_details(results)
+    return {
+        domain: min(100, sum(weight for _, weight in detail["confirmed"]))
+        for domain, detail in details.items()
     }
-
-    # =========================
-    # Сетевая безопасность
-    # =========================
-
-    if is_enabled(results.get("NGFW")):
-        domains["Сетевая безопасность"] += 25
-
-    if is_enabled(results.get("WAF")):
-        domains["Сетевая безопасность"] += 15
-
-    if is_enabled(results.get("Anti-DDoS")):
-        domains["Сетевая безопасность"] += 15
-
-    if is_enabled(results.get("VPN")):
-        domains["Сетевая безопасность"] += 10
-
-    if is_enabled(results.get("NAC")):
-        domains["Сетевая безопасность"] += 20
-
-    if is_enabled(results.get("Сегментация сети")):
-        domains["Сетевая безопасность"] += 15
-
-    # =========================
-    # Защита конечных устройств
-    # =========================
-
-    if is_enabled(results.get("Антивирус")):
-        domains["Защита конечных точек"] += 20
-
-    if is_enabled(results.get("EDR")):
-        domains["Защита конечных точек"] += 40
-
-    if is_enabled(results.get("Patch Management")):
-        domains["Защита конечных точек"] += 20
-
-    if is_enabled(results.get("MDM")):
-        domains["Защита конечных точек"] += 10
-
-    if is_enabled(results.get("Device Control")):
-        domains["Защита конечных точек"] += 10
-
-    # =========================
-    # IAM
-    # =========================
-
-    if is_enabled(results.get("MFA")):
-        domains["Идентификация и доступ"] += 35
-
-    if is_enabled(results.get("IDM")):
-        domains["Идентификация и доступ"] += 25
-
-    if is_enabled(results.get("PAM")):
-        domains["Идентификация и доступ"] += 25
-
-    if is_enabled(results.get("SSO")):
-        domains["Идентификация и доступ"] += 15
-
-    # =========================
-    # MONITORING
-    # =========================
-
-    if is_enabled(results.get("SIEM")):
-        domains["Мониторинг и SOC"] += 40
-
-    if is_enabled(results.get("SOC")):
-        domains["Мониторинг и SOC"] += 30
-
-    if is_enabled(results.get("NAD")):
-        domains["Мониторинг и SOC"] += 15
-
-    if is_enabled(results.get("Threat Intelligence")):
-        domains["Мониторинг и SOC"] += 15
-
-    # =========================
-    # BACKUP
-    # =========================
-
-    if is_enabled(results.get("Резервное копирование")):
-        domains["Резервное копирование"] += 30
-
-    if is_enabled(results.get("Immutable Backup")):
-        domains["Резервное копирование"] += 30
-
-    if is_enabled(results.get("DR")):
-        domains["Резервное копирование"] += 20
-
-    if is_enabled(results.get("Air-Gap Backup")):
-        domains["Резервное копирование"] += 20
-
-    # =========================
-    # INFRA
-    # =========================
-
-    if is_enabled(results.get("Виртуализация")):
-        domains["Инфраструктура"] += 25
-
-    if is_enabled(results.get("СХД")):
-        domains["Инфраструктура"] += 25
-
-    if is_enabled(results.get("Мониторинг")):
-        domains["Инфраструктура"] += 20
-
-    if is_enabled(results.get("Резервный канал")):
-        domains["Инфраструктура"] += 15
-
-    if is_enabled(results.get("Кластеризация")):
-        domains["Инфраструктура"] += 15
-
-    # Ограничение 100%
-    for k in domains:
-        domains[k] = min(domains[k], 100)
-
-    return domains
 
 
 def risk_level_label(level):
@@ -8907,15 +8932,33 @@ def build_audit_observations(results, context, domain_scores, report_risks):
         ))
 
     if results.get("Резервное копирование") != "Нет":
+        backup_confirmed, backup_missing = backup_assurance_status(results, context)
         observations.append((
             "Устойчивость и восстановление",
-            "Backup-контур заявлен, но для управленческого уровня важно проверить RTO/RPO, immutable/offline-копии и факт регулярного тестового восстановления."
+            (
+                "Анкета подтверждает backup-контур, immutable/offline-копии, утвержденные RTO/RPO "
+                "и регулярные проверки восстановления. Следующий уровень контроля — хранить протоколы "
+                "тестов, фактические показатели восстановления и решения по выявленным отклонениям."
+                if backup_confirmed
+                else "Backup-контур заявлен. Требуют подтверждения: "
+                + ", ".join(backup_missing)
+                + ". Оценивать нужно именно эти элементы, не ставя под сомнение наличие резервного копирования."
+            )
         ))
 
     if context.get("has_public_presence"):
+        waf_confirmed = control_confirmed_in_results(results, "WAF")
         observations.append((
             "Публичная поверхность",
-            "У компании есть публичный веб-контур. Его состав, ответственность хостинг-провайдера, WAF/CDN-защиту, журналирование и реагирование нужно подтвердить отдельно."
+            (
+                f"Публичный веб-контур и WAF {results.get('WAF')} подтверждены анкетой. "
+                "Проверять следует полноту охвата приложений, актуальность политик, журналирование, "
+                "разбор блокировок и распределение ответственности, а не наличие WAF."
+                if waf_confirmed
+                else "У компании есть публичный веб-контур, но WAF-защита не подтверждена. "
+                "Нужно уточнить состав приложений, текущий CDN/DDoS/WAF-контур, журналирование, "
+                "реагирование и ответственность хостинг-провайдера."
+            )
         ))
 
     if context.get("has_development"):
@@ -10005,10 +10048,24 @@ def build_audit_presentation_replacements(c_info, results, final_score, it_matur
     replacements["COVERAGE_AVERAGE"] = str(round(sum(coverage_values) / max(1, len(coverage_values))))
     strongest_label, strongest_score = max(applicable_domains, key=lambda item: int(item[1] or 0))
     weakest_label, weakest_score = min(applicable_domains, key=lambda item: int(item[1] or 0))
+    coverage_domain_keys = {
+        "Сеть": "Сетевая безопасность",
+        "Endpoint": "Защита конечных точек",
+        "Доступы": "Идентификация и доступ",
+        "Мониторинг": "Мониторинг и SOC",
+        "Восстановление": "Резервное копирование",
+        "Инфраструктура": "Инфраструктура",
+    }
+    weakest_basis = domain_score_basis(
+        results,
+        coverage_domain_keys.get(weakest_label, ""),
+        105,
+    )
     replacements["COVERAGE_INSIGHT"] = presentation_text(
         f"Сильнейший домен: {strongest_label} — {int(strongest_score or 0)}%. "
-        f"Главный резерв улучшения: {weakest_label} — {int(weakest_score or 0)}%.",
-        150,
+        f"Главный резерв: {weakest_label} — {int(weakest_score or 0)}%. "
+        + weakest_basis,
+        245,
     )
     for index, (label, score) in enumerate(threat_domains, start=1):
         if score is None:
@@ -10609,7 +10666,16 @@ def make_expert_excel(c_info, results, final_score):
         if context.get("servers", 0) > 0 and results.get("Резервное копирование") == "Нет":
             summary_text.append("• Не обнаружено централизованное резервное копирование")
         elif context.get("servers", 0) > 0:
-            summary_text.append("• Backup заявлен, но управленчески важно подтвердить RTO/RPO, immutable/offline-копии и результаты тестового восстановления.")
+            backup_confirmed, backup_missing = backup_assurance_status(results, context)
+            if backup_confirmed:
+                summary_text.append(
+                    "• Backup, immutable/offline-копии, RTO/RPO и регулярные тесты восстановления подтверждены; "
+                    "фокус — доказательная база и контроль закрытия отклонений."
+                )
+            else:
+                summary_text.append(
+                    "• Backup заявлен; требуют подтверждения: " + ", ".join(backup_missing) + "."
+                )
 
         if results.get("_user_count", 0) > 100:
             if is_enabled(results.get("EDR")) and is_enabled(results.get("Patch Management")):
@@ -10862,7 +10928,7 @@ def make_expert_excel(c_info, results, final_score):
 
     current_row += 1
 
-    headers = ["Домен безопасности", "Оценка", "Статус"]
+    headers = ["Домен безопасности", "Оценка", "Статус", "Основание оценки"]
 
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=current_row, column=col_num, value=header)
@@ -10895,8 +10961,10 @@ def make_expert_excel(c_info, results, final_score):
         ws.cell(row=current_row, column=1, value=domain).border = border
         ws.cell(row=current_row, column=2, value=score_display).border = border
         ws.cell(row=current_row, column=3, value=status).border = border
+        ws.cell(row=current_row, column=4, value=domain_score_basis(results, domain, 320)).border = border
+        ws.cell(row=current_row, column=4).alignment = Alignment(wrap_text=True, vertical='top')
 
-        for c in range(1, 4):
+        for c in range(1, 5):
             ws.cell(row=current_row, column=c).fill = fill
 
         current_row += 1
@@ -11683,6 +11751,22 @@ def render_audit_cockpit(client_info, results, validation_errors, final_score, i
                 unsafe_allow_html=True
             )
 
+    report_available = (
+        st.session_state.get("generation_state") == "finalized"
+        and bool(
+            st.session_state.get("cached_report_bytes")
+            or st.session_state.get("cached_presentation_bytes")
+        )
+    )
+    if report_available:
+        st.sidebar.markdown("#### Результат")
+        st.sidebar.markdown(
+            '<a class="sidebar-step sidebar-step-link" href="#audit-report" title="Перейти к готовому отчету">'
+            '<span class="sidebar-dot green"></span><span><strong>Отчет</strong></span>'
+            '</a>',
+            unsafe_allow_html=True,
+        )
+
 
 def render_analysis_preview(results, final_score):
     domain_scores = calculate_domain_scores(results)
@@ -12425,6 +12509,7 @@ if st.session_state.generation_state == "ai_failed":
 # --- СЦЕНАРИЙ 4: ВЫВОД ГОТОВОГО РЕЗУЛЬТАТА ---
 if st.session_state.generation_state == "finalized":
 
+    st.markdown('<div id="audit-report"></div>', unsafe_allow_html=True)
     st.success("🎉 Экспертное заключение сформировано и проверено системой контроля качества Khalil Consulting!")
 
     brand_file_label = "BTG" if presentation_brand_key() == "btg" else "Khalil"

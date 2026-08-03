@@ -106,6 +106,9 @@ def load_report_logic_helpers():
         "russian_count",
         "infrastructure_profile",
         "sales_account_guidance",
+        "is_enabled",
+        "any_result_enabled",
+        "backup_assurance_status",
         "build_sales_conversation_pack",
     ):
         exec(extract_function_source(module_text, name), namespace)
@@ -430,6 +433,52 @@ def test_sales_sheet_navigation_layout() -> None:
     assert_true("Ценность для клиента" in internal, "Sales sheet must explain client value")
     assert_true("Кого подключить" in internal, "Sales sheet must include stakeholder guidance")
     assert_true("ws.column_dimensions['J'].width = 16" in internal, "Source column should remain visible")
+
+
+def test_mature_controls_drive_fact_safe_scores_and_sales() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {}
+    tree = ast.parse(module_text)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(isinstance(target, ast.Name) and target.id == "DOMAIN_SCORE_CONTROLS" for target in node.targets):
+            exec(ast.get_source_segment(module_text, node), namespace)
+            break
+    for name in (
+        "is_enabled",
+        "any_result_enabled",
+        "backup_assurance_status",
+        "calculate_domain_score_details",
+        "calculate_domain_scores",
+    ):
+        exec(extract_function_source(module_text, name), namespace)
+
+    results = {
+        "MFA": "Cisco Duo",
+        "IAM": "One Identity",
+        "PAM": "CyberArk",
+        "SSO": "Нет",
+        "Резервное копирование": "Veeam",
+        "Immutable / offline backup": "Да",
+        "RTO / RPO утверждены": "Да",
+        "Периодичность тестового восстановления": "Ежеквартально",
+        "DR-план": "Утвержден и регулярно тестируется",
+    }
+    scores = namespace["calculate_domain_scores"](results)
+    assert_true(
+        scores["Идентификация и доступ"] == 85,
+        f"IAM alias must contribute to access score, got {scores['Идентификация и доступ']}",
+    )
+    confirmed, missing = namespace["backup_assurance_status"](results, {})
+    assert_true(confirmed and not missing, f"Mature DR evidence must be recognized, missing: {missing}")
+
+
+def test_ready_report_is_linked_from_sidebar() -> None:
+    text = APP.read_text(encoding="utf-8")
+    cockpit = extract_function_source(text, "render_audit_cockpit")
+    assert_true('href="#audit-report"' in cockpit, "Ready report link is missing from sidebar")
+    assert_true('id="audit-report"' in text, "Report destination anchor is missing")
 
 
 def test_presentation_template_rendering() -> None:
@@ -984,6 +1033,8 @@ def main() -> None:
         test_ospf_is_not_segmentation_evidence,
         test_customer_and_sales_language_avoids_size_labels,
         test_sales_sheet_navigation_layout,
+        test_mature_controls_drive_fact_safe_scores_and_sales,
+        test_ready_report_is_linked_from_sidebar,
         test_presentation_template_rendering,
         test_presentation_text_is_self_contained,
         test_presentation_actions_are_complete_and_deduplicated,
