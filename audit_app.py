@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.8"
+APP_VERSION = "15.1-dev.9"
 
 
 def get_app_instance_label():
@@ -1692,6 +1692,128 @@ MAIL_SYSTEM_OPTIONS = [
 
 WEB_HOSTING_OPTIONS = ["Собственный ЦОД", "Облако KZ", "Облако Global"]
 
+RESTORE_TEST_FREQUENCY_OPTIONS = [
+    "Не проводится",
+    "По необходимости",
+    "Ежегодно",
+    "Раз в полгода",
+    "Ежеквартально",
+    "Ежемесячно",
+]
+
+DR_PLAN_STATUS_OPTIONS = [
+    "Нет",
+    "Разрабатывается",
+    "Утвержден, но не тестировался",
+    "Утвержден и регулярно тестируется",
+]
+
+DR_SITE_TYPE_OPTIONS = [
+    "Нет отдельной площадки",
+    "Второй ЦОД / серверная",
+    "Колокейшн / резервная площадка",
+    "Облако",
+    "Гибридная схема",
+]
+
+OCIB_MODEL_OPTIONS = [
+    "Нет",
+    "Собственный ОЦИБ",
+    "Сторонний ОЦИБ / MSSP",
+    "Гибридная модель",
+]
+
+OCIB_MONITORING_MODE_OPTIONS = [
+    "Не указано",
+    "8×5",
+    "12×5",
+    "24×7",
+]
+
+OCIB_PROVIDER_OPTIONS = [
+    "Не выбран",
+    "Центр анализа и расследования кибер атак (ЦАРКА)",
+    "АО «Национальные информационные технологии»",
+    "АО «Транстелеком»",
+    "ТОО «Tengri Security»",
+    "ТОО «KBI Security»",
+    "АО «Казтелепорт»",
+    "ТОО «QazCloud»",
+    "ТОО «Business & Technology Services»",
+    "АО «ASTEL»",
+    "Инженерный центр УМТО",
+    "ТОО «Tengri Lab»",
+    "ТОО «ISV Central Asia»",
+    "ТОО «Digital Qalqan»",
+    "ТОО «Middle Comm»",
+    "ТОО «Web Totem»",
+    "ТОО «QazSoc»",
+    "ТОО «NitroTeam»",
+    "ТОО «Zerde Business Solutions»",
+    "АО «Центр развития трудовых ресурсов»",
+    "ТОО «КаР-Тел»",
+    "ТОО «Джей Кей и Партнеры»",
+    "АО «Казахтелеком»",
+    "ТОО «KazOpticLink»",
+    "ТОО «AITIA»",
+    "ТОО «Интернет-компания PS»",
+    "ТОО «ORDA SOC»",
+    "ТОО «KazHackStan»",
+    "ТОО «ДК Келешек»",
+    "ТОО «IT-TRY»",
+    "ТОО «Seven Hills of Kazakhstan»",
+    "Инженерно-технический центр УДП РК",
+    "ТОО «MSSP.GL»",
+    "АО «Республиканский центр космической связи»",
+    "ТОО «Inova Tech»",
+    "ТОО «QazInfoTech Systems»",
+    "Bizone Kazakhstan Ltd.",
+    "ТОО «Communications Kazakhstan»",
+    "АО «Кселл»",
+    "ТОО «JB Works»",
+    "ТОО «RTeam»",
+    "ТОО «IT NOVATOR»",
+    "ТОО «SADAN»",
+    "Информационно-вычислительный центр БНС АСПР РК",
+    "ТОО «ADT Security»",
+    "ТОО «Digital Enterprice»",
+    "ТОО «ITSOC»",
+    "АО «Центр электронных финансов»",
+    "Республиканский центр электронного здравоохранения",
+    "Другой ОЦИБ",
+]
+
+ARM_OS_OPTIONS = [
+    "Windows XP/Vista/7/8", "Windows 10", "Windows 11", "Linux", "macOS", "Другое",
+]
+
+ROUTING_TYPE_OPTIONS = ["Статическая", "RIP", "OSPF", "EIGRP", "BGP", "IS-IS"]
+
+SERVER_OS_OPTIONS = [
+    "Windows Server 2008/2012 R2", "Windows Server 2016", "Windows Server 2019",
+    "Windows Server 2022", "Linux", "Unix", "Другое",
+]
+
+VIRTUALIZATION_OPTIONS = ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"]
+
+BACKUP_STORAGE_LOCATION_OPTIONS = [
+    "На основной площадке",
+    "На отдельной площадке / в другом ЦОД",
+    "В облаке",
+    "На offline-носителе",
+]
+
+STORAGE_MEDIA_OPTIONS = ["HDD (NL-SAS / SATA)", "SSD (SATA / SAS)", "NVMe", "SCM"]
+
+RAID_OPTIONS = ["RAID 0", "RAID 1", "RAID 5", "RAID 6", "RAID 10", "RAID 50", "RAID 60", "JBOD"]
+
+WEB_FRONTEND_OPTIONS = ["Nginx", "Apache", "IIS", "LiteSpeed", "Cloudflare"]
+
+DEV_LANGUAGE_OPTIONS = [
+    "Python", "JavaScript/TypeScript", "Java", "C# / .NET", "PHP", "Go", "C++",
+    "Swift/Kotlin", "Другое",
+]
+
 DRAFT_SELECTBOX_OPTIONS = {
     "client_industry_select": [""] + INDUSTRY_OPTIONS,
     "client_phone_code": COUNTRY_CODE_OPTIONS,
@@ -1700,7 +1822,27 @@ DRAFT_SELECTBOX_OPTIONS = {
     "wf_type_sel": WIFI_TYPE_OPTIONS,
     "mail_system": MAIL_SYSTEM_OPTIONS,
     "web_hosting": WEB_HOSTING_OPTIONS,
+    "restore_test_frequency": RESTORE_TEST_FREQUENCY_OPTIONS,
+    "dr_plan_status": DR_PLAN_STATUS_OPTIONS,
+    "dr_site_type": DR_SITE_TYPE_OPTIONS,
+    "ocib_model": OCIB_MODEL_OPTIONS,
+    "ocib_monitoring_mode": OCIB_MONITORING_MODE_OPTIONS,
+    "ocib_provider": OCIB_PROVIDER_OPTIONS,
 }
+
+DRAFT_MULTISELECT_OPTIONS = {
+    "selected_os_arm": ARM_OS_OPTIONS,
+    "routing_sel": ROUTING_TYPE_OPTIONS,
+    "ms_srv_list": SERVER_OS_OPTIONS,
+    "virt_sys_list": VIRTUALIZATION_OPTIONS,
+    "backup_storage_locations": BACKUP_STORAGE_LOCATION_OPTIONS,
+    "st_media": STORAGE_MEDIA_OPTIONS,
+    "raid_list": RAID_OPTIONS,
+    "web_frontend": WEB_FRONTEND_OPTIONS,
+    "langs_f": DEV_LANGUAGE_OPTIONS,
+}
+
+
 
 
 REGULATORY_CATALOG = {
@@ -4748,8 +4890,47 @@ def normalize_draft_selectbox_value(key, value):
         "wf_type_sel": WIFI_TYPE_OPTIONS[0],
         "mail_system": "Нет",
         "web_hosting": WEB_HOSTING_OPTIONS[0],
+        "restore_test_frequency": "Не проводится",
+        "dr_plan_status": "Нет",
+        "dr_site_type": DR_SITE_TYPE_OPTIONS[0],
     }
     return defaults.get(key, options[0]), None
+
+
+def normalize_draft_multiselect_value(key, value):
+    options = DRAFT_MULTISELECT_OPTIONS.get(key)
+    if options is None:
+        return value, []
+
+    if value is None:
+        candidates = []
+    elif isinstance(value, (list, tuple, set)):
+        candidates = list(value)
+    else:
+        candidates = [value]
+
+    aliases = {
+        "selected_os_arm": {
+            "Windows 7": "Windows XP/Vista/7/8",
+            "Windows 8": "Windows XP/Vista/7/8",
+            "Windows XP": "Windows XP/Vista/7/8",
+        },
+        "web_frontend": {
+            "Cloudflare CDN": "Cloudflare",
+        },
+    }
+    normalized = []
+    removed = []
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            candidate = aliases.get(key, {}).get(candidate, candidate)
+        if candidate in options:
+            if candidate not in normalized:
+                normalized.append(candidate)
+        elif candidate not in removed:
+            removed.append(candidate)
+
+    return normalized, removed
 
 
 def apply_draft_state(payload):
@@ -4758,12 +4939,18 @@ def apply_draft_state(payload):
         raise ValueError("Файл черновика не содержит блок state.")
 
     applied = 0
+    compatibility_warnings = []
 
     normalized_state = dict(state)
     for key, value in state.items():
         if is_draft_system_key(key):
             continue
         value, custom_industry = normalize_draft_selectbox_value(key, value)
+        value, removed_values = normalize_draft_multiselect_value(key, value)
+        if removed_values:
+            compatibility_warnings.append(
+                f"{key}: {', '.join(str(item) for item in removed_values)}"
+            )
         if custom_industry:
             normalized_state["client_industry_other"] = custom_industry
         normalized_state[key] = value
@@ -4776,7 +4963,18 @@ def apply_draft_state(payload):
         st.session_state[key] = value
         applied += 1
 
+    if compatibility_warnings:
+        st.session_state["_draft_compatibility_warnings"] = compatibility_warnings
+    else:
+        st.session_state.pop("_draft_compatibility_warnings", None)
+
+    # Streamlit may preserve a collapsed mobile/sidebar state across the rerun
+    # triggered by draft restoration. Reopen it after the new page is mounted.
+    st.session_state["_force_sidebar_expanded"] = True
+
     return applied
+
+
 
 
 def restore_draft_from_query():
@@ -5698,6 +5896,13 @@ phys_count = 0
 virt_count = 0
 server_active = st.toggle("Серверы и виртуализация", key="server_toggle", help="Включите, если у заказчика есть физические серверы, виртуальные машины или платформы виртуализации.")
 v_n_b = "Нет"
+backup_storage_locations = []
+backup_immutable = False
+restore_test_frequency = "Не проводится"
+rto_rpo_defined = False
+dr_plan_status = "Нет"
+dr_site_type = "Нет"
+dr_enabled = False
 selected_os_srv = []
 selected_virt_sys = []
 
@@ -5713,7 +5918,7 @@ if server_active:
     if phys_count == 0 and virt_count == 0:
         validation_errors.append("Укажите количество физических или виртуальных серверов")
 
-    s_os_list = ["Windows Server 2008/2012 R2", "Windows Server 2016", "Windows Server 2019", "Windows Server 2022", "Linux", "Unix", "Другое"]
+    s_os_list = SERVER_OS_OPTIONS
     selected_os_srv = st.multiselect("Выберите ОС серверов", s_os_list, key="ms_srv_list", help="Операционные системы, установленные на серверах.")
     if selected_os_srv:
         srv_os_keys = [f"fsrv_{os_s}" for os_s in selected_os_srv]
@@ -5750,7 +5955,7 @@ if server_active:
         st.warning(f"⚠️ Ошибка: Количество ОС ({sum_os_srv}) должно быть больше или равно количеству виртуальных серверов ({virt_count}).")
         validation_errors.append("Недостаточное количество ОС для серверов")
 
-    selected_virt_sys = st.multiselect("Выберите системы виртуализации", ["VMware", "Hyper-V", "Proxmox", "KVM", "Другое", "Нет"], key="virt_sys_list", help="Технологии управления виртуальной инфраструктурой.")
+    selected_virt_sys = st.multiselect("Выберите системы виртуализации", VIRTUALIZATION_OPTIONS, key="virt_sys_list", help="Технологии управления виртуальной инфраструктурой.")
     if selected_virt_sys and "Нет" not in selected_virt_sys:
         for v_sys in selected_virt_sys:
             v_h_cnt = st.number_input(f"Количество хостов {v_sys}", min_value=0, step=1, key=f"fv_cnt_{v_sys}", help=f"Сколько физических серверов (нод) в кластере {v_sys}?")
@@ -5761,7 +5966,64 @@ if server_active:
         v_n_b = st.text_input("Вендор Резервного копирования", key="vn_backup", help="Укажите название используемого продукта.")
         data["Резервное копирование"] = v_n_b
         if not v_n_b: validation_errors.append("Укажите вендора резервного копирования")
+        st.markdown("#### Восстановление и хранение резервных копий")
+        backup_storage_locations = st.multiselect(
+            "Где хранятся резервные копии*",
+            BACKUP_STORAGE_LOCATION_OPTIONS,
+            key="backup_storage_locations",
+            help="Выберите все фактически используемые места хранения.",
+        )
+        backup_immutable = st.checkbox(
+            "Есть immutable или offline-копия",
+            key="backup_immutable",
+            help="Копия, которую нельзя изменить или удалить из основной инфраструктуры.",
+        )
+        restore_test_frequency = st.selectbox(
+            "Как часто проводится тестовое восстановление*",
+            RESTORE_TEST_FREQUENCY_OPTIONS,
+            key="restore_test_frequency",
+            help="Укажите фактическую периодичность контрольного восстановления, а не только проверки задания backup.",
+        )
+        if not backup_storage_locations:
+            validation_errors.append("Укажите место хранения резервных копий")
         score += 20
+
+    dr_enabled = st.checkbox(
+        "Аварийное восстановление (DR)",
+        key="dr_enabled",
+        help="Включите, если в организации есть DR-процесс, DR-план или резервная площадка.",
+    )
+    if dr_enabled:
+        st.markdown("#### Параметры аварийного восстановления")
+        rto_rpo_defined = st.checkbox(
+            "Для критичных сервисов утверждены RTO и RPO",
+            key="rto_rpo_defined",
+            help="RTO — допустимое время восстановления; RPO — допустимая потеря данных.",
+        )
+        dr_plan_status = st.selectbox(
+            "Состояние плана аварийного восстановления*",
+            DR_PLAN_STATUS_OPTIONS,
+            key="dr_plan_status",
+            help="DR-план должен описывать критичные сервисы, зависимости, роли и порядок восстановления.",
+        )
+        dr_site_type = st.selectbox(
+            "Площадка аварийного восстановления",
+            DR_SITE_TYPE_OPTIONS,
+            key="dr_site_type",
+        )
+    else:
+        for hidden_key in ("rto_rpo_defined", "dr_plan_status", "dr_site_type"):
+            st.session_state.pop(hidden_key, None)
+
+    data["Места хранения резервных копий"] = (
+        ", ".join(backup_storage_locations) if backup_storage_locations else "Нет"
+    )
+    data["Immutable / offline backup"] = "Да" if backup_immutable else "Нет"
+    data["Периодичность тестового восстановления"] = restore_test_frequency
+    data["Аварийное восстановление"] = "Да" if dr_enabled else "Нет"
+    data["RTO / RPO утверждены"] = "Да" if rto_rpo_defined else "Нет"
+    data["DR-план"] = dr_plan_status
+    data["DR-площадка"] = dr_site_type
 
     data['1.3. Примечание'] = st.text_area("Примечание к разделу 1.3", placeholder="Специфика серверного парка...", key="note_1_3")
 
@@ -5896,6 +6158,7 @@ sast, sast_v, dast, dast_v = False, "", False, ""
 iam, iam_v, mfa, mfa_v, pam, pam_v = False, "", False, "", False, ""
 siem, siem_v, soar, soar_v = False, "", False, ""
 vuln, vuln_v, patch, patch_v, nad, nad_v = False, "", False, "", False, ""
+ocib_model, ocib_provider, ocib_monitoring_mode = "Нет", "Нет", "Не указано"
 
 def security_product(label, checkbox_key, vendor_label, vendor_key):
     enabled = st.checkbox(label, key=checkbox_key) is True
@@ -6002,6 +6265,51 @@ if enable_security:
     with col2:
         soar, soar_v = security_product("SOAR (автоматизация)", "soar", "Производитель SOAR", "soar_v")
         data['Блок 2. SOAR'] = soar_v if soar else "Нет"
+
+    ocib_model = st.selectbox(
+        "Организация мониторинга и реагирования ОЦИБ*",
+        OCIB_MODEL_OPTIONS,
+        key="ocib_model",
+        help=(
+            "Укажите фактическую модель: собственный оперативный центр ИБ, услуги "
+            "стороннего ОЦИБ/MSSP или гибридный вариант."
+        ),
+    )
+    if ocib_model in {"Сторонний ОЦИБ / MSSP", "Гибридная модель"}:
+        ocib_provider = st.selectbox(
+            "Действующий сторонний ОЦИБ*",
+            OCIB_PROVIDER_OPTIONS,
+            key="ocib_provider",
+            help=(
+                "Перечень Комитета информационной безопасности РК, обновленный 17.06.2024. "
+                "Если нужной организации нет, выберите «Другой ОЦИБ»."
+            ),
+        )
+        if ocib_provider == "Другой ОЦИБ":
+            ocib_provider = st.text_input(
+                "Наименование стороннего ОЦИБ*",
+                key="ocib_provider_other",
+            ).strip()
+        if not ocib_provider or ocib_provider == "Не выбран":
+            errors.append("Не выбран действующий сторонний ОЦИБ")
+    elif ocib_model == "Собственный ОЦИБ":
+        ocib_provider = "Собственный ОЦИБ"
+    else:
+        ocib_provider = "Нет"
+
+    if ocib_model != "Нет":
+        ocib_monitoring_mode = st.selectbox(
+            "Режим мониторинга ОЦИБ*",
+            OCIB_MONITORING_MODE_OPTIONS,
+            key="ocib_monitoring_mode",
+            help="Фактическое время приема и первичного разбора событий ИБ.",
+        )
+        if ocib_monitoring_mode == "Не указано":
+            errors.append("Не указан режим мониторинга ОЦИБ")
+
+    data["Блок 2. Модель ОЦИБ"] = ocib_model
+    data["Блок 2. ОЦИБ"] = ocib_provider
+    data["Блок 2. Режим ОЦИБ"] = ocib_monitoring_mode
 
     # =========================
     # ДОПОЛНИТЕЛЬНО
@@ -12627,6 +12935,7 @@ security_controls = [
     (mfa, mfa_v, 10),
     (pam, pam_v, 8),
     (siem, siem_v, 10),
+    (ocib_model != "Нет", ocib_provider, 10),
     (soar, soar_v, 4),
     (vuln, vuln_v, 5),
     (patch, patch_v, 6),
@@ -12708,6 +13017,11 @@ it_maturity_score = calculate_it_maturity_score(
         st.session_state.get("note_1_4", ""),
         st.session_state.get("note_1_5", ""),
     ],
+    backup_storage_locations=backup_storage_locations,
+    backup_immutable=backup_immutable,
+    restore_test_frequency=restore_test_frequency,
+    rto_rpo_defined=rto_rpo_defined,
+    dr_plan_status=dr_plan_status,
 )
 
 section_statuses = [

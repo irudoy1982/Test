@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "15.1-dev.8", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "15.1-dev.9", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_forced_light_theme() -> None:
@@ -149,7 +149,23 @@ def check_selectbox_contract() -> None:
         "WIFI_TYPE_OPTIONS",
         "MAIL_SYSTEM_OPTIONS",
         "WEB_HOSTING_OPTIONS",
+        "RESTORE_TEST_FREQUENCY_OPTIONS",
+        "DR_PLAN_STATUS_OPTIONS",
+        "DR_SITE_TYPE_OPTIONS",
+        "OCIB_MODEL_OPTIONS",
+        "OCIB_MONITORING_MODE_OPTIONS",
+        "OCIB_PROVIDER_OPTIONS",
         "DRAFT_SELECTBOX_OPTIONS",
+        "ARM_OS_OPTIONS",
+        "ROUTING_TYPE_OPTIONS",
+        "SERVER_OS_OPTIONS",
+        "VIRTUALIZATION_OPTIONS",
+        "BACKUP_STORAGE_LOCATION_OPTIONS",
+        "STORAGE_MEDIA_OPTIONS",
+        "RAID_OPTIONS",
+        "WEB_FRONTEND_OPTIONS",
+        "DEV_LANGUAGE_OPTIONS",
+        "DRAFT_MULTISELECT_OPTIONS",
     }
     assignments = []
     for node in tree.body:
@@ -184,14 +200,66 @@ def check_selectbox_contract() -> None:
         "wf_type_sel",
         "mail_system",
         "web_hosting",
+        "restore_test_frequency",
+        "dr_plan_status",
+        "dr_site_type",
+        "ocib_model",
+        "ocib_monitoring_mode",
+        "ocib_provider",
     }
     assert_true(set(selectboxes) == expected_keys, "Draft selectbox contract is incomplete")
     assert_true(
         len(re.findall(r"\.selectbox\(", text)) == len(expected_keys),
         "A form selectbox is missing from the draft compatibility contract",
     )
+    multiselects = namespace["DRAFT_MULTISELECT_OPTIONS"]
+    expected_multiselect_keys = {
+        "selected_os_arm",
+        "routing_sel",
+        "ms_srv_list",
+        "virt_sys_list",
+        "backup_storage_locations",
+        "st_media",
+        "raid_list",
+        "web_frontend",
+        "langs_f",
+    }
+    assert_true(
+        set(multiselects) == expected_multiselect_keys,
+        "Draft multiselect contract is incomplete",
+    )
+    assert_true(
+        len(re.findall(r"\.multiselect\(", text)) == len(expected_multiselect_keys),
+        "A form multiselect is missing from the draft compatibility contract",
+    )
     assert_true("net_types = NETWORK_TYPE_OPTIONS" in text, "Network selectboxes do not use the shared contract")
     assert_true("country_codes = COUNTRY_CODE_OPTIONS" in text, "Country selectbox does not use the shared contract")
+    required_questionnaire_keys = {
+        "backup_storage_locations",
+        "backup_immutable",
+        "restore_test_frequency",
+        "dr_enabled",
+        "rto_rpo_defined",
+        "dr_plan_status",
+        "dr_site_type",
+        "ocib_model",
+        "ocib_provider",
+        "ocib_monitoring_mode",
+    }
+    for key in required_questionnaire_keys:
+        assert_true(f'key="{key}"' in text, f"Questionnaire field is missing: {key}")
+    required_export_labels = {
+        "Immutable / offline backup",
+        "Аварийное восстановление",
+        "RTO / RPO утверждены",
+        "DR-план",
+        "DR-площадка",
+        "Блок 2. Модель ОЦИБ",
+        "Блок 2. ОЦИБ",
+        "Блок 2. Режим ОЦИБ",
+    }
+    for label in required_export_labels:
+        assert_true(label in text, f"Questionnaire export field is missing: {label}")
     assert_true(
         'back_net_kwargs["index"] = net_types.index("Нет")' in text,
         "Backup channel must default explicitly to Нет",
@@ -227,6 +295,56 @@ def check_selectbox_contract() -> None:
         normalize("web_hosting", "Устаревшее значение")[0] in namespace["WEB_HOSTING_OPTIONS"],
         "Invalid hosting value is not normalized",
     )
+
+    multiselect_normalizer = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "normalize_draft_multiselect_value"
+    )
+    exec(
+        compile(ast.Module(body=[multiselect_normalizer], type_ignores=[]), str(APP), "exec"),
+        namespace,
+    )
+    normalize_multiselect = namespace["normalize_draft_multiselect_value"]
+    normalized_frontend, removed_frontend = normalize_multiselect(
+        "web_frontend",
+        ["Nginx", "Imperva WAF"],
+    )
+    assert_true(normalized_frontend == ["Nginx"], "Invalid frontend value was not removed")
+    assert_true(removed_frontend == ["Imperva WAF"], "Removed draft value was not reported")
+
+    for sample_path in sorted((ROOT / "samples").rglob("*.json")):
+        sample_payload = json.loads(sample_path.read_text(encoding="utf-8"))
+        sample_state = sample_payload.get("state", sample_payload)
+        if sample_path.parent.name == "15.0-dev.34":
+            assert_true(
+                sample_payload.get("app_version") == "15.0-dev.34",
+                f"Versioned sample {sample_path.name} has an incorrect app_version",
+            )
+            if sample_state.get("mail_system") == "Exchange (On-Prem)":
+                assert_true(
+                    bool(str(sample_state.get("mail_version_input", "")).strip()),
+                    f"Exchange sample {sample_path.name} does not specify its version",
+                )
+        for key, options in selectboxes.items():
+            if key not in sample_state:
+                continue
+            normalized, _custom = normalize(key, sample_state[key])
+            assert_true(
+                normalized in options,
+                f"Sample {sample_path.name} has invalid {key} value: {sample_state[key]!r}",
+            )
+        for key, options in multiselects.items():
+            selected = sample_state.get(key, [])
+            if not isinstance(selected, list):
+                selected = [selected]
+            invalid = [value for value in selected if value not in options]
+            assert_true(
+                not invalid,
+                f"Sample {sample_path.name} has invalid {key} values: {invalid}",
+            )
+
+
 
 
 def find_header_row(ws, required_headers: set[str]) -> tuple[int, dict[str, int]]:

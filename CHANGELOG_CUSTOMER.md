@@ -3,6 +3,12 @@
 This changelog is intended for production release notes that can be shown to customers.
 Keep this file focused only on customer-visible questionnaire and report changes.
 
+## v15.1-dev.9
+
+- Added structured backup and recovery details: storage locations, immutable copies, restore testing, RTO/RPO, DR plans, and recovery sites.
+- Added operating-model details for the information-security operations function, including provider and monitoring coverage.
+- Draft files now preserve these answers consistently across hosted and self-hosted deployments.
+
 ## v15.1-dev.8
 
 - Aligned report conclusions and presentations across hosted and self-hosted deployments.
