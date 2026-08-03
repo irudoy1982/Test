@@ -476,9 +476,22 @@ def test_mature_controls_drive_fact_safe_scores_and_sales() -> None:
 
 def test_ready_report_is_linked_from_sidebar() -> None:
     text = APP.read_text(encoding="utf-8")
-    cockpit = extract_function_source(text, "render_audit_cockpit")
-    assert_true('href="#audit-report"' in cockpit, "Ready report link is missing from sidebar")
+    sidebar_link = extract_function_source(text, "render_ready_report_sidebar_link")
+    assert_true('href="#audit-report"' in sidebar_link, "Ready report link is missing from sidebar")
+    assert_true("render_ready_report_sidebar_link()" in text, "Ready report link is not rendered after generation")
     assert_true('id="audit-report"' in text, "Report destination anchor is missing")
+
+
+def test_management_decisions_accept_report_context() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {}
+    exec(extract_function_source(module_text, "build_management_decisions"), namespace)
+    decisions = namespace["build_management_decisions"](
+        {}, {},
+        [{"recommendation": "Проверить охват контроля."}],
+        [{"action": "Провести контрольную проверку."}],
+    )
+    assert_true(decisions[0] == "Провести контрольную проверку.", str(decisions))
 
 
 def test_presentation_template_rendering() -> None:
@@ -1035,6 +1048,7 @@ def main() -> None:
         test_sales_sheet_navigation_layout,
         test_mature_controls_drive_fact_safe_scores_and_sales,
         test_ready_report_is_linked_from_sidebar,
+        test_management_decisions_accept_report_context,
         test_presentation_template_rendering,
         test_presentation_text_is_self_contained,
         test_presentation_actions_are_complete_and_deduplicated,

@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.5"
+APP_VERSION = "15.1-dev.6"
 
 
 def get_app_instance_label():
@@ -11751,21 +11751,13 @@ def render_audit_cockpit(client_info, results, validation_errors, final_score, i
                 unsafe_allow_html=True
             )
 
-    report_available = (
-        st.session_state.get("generation_state") == "finalized"
-        and bool(
-            st.session_state.get("cached_report_bytes")
-            or st.session_state.get("cached_presentation_bytes")
-        )
+def render_ready_report_sidebar_link():
+    st.sidebar.markdown("#### Результат")
+    st.sidebar.markdown(
+        '<a class="sidebar-step sidebar-step-link" href="#audit-report" title="Перейти к готовому отчету">'
+        '<span class="sidebar-dot green"></span><span><strong>Отчет</strong></span></a>',
+        unsafe_allow_html=True,
     )
-    if report_available:
-        st.sidebar.markdown("#### Результат")
-        st.sidebar.markdown(
-            '<a class="sidebar-step sidebar-step-link" href="#audit-report" title="Перейти к готовому отчету">'
-            '<span class="sidebar-dot green"></span><span><strong>Отчет</strong></span>'
-            '</a>',
-            unsafe_allow_html=True,
-        )
 
 
 def render_analysis_preview(results, final_score):
@@ -12509,6 +12501,7 @@ if st.session_state.generation_state == "ai_failed":
 # --- СЦЕНАРИЙ 4: ВЫВОД ГОТОВОГО РЕЗУЛЬТАТА ---
 if st.session_state.generation_state == "finalized":
 
+    render_ready_report_sidebar_link()
     st.markdown('<div id="audit-report"></div>', unsafe_allow_html=True)
     st.success("🎉 Экспертное заключение сформировано и проверено системой контроля качества Khalil Consulting!")
 
