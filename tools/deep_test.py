@@ -1314,6 +1314,50 @@ def test_mature_bank_and_pci_assurance_contract() -> None:
     assert_true("gap analysis" in pci_text and "remediation" in pci_text, "PCI DSS lifecycle is incomplete")
 
 
+def test_ai_narrative_reframes_confirmed_controls() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {
+        "re": re,
+        "expand_regulatory_references": lambda value: str(value or ""),
+        "has_security_monitoring": lambda results: True,
+        "backup_assurance_status": lambda results: (True, []),
+        "risk_semantic_key": lambda item: (
+            "siem_soc" if "siem" in str(item).lower() or "событий иб" in str(item).lower()
+            else "backup" if "rto/rpo" in str(item).lower()
+            else "unknown"
+        ),
+        "risk_conflicts_with_answers": lambda item, results: False,
+        "sanitize_customer_roadmap_text": lambda value: str(value or ""),
+    }
+    for name in (
+        "network_segmentation_evidence",
+        "neutralize_company_scale_language",
+        "sanitize_ai_audit_narrative",
+    ):
+        exec(extract_function_source(module_text, name), namespace)
+
+    narrative = {
+        "executive_summary": [
+            "Отсутствует централизованная система сбора и анализа событий ИБ.",
+            "Необходимо формализовать процессы SLA и RTO/RPO.",
+        ],
+        "management_decisions": [
+            "Утвердить проект внедрения SIEM-системы.",
+            "Разработать и утвердить план реагирования на инциденты ИБ.",
+        ],
+        "audit_observations": [],
+        "roadmap": [],
+    }
+    cleaned = namespace["sanitize_ai_audit_narrative"](narrative, {})
+    joined = " ".join(cleaned["executive_summary"] + cleaned["management_decisions"]).lower()
+    assert_true("отсутствует централизован" not in joined, "Confirmed monitoring was described as absent")
+    assert_true("внедрения siem" not in joined, "Confirmed SIEM was resold in a management decision")
+    assert_true("формализовать процессы sla" not in joined, "Confirmed RTO/RPO was described as undefined")
+    assert_true("разработать и утвердить план реагирования" not in joined, "Unsupported IR-plan absence survived")
+    assert_true("полноту источников" in joined, "Monitoring claim was not reframed as assurance")
+    assert_true("протоколами учений" in joined, "RTO/RPO claim was not reframed as evidence assurance")
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
@@ -1345,6 +1389,7 @@ def main() -> None:
         test_presentation_evidence_and_maturity_palette,
         test_eurasia_questionnaire_fact_contract,
         test_mature_bank_and_pci_assurance_contract,
+        test_ai_narrative_reframes_confirmed_controls,
     ]
     for test in tests:
         test()

@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.11"
+APP_VERSION = "15.1-dev.12"
 
 
 def get_app_instance_label():
@@ -9207,9 +9207,50 @@ def sanitize_ai_audit_narrative(narrative, results):
         int(results.get("ОС АРМ (Windows XP/Vista/7/8)", 0) or 0)
         + int(results.get("ОС Сервера (Windows Server 2008/2012 R2)", 0) or 0)
     ) > 0
+    security_monitoring_enabled = has_security_monitoring(results)
+    backup_confirmed, _ = backup_assurance_status(results)
+
+    def fact_safe_replacement(text, lowered):
+        """Reframe narrative claims that contradict confirmed questionnaire controls."""
+        if security_monitoring_enabled and any(marker in lowered for marker in (
+            "отсутствует централизован", "нет централизован",
+            "не внедрена siem", "siem отсутств", "внедрить siem",
+            "проект внедрения siem", "развернуть siem",
+        )):
+            return (
+                "Централизованный мониторинг событий ИБ заявлен в анкете. Следующий уровень зрелости — "
+                "подтвердить полноту источников и use-case, SLA реагирования, качество телеметрии и "
+                "регулярное закрытие выявленных отклонений."
+            )
+
+        if (
+            backup_confirmed
+            and ("rto/rpo" in lowered or "rto и rpo" in lowered)
+            and any(marker in lowered for marker in (
+                "формализ", "определить", "утвердить", "согласовать",
+                "разработать", "не определ", "не утвержд",
+            ))
+        ):
+            return (
+                "RTO/RPO и проверки восстановления заявлены в анкете. Требуется подтверждать их "
+                "достижение протоколами учений, фактическими показателями восстановления и контролем "
+                "закрытия отклонений."
+            )
+
+        if any(marker in lowered for marker in (
+            "разработать план реагирования", "утвердить план реагирования",
+            "план реагирования отсутств", "нет плана реагирования",
+        )):
+            return (
+                "Проверить действующий порядок реагирования на контрольном сценарии: роли, эскалацию, "
+                "сроки, коммуникации и фиксацию корректирующих действий."
+            )
+        return text
 
     def clean_text(value):
         text = expand_regulatory_references(neutralize_company_scale_language(value))
+        lowered = text.lower()
+        text = fact_safe_replacement(text, lowered)
         lowered = text.lower()
         if not legacy_reported and any(marker in lowered for marker in (
             "устаревш", "legacy", "windows 10", "linux-сервер", "linux сервер",
@@ -10136,6 +10177,8 @@ def presentation_action_text(value, limit=165):
         while words and words[-1].lower().strip(".,:;()") in incomplete_tail:
             words.pop()
         sentence = " ".join(words)
+        if sentence and sentence[0].isalpha():
+            sentence = sentence[0].upper() + sentence[1:]
         if sentence and sentence[-1] not in ".!?":
             sentence += "."
         return sentence
@@ -12224,7 +12267,7 @@ def make_expert_excel(c_info, results, final_score):
     roadmap_ws.merge_cells(start_row=roadmap_row, start_column=1, end_row=roadmap_row, end_column=7)
     note_cell = roadmap_ws.cell(row=roadmap_row, column=1, value=(
         "Примечание: roadmap построен с учетом размера инфраструктуры, наличия серверов, "
-        "публичных сервисов, бизнес-систем и текущих средств ИБ. Для малой инфраструктуры "
+        "публичных сервисов, бизнес-систем и текущих средств ИБ. Для инфраструктуры указанного масштаба "
         "приоритет отдается быстрым управляемым мерам, а не тяжелым enterprise-платформам."
     ))
     note_cell.alignment = Alignment(wrap_text=True, vertical='top')

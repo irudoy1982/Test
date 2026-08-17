@@ -3,6 +3,12 @@
 This changelog is intended for production release notes that can be shown to customers.
 Keep this file focused only on customer-visible questionnaire and report changes.
 
+## v15.1-dev.12
+
+- Kept conclusions consistent with confirmed monitoring, recovery objectives, and restore testing.
+- Improved sentence completeness and capitalization in presentation recommendations.
+- Replaced company-size labels with neutral infrastructure-profile wording.
+
 ## v15.1-dev.11
 
 - Distinguished validation of existing security controls from duplicate implementation recommendations.
