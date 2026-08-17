@@ -1358,6 +1358,45 @@ def test_ai_narrative_reframes_confirmed_controls() -> None:
     assert_true("протоколами учений" in joined, "RTO/RPO claim was not reframed as evidence assurance")
 
 
+def test_confirmed_dlp_is_assurance_not_resale() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {
+        "expand_regulatory_references": lambda value: str(value or ""),
+        "risk_semantic_key": lambda item: str(
+            item.get("semantic_key") or item.get("_semantic_key") or "dlp"
+        ),
+        "network_segmentation_evidence": lambda results: "unknown",
+    }
+    exec(extract_function_source(module_text, "is_enabled"), namespace)
+    exec(extract_function_source(module_text, "enforce_audit_fact_policy"), namespace)
+
+    item = namespace["enforce_audit_fact_policy"](
+        {
+            "semantic_key": "dlp",
+            "level": "HIGH",
+            "risk": "Каналы передачи чувствительных данных требуют контроля",
+            "recommendation": "Внедрить DLP и разработать корреляционные правила.",
+            "vendors": ["DLP"],
+        },
+        {"DLP": "Forcepoint DLP"},
+        {"has_personal_data": True},
+    )
+    joined = " ".join(str(item.get(field, "")) for field in (
+        "risk", "description", "impact", "recommendation"
+    )).lower()
+    assert_true(item.get("semantic_key") == "dlp_assurance", "Confirmed DLP was not reframed as assurance")
+    assert_true(item.get("level") == "LOW", "Confirmed DLP assurance must not remain a high implementation risk")
+    assert_true("forcepoint dlp" in joined, "Existing DLP product was not acknowledged")
+    assert_true("внедрить dlp" not in joined, "Existing DLP was resold")
+    assert_true("корреляцион" not in joined, "DLP finding retained an unrelated SIEM action")
+    assert_true(not item.get("vendors"), "DLP assurance must not force a product manufacturer")
+
+    assert_true(
+        "generation_client_info = dict(client_info)" in module_text,
+        "Customer CRM payload is not frozen before Streamlit generation reruns",
+    )
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
@@ -1390,6 +1429,7 @@ def main() -> None:
         test_eurasia_questionnaire_fact_contract,
         test_mature_bank_and_pci_assurance_contract,
         test_ai_narrative_reframes_confirmed_controls,
+        test_confirmed_dlp_is_assurance_not_resale,
     ]
     for test in tests:
         test()

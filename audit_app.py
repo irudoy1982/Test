@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.14"
+APP_VERSION = "15.1-dev.15"
 
 
 def get_app_instance_label():
@@ -7426,6 +7426,7 @@ def solution_categories_for_report_item(item):
         "web_waf": "WAF / CDN / Web Application Security",
         "pam": "PAM; vault; контроль привилегированных сессий",
         "dlp": "DLP / Data Security",
+        "dlp_assurance": "DLP coverage assessment; проверка политик, каналов и исключений",
         "mail": "Mail Security / Anti-Phishing",
         "segmentation": "Сегментация сети; VLAN / ACL; NGFW policies",
         "nac": "NAC / Network Access Control; профилирование устройств",
@@ -7453,7 +7454,7 @@ def solution_categories_for_report_item(item):
 
 def portfolio_manufacturers_for_report_item(item):
     key = risk_semantic_key(item)
-    if key in {"pci_assurance", "control_assurance", "pam_assurance", "soc_assurance"}:
+    if key in {"pci_assurance", "control_assurance", "pam_assurance", "soc_assurance", "dlp_assurance"}:
         return "Экспертная услуга; производитель не требуется"
     text = normalize_vendor_key(" ".join([
         str(item.get("risk", "")),
@@ -7931,6 +7932,18 @@ def sales_override_for_item(item, results, context):
             "problem": "Развитие действующего мониторинга до измеримого SOC-процесса",
             "offer": "Проверить покрытие критичных источников, актуальность use-case, SLA расследования и качество передачи инцидентов владельцам систем; новые лицензии предлагать только после выявления подтвержденного разрыва.",
             "next_step": "Согласовать список критичных активов и провести use-case assessment с проверкой полноты телеметрии и SLA реагирования.",
+        },
+        "dlp_assurance": {
+            "priority": "P2",
+            "problem": "Проверка фактического охвата действующего DLP",
+            "offer": (
+                "Провести DLP coverage assessment: сопоставить категории данных, каналы, политики, исключения "
+                "и статистику инцидентов; новые лицензии предлагать только после подтверждения конкретного разрыва."
+            ),
+            "next_step": (
+                "Запросить перечень политик и контролируемых каналов, выборку инцидентов и исключений; "
+                "провести контрольные сценарии передачи данных и сформировать план точечных улучшений."
+            ),
         },
         "pci_assurance": {
             "priority": "P2",
@@ -9072,6 +9085,8 @@ def risk_semantic_key(item):
             "db_monitoring": "database_security",
             "db_security": "database_security",
             "dam": "database_security",
+            "dlp_coverage": "dlp_assurance",
+            "dlp_effectiveness": "dlp_assurance",
         }
         return aliases.get(explicit_key, explicit_key)
 
@@ -9479,6 +9494,37 @@ def enforce_audit_fact_policy(item, results, context):
             ],
             "success_metric": "Политики DLP контролируют согласованные каналы передачи персональных данных",
             "vendors": ["DLP"],
+        })
+
+    if key == "dlp" and is_enabled(results.get("DLP")):
+        dlp_product = str(results.get("DLP", "") or "действующий DLP").strip()
+        normalized.update({
+            "semantic_key": "dlp_assurance",
+            "_semantic_key": "dlp_assurance",
+            "level": "LOW",
+            "risk": "Покрытие действующего DLP требует проверки эффективности",
+            "description": (
+                f"В анкете подтвержден действующий DLP: {dlp_product}. Наличие продукта не подтверждает "
+                "полноту охвата категорий данных, каналов передачи, политик и исключений."
+            ),
+            "impact": (
+                "Неконтролируемые каналы, устаревшие правила или накопленные исключения могут сохранять "
+                "остаточный риск утечки даже при установленном DLP."
+            ),
+            "recommendation": (
+                "Провести DLP coverage assessment: сверить категории данных и каналы с действующими "
+                "политиками, проверить исключения и контрольные сценарии; закупку расширений рассматривать "
+                "только после подтверждения конкретного разрыва."
+            ),
+            "evidence": [
+                f"DLP в анкете: {dlp_product}",
+                "Полнота политик, каналов и исключений требует отдельной проверки",
+            ],
+            "success_metric": (
+                "Критичные категории данных и каналы сопоставлены с политиками; исключения имеют владельцев "
+                "и сроки; контрольные сценарии проходят с ожидаемым результатом"
+            ),
+            "vendors": [],
         })
 
     if (
@@ -10536,6 +10582,7 @@ def presentation_success_metric(semantic_key):
         "ztna": "100% подтвержденных удаленных подключений проходят контекстную проверку и имеют минимально необходимые права",
         "wifi_capacity": "Покрытие и емкость Wi-Fi подтверждены радиообследованием; пиковая загрузка точек остается в целевых пределах",
         "dlp": "Политики DLP контролируют согласованные каналы передачи персональных данных",
+        "dlp_assurance": "Критичные категории данных и каналы подтверждены контрольными сценариями DLP; исключения имеют владельцев и сроки",
         "segmentation": "Матрица VLAN/ACL подтверждена тестом межсегментного доступа",
         "mail": "Защитные политики применены ко всем почтовым ящикам",
         "appsec": "Критичные релизы проходят обязательные проверки безопасности",
@@ -10627,6 +10674,11 @@ def canonical_roadmap_action(item, phase):
             "31-60 дней": "Провести ограниченный пилот DLP и скорректировать политики по фактическим результатам.",
             "61-90 дней": "Масштабировать подтвержденные политики DLP и включить контроль инцидентов и исключений.",
         },
+        "dlp_assurance": {
+            "0-30 дней": "Инвентаризировать категории данных, контролируемые каналы, действующие политики DLP и исключения.",
+            "31-60 дней": "Провести контрольные сценарии DLP и устранить подтвержденные разрывы в политиках, каналах и исключениях.",
+            "61-90 дней": "Ввести регулярную проверку покрытия DLP, метрик инцидентов и сроков закрытия исключений.",
+        },
         "database_security": {
             "0-30 дней": "Провести DB Security assessment критичных БД, привилегированных ролей, журналирования и текущего мониторинга.",
             "31-60 дней": "При подтвержденном разрыве провести ограниченный пилот DAM и проверить качество аудита и выявления аномалий.",
@@ -10702,6 +10754,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "it_monitoring": "61-90 дней",
         "siem_soc": "61-90 дней",
         "dlp": "61-90 дней",
+        "dlp_assurance": "31-60 дней",
         "appsec": "61-90 дней",
         "database_security": "0-30 дней",
     }
@@ -10727,6 +10780,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "nac": "Сетевой доступ",
         "ztna": "Удаленный доступ",
         "dlp": "Защита данных",
+        "dlp_assurance": "Защита данных",
         "database_security": "Защита баз данных",
     }
     phase_counts = {phase: 0 for phase in phase_order}
@@ -10745,6 +10799,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "change_management": 7,
         "itam": 8,
         "database_security": 9,
+        "dlp_assurance": 10,
     }
     ordered_risks = sorted(
         [item for item in (report_risks or []) if isinstance(item, dict)],
@@ -13083,6 +13138,16 @@ if "last_report_risk_sources" not in st.session_state:
     st.session_state.last_report_risk_sources = []
 if "telegram_generation_started_sent" not in st.session_state:
     st.session_state.telegram_generation_started_sent = False
+if "generation_client_info" not in st.session_state:
+    st.session_state.generation_client_info = {}
+
+frozen_client_info = st.session_state.get("generation_client_info")
+if (
+    st.session_state.generation_state != "idle"
+    and isinstance(frozen_client_info, dict)
+    and str(frozen_client_info.get("Наименование компании", "") or "").strip()
+):
+    client_info = dict(frozen_client_info)
 
 
 def render_generation_failure_state():
@@ -13292,6 +13357,7 @@ if st.session_state.generation_state == "idle":
     ):
         st.session_state.generation_error_message = ""
         st.session_state.telegram_generation_started_sent = False
+        st.session_state.generation_client_info = dict(client_info)
         st.session_state.generation_state = "preparing"
         st.rerun()
         render_generation_guard(True)
@@ -13739,6 +13805,7 @@ if st.session_state.generation_state == "finalized":
         st.session_state.generation_attempt_started_at = None
         st.session_state.generation_error_message = ""
         st.session_state.telegram_generation_started_sent = False
+        st.session_state.generation_client_info = {}
         st.rerun()
 
 st.info(f"Khalil Audit System {APP_VERSION} | by Ivan Rudoy | Алматы 2026")
