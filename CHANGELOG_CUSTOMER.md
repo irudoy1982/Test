@@ -3,6 +3,12 @@
 This changelog is intended for production release notes that can be shown to customers.
 Keep this file focused only on customer-visible questionnaire and report changes.
 
+## v15.1-dev.11
+
+- Distinguished validation of existing security controls from duplicate implementation recommendations.
+- Allowed mature questionnaires with no confirmed new gaps to produce an assurance-focused conclusion instead of a technical failure.
+- Prevented unconfirmed configuration-management and incident-response assumptions from appearing as established audit findings.
+
 ## v15.1-dev.10
 
 - Kept the draft save and sharing controls pinned to the bottom of phone screens, including devices with a browser or system safe area.

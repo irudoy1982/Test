@@ -64,6 +64,7 @@ def load_ai_first_helper():
         "risk_semantic_key",
         "network_segmentation_evidence",
         "control_confirmed_in_results",
+        "is_existing_control_assurance",
         "risk_conflicts_with_answers",
         "sales_override_for_item",
         "build_ai_first_sales_opportunities",
@@ -1135,6 +1136,7 @@ def test_eurasia_questionnaire_fact_contract() -> None:
         "control_confirmed_in_results",
         "build_confirmed_security_gap_risks",
         "risk_semantic_key",
+        "is_existing_control_assurance",
         "risk_conflicts_with_answers",
     ):
         exec(extract_function_source(module_text, name), namespace)
@@ -1191,6 +1193,31 @@ def test_eurasia_questionnaire_fact_contract() -> None:
     assert_true(
         namespace["risk_conflicts_with_answers"]({"risk": "Внедрить EDR"}, results),
         "Existing EDR must block an implementation recommendation",
+    )
+    assert_true(
+        not namespace["risk_conflicts_with_answers"]({
+            "risk": "Проверка полноты охвата MFA",
+            "description": "MFA уже используется, требуется оценить покрытие и исключения.",
+            "recommendation": "Проверить охват MFA, исключения и эффективность сценариев контроля.",
+            "success_metric": "Все критичные учетные записи покрыты, исключения согласованы.",
+        }, results),
+        "Existing MFA assurance must not be mistaken for a duplicate implementation",
+    )
+    assert_true(
+        namespace["risk_conflicts_with_answers"]({
+            "risk": "Недостаточный контроль конфигураций",
+            "description": "Отсутствует централизованный контроль конфигураций.",
+            "recommendation": "Внедрить стандарты безопасной конфигурации.",
+        }, results),
+        "An unsupported configuration-management absence claim must be rejected",
+    )
+    assert_true(
+        namespace["risk_conflicts_with_answers"]({
+            "risk": "Недостаточная отработка IR-плана",
+            "description": "Отсутствует регулярное тестирование реагирования на инциденты.",
+            "recommendation": "Разработать IR-план.",
+        }, results),
+        "An unsupported IR-plan absence claim must be rejected when monitoring is active",
     )
     portfolio = load_portfolio_helpers()
     wan_vendors = portfolio["portfolio_manufacturers_for_report_item"]({

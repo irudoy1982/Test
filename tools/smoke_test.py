@@ -45,7 +45,7 @@ def check_version() -> None:
     text = read_text(APP)
     match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
     assert_true(match is not None, "APP_VERSION is missing")
-    assert_true(match.group(1) == "15.1-dev.10", f"Unexpected APP_VERSION: {match.group(1)}")
+    assert_true(match.group(1) == "15.1-dev.11", f"Unexpected APP_VERSION: {match.group(1)}")
 
 
 def check_forced_light_theme() -> None:
@@ -636,9 +636,11 @@ def check_presentation_fact_guards() -> None:
     app_tree = ast.parse(read_text(APP))
     function_names = {
         "is_enabled",
+        "has_security_monitoring",
         "risk_semantic_key",
         "control_confirmed_in_results",
         "confirmed_it_gap_topics",
+        "is_existing_control_assurance",
         "risk_conflicts_with_answers",
         "network_segmentation_evidence",
         "enforce_audit_fact_policy",
@@ -651,9 +653,11 @@ def check_presentation_fact_guards() -> None:
     namespace = {"re": re, "expand_regulatory_references": lambda value: str(value or "")}
     ordered_nodes = [nodes_by_name[name] for name in (
         "is_enabled",
+        "has_security_monitoring",
         "risk_semantic_key",
         "control_confirmed_in_results",
         "confirmed_it_gap_topics",
+        "is_existing_control_assurance",
         "risk_conflicts_with_answers",
         "network_segmentation_evidence",
         "enforce_audit_fact_policy",
@@ -685,6 +689,28 @@ def check_presentation_fact_guards() -> None:
             {"Резервное копирование": "Veeam"},
         ),
         "Existing backup must block an absence-of-backup recommendation",
+    )
+    assert_true(
+        conflicts(
+            {
+                "risk": "Недостаточный контроль конфигураций",
+                "description": "Отсутствует централизованный контроль конфигураций.",
+                "recommendation": "Внедрить стандарты безопасной конфигурации.",
+            },
+            {"1.1. Примечание": "Парк стандартизирован, обновления выполняются централизованно."},
+        ),
+        "An unsupported configuration-management gap must not reach the client report",
+    )
+    assert_true(
+        conflicts(
+            {
+                "risk": "Недостаточная отработка IR-плана",
+                "description": "Отсутствует регулярное тестирование реагирования на инциденты.",
+                "recommendation": "Разработать IR-план.",
+            },
+            {"Модель ОЦИБ": "Сторонний ОЦИБ / MSSP", "Режим ОЦИБ": "24×7"},
+        ),
+        "An unsupported IR-plan absence claim must not bypass the active SOC fact",
     )
 
     enforce = namespace["enforce_audit_fact_policy"]

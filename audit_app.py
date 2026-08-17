@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.10"
+APP_VERSION = "15.1-dev.11"
 
 
 def get_app_instance_label():
@@ -1497,6 +1497,29 @@ def control_confirmed_in_results(results, control):
     return False
 
 
+def is_existing_control_assurance(item):
+    """Allow effectiveness/coverage reviews without reselling an installed control."""
+    combined = " ".join(
+        str(item.get(field, ""))
+        for field in ("risk", "description", "impact", "recommendation", "success_metric")
+    ).lower()
+    assurance_markers = (
+        "провер", "оценить покрытие", "оценка покрытия", "охват", "эффективност",
+        "валидац", "тест", "контроль исключ", "полнота телеметр", "корреляц",
+        "сценари", "метрик", "sla", "аудит конфигурац", "подтвердить",
+        "review", "coverage", "effectiveness", "validation", "assurance",
+    )
+    implementation_markers = (
+        "отсутств", "не внедр", "внедрить", "закупить", "развернуть",
+        "установить", "подключить решение", "приобрести", "implement ",
+        "deploy ", "purchase ",
+    )
+    return (
+        any(marker in combined for marker in assurance_markers)
+        and not any(marker in combined for marker in implementation_markers)
+    )
+
+
 def risk_conflicts_with_answers(item, results):
     key = risk_semantic_key(item)
 
@@ -1538,23 +1561,24 @@ def risk_conflicts_with_answers(item, results):
         if legacy_arm + legacy_servers == 0:
             return "No legacy operating systems reported"
 
-    if key == "mfa" and is_enabled(results.get("MFA")):
+    assurance = is_existing_control_assurance(item)
+    if key == "mfa" and is_enabled(results.get("MFA")) and not assurance:
         return "MFA already enabled"
-    if key == "iam" and (is_enabled(results.get("IAM")) or is_enabled(results.get("IDM"))):
+    if key == "iam" and (is_enabled(results.get("IAM")) or is_enabled(results.get("IDM"))) and not assurance:
         return "IAM already enabled"
-    if key == "pam" and is_enabled(results.get("PAM")):
+    if key == "pam" and is_enabled(results.get("PAM")) and not assurance:
         return "PAM already enabled"
-    if key == "siem_soc" and has_security_monitoring(results):
+    if key == "siem_soc" and has_security_monitoring(results) and not assurance:
         return "SIEM or OCIB monitoring already enabled"
-    if key == "patch" and is_enabled(results.get("Patch Management")):
+    if key == "patch" and is_enabled(results.get("Patch Management")) and not assurance:
         return "Patch Management already enabled"
-    if key == "web_waf" and control_confirmed_in_results(results, "WAF"):
+    if key == "web_waf" and control_confirmed_in_results(results, "WAF") and not assurance:
         return "WAF already enabled"
-    if key == "mail" and is_enabled(results.get("Mail Security")):
+    if key == "mail" and is_enabled(results.get("Mail Security")) and not assurance:
         return "Mail Security already enabled"
-    if key == "dlp" and control_confirmed_in_results(results, "DLP"):
+    if key == "dlp" and control_confirmed_in_results(results, "DLP") and not assurance:
         return "DLP already enabled"
-    if key == "nac" and control_confirmed_in_results(results, "NAC"):
+    if key == "nac" and control_confirmed_in_results(results, "NAC") and not assurance:
         return "NAC already enabled"
     if key == "backup" and is_enabled(results.get("Резервное копирование")):
         combined = " ".join(
@@ -1583,7 +1607,7 @@ def risk_conflicts_with_answers(item, results):
             return "Backup restore testing already reported"
     if key == "dr" and results.get("DR-план") == "Утвержден и регулярно тестируется":
         return "Tested DR plan already reported"
-    if key == "endpoint_detection" and any(
+    if key == "endpoint_detection" and not assurance and any(
         control_confirmed_in_results(results, control)
         for control in ("EDR", "XDR", "MDR")
     ):
@@ -2620,6 +2644,10 @@ def ai_generate_risks_and_recs(c_info, results):
         enabled_controls_text = "\n".join(enabled_controls) if enabled_controls else "Не указаны"
         missing_controls_text = ", ".join(missing_controls) if missing_controls else "Нет явных пробелов"
         confirmed_it_gaps = confirmed_it_gap_topics(results)
+        confirmed_security_gaps = build_confirmed_security_gap_risks(
+            results,
+            build_context(results, c_info),
+        )
         confirmed_it_gaps_text = "\n".join(
             f"- {key}: {label}"
             for key, label in confirmed_it_gaps.items()
@@ -2934,7 +2962,9 @@ JSON должен быть валидным: все строковые знач�
 - roadmap должен содержать ровно 6 объектов: по 2 для фаз 0-30, 31-60 и 61-90 дней;
 - management_decisions должен содержать ровно 4 конкретных решения;
 - ИТ-рекомендации должны быть про сеть, каналы, серверы, виртуализацию, СХД, backup/DR, мониторинг, patch/change/capacity management, бизнес-системы и разработку;
-- минимум 4 ИТ-рекомендации должны быть самостоятельными и не сводиться к ИБ-продуктам;
+- если подтверждены ИТ-разрывы, дай самостоятельные ИТ-рекомендации и не своди их к ИБ-продуктам;
+- если явных ИТ-разрывов нет, не выдумывай их ради количества: оцени доказательность эксплуатации, тестирование восстановления, измеримость SLA и полноту мониторинга;
+- не утверждай отсутствие control/configuration management или IR-плана, если анкета прямо этого не подтверждает; в таком случае допустима только проверка зрелости, охвата и доказательств;
 - ИБ-рекомендации должны учитывать уже внедренные контроли и не повторять отсутствующий контроль, если он есть;
 - каждое наблюдение должно связывать минимум два факта анкеты, если это возможно;
 - избегай примитивных фраз уровня "внедрить продукт"; сначала опиши управленческую/техническую меру, затем только категорию решения;
@@ -2964,6 +2994,7 @@ JSON должен быть валидным: все строковые знач�
 - для КВОИКИ с персональными данными отсутствие DLP имеет уровень HIGH.
 - при наличии серверов и критичных систем без PAM обязательно оцени PAM; SOAR указывай как этап развития SIEM/SOC, а не отдельный срочный проект.
 - отсутствие NAC описывай как отсутствие автоматизированного контроля допуска устройств, а не как доказательство отсутствия сегментации.
+- для уже внедренных SIEM/ОЦИБ, MFA, PAM, NAC, DLP, EDR и Patch Management допустима только проверка охвата, исключений, сценариев и эффективности; не предлагай повторное внедрение или закупку.
 - в roadmap не указывай производителей и названия продуктов; используй только классы технологий и управленческие действия.
 - result каждого объекта roadmap должен описывать измеримый результат именно его action, а не всей фазы целиком.
 - для новых решений соблюдай порядок: требования и критерии -> ограниченный пилот -> решение о закупке и масштабировании.
@@ -3319,7 +3350,10 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                 })
             return rows
 
+        valid_empty_candidate = None
+
         def accept_ai_payload(parsed_payload, provider_label, model_label, errors):
+            nonlocal valid_empty_candidate
             ai_narrative = normalize_ai_audit_narrative(parsed_payload)
             narrative_requirements = {
                 "executive_summary": 2,
@@ -3397,6 +3431,26 @@ LEVEL только CRITICAL, HIGH, MEDIUM или LOW.
                     min_it_items=0,
                 )
             if not prepared_payload:
+                has_ai_narrative = any(
+                    bool(ai_narrative.get(field))
+                    for field in (
+                        "executive_summary", "audit_observations",
+                        "management_decisions", "roadmap",
+                    )
+                )
+                if (
+                    normalized_candidate_count > 0
+                    and fact_checked_count == 0
+                    and skipped_ai_items
+                    and not confirmed_it_gaps
+                    and not confirmed_security_gaps
+                    and has_ai_narrative
+                ):
+                    valid_empty_candidate = {
+                        "provider": provider_label,
+                        "model": model_label,
+                        "narrative": ai_narrative,
+                    }
                 rejection_details = explain_ai_risk_rejections(normalized_payload)
                 errors.append(
                     f"{provider_label}: "
@@ -3661,6 +3715,14 @@ vendors (массив строк), legal_ids (массив строк), framewor
                 ai_errors.append(
                     f"Groq/{groq_model}: {redact_secret(exc, groq_api_key)}"
                 )
+
+        if valid_empty_candidate:
+            st.session_state.ai_last_error = ""
+            st.session_state.ai_model_used = valid_empty_candidate["model"]
+            st.session_state.ai_provider_used = valid_empty_candidate["provider"]
+            st.session_state.ai_audit_narrative = valid_empty_candidate["narrative"]
+            st.session_state.ai_analysis_succeeded = True
+            return []
 
         raise ValueError(
             "ИИ-провайдеры не дали пригодный ответ. " + " | ".join(ai_errors[-8:])
@@ -7383,7 +7445,10 @@ def solution_categories_for_report_item(item):
         "pam_assurance": "Аттестация привилегий; проверка охвата PAM",
         "soc_assurance": "SOC use-case assessment; проверка полноты телеметрии",
     }
-    return categories_by_key.get(key, "Уточнить класс решения по результатам пресейла")
+    return categories_by_key.get(
+        key,
+        "Экспертное обследование; решение определяется после подтверждения разрыва",
+    )
 
 
 def portfolio_manufacturers_for_report_item(item):
@@ -8179,7 +8244,21 @@ def build_ai_first_sales_opportunities(risk_sources, results=None, context=None)
             continue
 
         impact = str(item.get("impact") or item.get("description") or "").strip()
-        area = str(item.get("area") or "ИТ/ИБ").strip()
+        area = str(item.get("area") or item.get("_ai_area") or "ИТ/ИБ").strip().upper()
+        area_aliases = {
+            "IT": "ИТ",
+            "SECURITY": "ИБ",
+            "CYBERSECURITY": "ИБ",
+            "INFORMATION SECURITY": "ИБ",
+            "IT/SECURITY": "ИТ/ИБ",
+        }
+        area = area_aliases.get(area, area)
+        if area not in {"ИТ", "ИБ", "ИТ/ИБ"}:
+            area = "ИТ" if risk_semantic_key(item) in {
+                "legacy_os", "network_performance", "wifi_capacity", "virtualization",
+                "storage", "dr", "it_monitoring", "change_management", "itam",
+                "os_inventory", "business_systems",
+            } else "ИБ"
         priority = level_priority.get(str(item.get("level", "")).strip(), "P2")
 
         opportunities.append({
@@ -8981,6 +9060,12 @@ def risk_semantic_key(item):
             "backup_restore": "dr",
             "restore_testing": "dr",
             "disaster_recovery": "dr",
+            "configuration_management": "change_management",
+            "configuration_compliance": "change_management",
+            "secure_configuration": "change_management",
+            "incident_response": "siem_soc",
+            "incident_response_plan": "siem_soc",
+            "ir_plan": "siem_soc",
         }
         return aliases.get(explicit_key, explicit_key)
 
@@ -8995,7 +9080,15 @@ def risk_semantic_key(item):
         ("virtualization", ("виртуальн", "гипервизор", "vmware", "hyper-v")),
         ("dr", ("rto", "rpo", "аварийн", "drp", "disaster recovery")),
         ("it_monitoring", ("мониторинг ит", "мониторинга ит", "мониторинг инфраструктур", "наблюдаемост")),
-        ("change_management", ("управления изменениями", "управление изменениями", "change management")),
+        ("change_management", (
+            "управления изменениями", "управление изменениями", "change management",
+            "контроль конфигурац", "безопасной конфигурац", "соответствием конфигурац",
+            "configuration compliance", "secure configuration",
+        )),
+        ("siem_soc", (
+            "ir-план", "ir plan", "incident response", "реагирования на инциденты",
+            "реагирование на инциденты",
+        )),
         ("ztna", ("ztna", "zero trust network access", "доступ по принципу нулевого доверия")),
         ("pci_assurance", ("pci dss", "cardholder data environment", "cde")),
         ("physical_security", ("физическая защит", "контроль доступа в цод", "пожаротуш")),
@@ -9018,7 +9111,11 @@ def risk_semantic_key(item):
         ("nac", ("nac", "контроль подключения устройств", "контроль доступа устройств к сети", "network access control")),
         ("ztna", ("ztna", "zero trust network access", "доступ по принципу нулевого доверия")),
         ("dlp", ("dlp", "утеч", "эксфильтрац", "data loss")),
-        ("siem_soc", ("siem", "soc", "soar", "мониторинг событий", "централизованный мониторинг")),
+        ("siem_soc", (
+            "siem", "soc", "soar", "мониторинг событий", "централизованный мониторинг",
+            "ir-план", "ir plan", "incident response", "реагирования на инциденты",
+            "реагирование на инциденты",
+        )),
         ("wifi_capacity", (
             "wi-fi", "wifi", "wlan", "беспроводн", "роуминг", "радиообслед",
             "точек доступа", "точки доступа", "контроллер беспровод",
@@ -9036,7 +9133,11 @@ def risk_semantic_key(item):
             "состав ос", "поддерживаемость операционных систем", "статус поддержки ос",
             "версии ос", "категория «другое»", "категория \"другое\"",
         )),
-        ("change_management", ("управления изменениями", "управление изменениями", "change management", "изменениями и конфигурациями")),
+        ("change_management", (
+            "управления изменениями", "управление изменениями", "change management",
+            "изменениями и конфигурациями", "контроль конфигурац", "безопасной конфигурац",
+            "соответствием конфигурац", "configuration compliance", "secure configuration",
+        )),
         ("patch", ("patch", "обновлен", "cve", "уязвим")),
         ("endpoint_detection", ("edr", "xdr", "endpoint", "рабочих мест", "lateral movement")),
         ("backup", ("backup", "резерв", "immutable", "ransomware")),
@@ -11777,7 +11878,10 @@ def make_expert_excel(c_info, results, final_score):
         ),
         (
             "До 90 дней",
-            "; ".join(item["action"] for item in roadmap_items if item["phase"] in {"31-60 дней", "61-90 дней"})[:420] or
+            presentation_action_text(
+                "; ".join(item["action"] for item in roadmap_items if item["phase"] in {"31-60 дней", "61-90 дней"}),
+                420,
+            ) or
             "Перейти от точечных мер к управляемой модели мониторинга, обновлений, восстановления и реагирования.",
             "Формируется программа улучшений с метриками контроля и понятным бюджетированием."
         ),
