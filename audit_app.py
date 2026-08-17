@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.9"
+APP_VERSION = "15.1-dev.10"
 
 
 def get_app_instance_label():
@@ -4528,15 +4528,15 @@ def inject_audit_design():
         }
 
         .st-key-floating_draft_save {
-            position: sticky;
-            top: calc(64px + env(safe-area-inset-top, 0px));
+            position: fixed;
+            top: auto;
             right: auto;
-            bottom: auto;
-            left: auto;
-            transform: none;
-            width: 100%;
-            margin: 10px auto 14px auto;
-            z-index: 990;
+            bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(560px, calc(100vw - 20px));
+            margin: 0;
+            z-index: 9999;
         }
     }
     </style>

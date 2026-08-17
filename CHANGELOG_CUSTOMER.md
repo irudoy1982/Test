@@ -3,6 +3,10 @@
 This changelog is intended for production release notes that can be shown to customers.
 Keep this file focused only on customer-visible questionnaire and report changes.
 
+## v15.1-dev.10
+
+- Kept the draft save and sharing controls pinned to the bottom of phone screens, including devices with a browser or system safe area.
+
 ## v15.1-dev.9
 
 - Added structured backup and recovery details: storage locations, immutable copies, restore testing, RTO/RPO, DR plans, and recovery sites.
