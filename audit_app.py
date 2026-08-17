@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.12"
+APP_VERSION = "15.1-dev.14"
 
 
 def get_app_instance_label():
@@ -9066,6 +9066,12 @@ def risk_semantic_key(item):
             "incident_response": "siem_soc",
             "incident_response_plan": "siem_soc",
             "ir_plan": "siem_soc",
+            "database_monitoring": "database_security",
+            "database_activity_monitoring": "database_security",
+            "database": "database_security",
+            "db_monitoring": "database_security",
+            "db_security": "database_security",
+            "dam": "database_security",
         }
         return aliases.get(explicit_key, explicit_key)
 
@@ -9091,6 +9097,10 @@ def risk_semantic_key(item):
         )),
         ("ztna", ("ztna", "zero trust network access", "доступ по принципу нулевого доверия")),
         ("pci_assurance", ("pci dss", "cardholder data environment", "cde")),
+        ("database_security", (
+            "мониторинг баз данных", "мониторинга баз данных", "активности в базах данных",
+            "database activity monitoring", "database security", "db security", "dam",
+        )),
         ("physical_security", ("физическая защит", "контроль доступа в цод", "пожаротуш")),
     ]
     for key, markers in title_buckets:
@@ -9149,6 +9159,10 @@ def risk_semantic_key(item):
         ("storage", ("схд", "storage", "raid", "snapshot", "iops")),
         ("it_monitoring", ("эксплуатационный мониторинг", "доступности", "производительности", "capacity")),
         ("appsec", ("sast", "dast", "appsec", "безопасность прилож", "исходный код", "ci/cd")),
+        ("database_security", (
+            "мониторинг баз данных", "мониторинга баз данных", "активности в базах данных",
+            "database activity monitoring", "database security", "db security", " dam ",
+        )),
         ("business_systems", ("erp", "crm", "бизнес-систем")),
     ]
 
@@ -9271,6 +9285,12 @@ def sanitize_ai_audit_narrative(narrative, results):
                 "VLAN, ACL, VRF или межсегментных политик; требуется анализ схемы и правил NGFW."
             )
         semantic_key = risk_semantic_key({"risk": text, "description": text})
+        if semantic_key == "database_security":
+            return (
+                "Анкета не проверяет специализированные контроли безопасности баз данных. "
+                "Требуется отдельный DB Security assessment критичных БД, привилегированных ролей, "
+                "журналирования и текущего мониторинга; пилот DAM проводится только при подтвержденном разрыве."
+            )
         strict_presence_keys = {
             "mfa", "iam", "pam", "siem_soc", "patch", "web_waf", "mail",
             "dlp", "endpoint_detection", "backup",
@@ -9333,6 +9353,33 @@ def enforce_audit_fact_policy(item, results, context):
     if isinstance(evidence, list):
         normalized["evidence"] = [expand_regulatory_references(value) for value in evidence]
     key = risk_semantic_key(normalized)
+
+    if key == "database_security":
+        normalized.update({
+            "level": "MEDIUM",
+            "risk": "Контроль активности в критичных базах данных требует подтверждения",
+            "description": (
+                "Анкета не проверяет специализированные контроли DB Security и DAM, поэтому наличие "
+                "или отсутствие такого контроля не подтверждено."
+            ),
+            "impact": (
+                "Без отдельной проверки журналирования, привилегированного доступа и выявления аномалий "
+                "нельзя достоверно оценить остаточный риск для критичных баз данных."
+            ),
+            "recommendation": (
+                "Провести DB Security assessment: определить критичные БД, владельцев, привилегированные "
+                "роли, источники аудита и текущий мониторинг; при подтвержденном разрыве провести пилот DAM."
+            ),
+            "evidence": [
+                "Специализированные вопросы по DB Security и DAM в текущей анкете отсутствуют",
+                "Требуется подтверждение на отдельном техническом обследовании",
+            ],
+            "success_metric": (
+                "Критичные БД инвентаризированы; текущие контроли и разрывы подтверждены; "
+                "решение о пилоте принято по результатам assessment"
+            ),
+            "vendors": ["DAM/DB Security"],
+        })
 
     if key == "segmentation" and network_segmentation_evidence(results) != "absent" and not is_enabled(results.get("NAC")):
         normalized.update({
@@ -10184,6 +10231,12 @@ def presentation_action_text(value, limit=165):
         return sentence
 
     text = presentation_text(value, 10000)
+    text = re.sub(
+        r"(?<=[.!?])(\s+)([а-яёa-z])",
+        lambda match: match.group(1) + match.group(2).upper(),
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"\s*\((?:например|напр\.)[^)]*\)", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\s+\d+\.\s*$", "", text).strip()
     numbered_parts = [
@@ -10495,6 +10548,7 @@ def presentation_success_metric(semantic_key):
         "storage": "Емкость и производительность контролируются по утвержденным порогам и прогнозу",
         "dr": "Критичные сервисы проходят тест восстановления в пределах утвержденных RTO/RPO",
         "pci_assurance": "PCI DSS scope, способ подтверждения, план устранения отклонений и владельцы доказательств утверждены",
+        "database_security": "Критичные БД и действующие контроли проверены; решение о пилоте DAM обосновано результатами assessment",
     }
     return metrics.get(semantic_key, "Владелец, срок и измеримый критерий результата утверждены")
 
@@ -10573,6 +10627,11 @@ def canonical_roadmap_action(item, phase):
             "31-60 дней": "Провести ограниченный пилот DLP и скорректировать политики по фактическим результатам.",
             "61-90 дней": "Масштабировать подтвержденные политики DLP и включить контроль инцидентов и исключений.",
         },
+        "database_security": {
+            "0-30 дней": "Провести DB Security assessment критичных БД, привилегированных ролей, журналирования и текущего мониторинга.",
+            "31-60 дней": "При подтвержденном разрыве провести ограниченный пилот DAM и проверить качество аудита и выявления аномалий.",
+            "61-90 дней": "Масштабировать подтвержденный DAM-контроль на согласованный контур и включить регулярный контроль исключений.",
+        },
         "control_assurance": {
             "0-30 дней": "Согласовать критичные сценарии атак, источники телеметрии, владельцев реакции и исходные MTTD/MTTR.",
             "31-60 дней": "Провести purple-team проверку и оформить корректирующие действия по подтвержденным разрывам.",
@@ -10644,6 +10703,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "siem_soc": "61-90 дней",
         "dlp": "61-90 дней",
         "appsec": "61-90 дней",
+        "database_security": "0-30 дней",
     }
     level_priority = {
         "CRITICAL": "P1", "КРИТИЧЕСКИЙ": "P1",
@@ -10667,6 +10727,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "nac": "Сетевой доступ",
         "ztna": "Удаленный доступ",
         "dlp": "Защита данных",
+        "database_security": "Защита баз данных",
     }
     phase_counts = {phase: 0 for phase in phase_order}
     roadmap = []
@@ -10683,6 +10744,7 @@ def build_canonical_report_roadmap(report_risks, results=None, context=None, max
         "it_monitoring": 6,
         "change_management": 7,
         "itam": 8,
+        "database_security": 9,
     }
     ordered_risks = sorted(
         [item for item in (report_risks or []) if isinstance(item, dict)],
