@@ -3,6 +3,12 @@
 This changelog is intended for production release notes that can be shown to customers.
 Keep this file focused only on customer-visible questionnaire and report changes.
 
+## v15.1-dev.16
+
+- Kept privileged-access, security-monitoring, and network-security recommendations in separate findings.
+- Existing PAM and external monitoring services are now assessed for coverage before any expansion is recommended.
+- Aligned actions, solution classes, success criteria, and roadmap outcomes across the presentation and report.
+
 ## v15.1-dev.12
 
 - Kept conclusions consistent with confirmed monitoring, recovery objectives, and restore testing.

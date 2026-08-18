@@ -1397,6 +1397,58 @@ def test_confirmed_dlp_is_assurance_not_resale() -> None:
     )
 
 
+def test_confirmed_pam_cannot_be_mixed_with_siem_or_ids() -> None:
+    module_text = APP.read_text(encoding="utf-8")
+    namespace = {
+        "re": re,
+        "expand_regulatory_references": lambda value: str(value or ""),
+        "network_segmentation_evidence": lambda results: "unknown",
+    }
+    for name in ("is_enabled", "has_security_monitoring", "risk_semantic_key"):
+        exec(extract_function_source(module_text, name), namespace)
+    exec(extract_function_source(module_text, "enforce_audit_fact_policy"), namespace)
+
+    results = {
+        "PAM": "CyberArk PAM",
+        "SIEM": "Нет",
+        "Модель ОЦИБ": "Сторонний ОЦИБ / MSSP",
+        "ОЦИБ": "АО Казтелепорт",
+        "SOAR": "Palo Alto Cortex XSOAR",
+    }
+    item = namespace["enforce_audit_fact_policy"](
+        {
+            "semantic_key": "ids_ips",
+            "level": "HIGH",
+            "risk": "Привилегированные доступы требуют отдельного контроля",
+            "recommendation": "Запустить пилот SIEM и проверить IDS/IPS.",
+            "success_metric": "Пилот SIEM завершен.",
+            "vendors": ["Fortinet", "Check Point"],
+        },
+        results,
+        {},
+    )
+    joined = " ".join(str(item.get(field, "")) for field in (
+        "risk", "description", "impact", "recommendation", "success_metric"
+    )).lower()
+    assert_true(item.get("semantic_key") == "pam_assurance", "Existing PAM was not reframed as assurance")
+    assert_true(item.get("level") == "LOW", "Existing PAM assurance retained implementation priority")
+    assert_true("пилот siem" not in joined and "ids/ips" not in joined, "PAM finding retained unrelated SIEM/IDS actions")
+    assert_true("cyberark pam" in joined and "аттеста" in joined, "PAM assurance lost confirmed product or action")
+    assert_true(not item.get("vendors"), "PAM assurance must not recommend network vendors")
+
+    for name in ("normalize_vendor_key", "normalize_report_vendor_values", "solution_categories_for_report_item"):
+        exec(extract_function_source(module_text, name), namespace)
+    mixed_solution = namespace["solution_categories_for_report_item"]({
+        "semantic_key": "pam",
+        "risk": "Контроль привилегий",
+        "recommendation": "Проверить IDS/IPS перед пилотом PAM.",
+    })
+    assert_true(
+        mixed_solution.startswith("PAM;"),
+        "A stray IDS/IPS phrase overrode the canonical PAM solution class",
+    )
+
+
 def main() -> None:
     tests = [
         test_ai_first_sales_behavior,
@@ -1430,6 +1482,7 @@ def main() -> None:
         test_mature_bank_and_pci_assurance_contract,
         test_ai_narrative_reframes_confirmed_controls,
         test_confirmed_dlp_is_assurance_not_resale,
+        test_confirmed_pam_cannot_be_mixed_with_siem_or_ids,
     ]
     for test in tests:
         test()

@@ -121,7 +121,7 @@ def get_app_secret(name, default=None):
 
 
 APP_INSTANCE_DEFAULT = "Test"
-APP_VERSION = "15.1-dev.15"
+APP_VERSION = "15.1-dev.16"
 
 
 def get_app_instance_label():
@@ -7411,9 +7411,6 @@ def solution_categories_for_report_item(item):
         " ".join(normalize_report_vendor_values(item)),
     ]))
 
-    if "ids" in text or "ips" in text or "intrusion" in text:
-        return "IDS/IPS; NGFW IPS-профили; мониторинг сетевых атак"
-
     categories_by_key = {
         "mfa": "MFA / Conditional Access",
         "iam": "IAM / Identity Governance / управление жизненным циклом учетных записей",
@@ -7446,6 +7443,10 @@ def solution_categories_for_report_item(item):
         "pam_assurance": "Аттестация привилегий; проверка охвата PAM",
         "soc_assurance": "SOC use-case assessment; проверка полноты телеметрии",
     }
+    if key in categories_by_key:
+        return categories_by_key[key]
+    if "ids" in text or "ips" in text or "intrusion" in text:
+        return "IDS/IPS; NGFW IPS-профили; мониторинг сетевых атак"
     return categories_by_key.get(
         key,
         "Экспертное обследование; решение определяется после подтверждения разрыва",
@@ -7462,13 +7463,6 @@ def portfolio_manufacturers_for_report_item(item):
         str(item.get("recommendation", "")),
         " ".join(normalize_report_vendor_values(item)),
     ]))
-
-    if "ids" in text or "ips" in text or "intrusion" in text:
-        return portfolio_vendors_by_categories(
-            ["IDS/IPS", "NGFW"],
-            preferred=["Fortinet", "Check Point", "Palo Alto", "Forcepoint"],
-            gap_text="Нет отдельной категории IDS/IPS в матрице; проверить NGFW-портфель",
-        )
 
     if key == "legacy_os":
         return portfolio_vendors_by_categories(
@@ -7511,6 +7505,13 @@ def portfolio_manufacturers_for_report_item(item):
         "os_inventory": (["ITAM", "ITSM", "Operating Systems"], ["ManageEngine", "Ivanti", "Microsoft"], []),
         "itam": (["ITAM", "ITSM"], ["ManageEngine", "Ivanti"], []),
     }
+
+    if key not in category_map and ("ids" in text or "ips" in text or "intrusion" in text):
+        return portfolio_vendors_by_categories(
+            ["IDS/IPS", "NGFW"],
+            preferred=["Fortinet", "Check Point", "Palo Alto", "Forcepoint"],
+            gap_text="Нет отдельной категории IDS/IPS в матрице; проверить NGFW-портфель",
+        )
 
     if key in category_map:
         categories, preferred, exclude = category_map[key]
@@ -9368,6 +9369,78 @@ def enforce_audit_fact_policy(item, results, context):
     if isinstance(evidence, list):
         normalized["evidence"] = [expand_regulatory_references(value) for value in evidence]
     key = risk_semantic_key(normalized)
+    title_text = str(normalized.get("risk", "") or "").lower()
+
+    privileged_title = any(marker in title_text for marker in (
+        "pam", "привилег", "администраторские учетные", "администраторские учётные",
+    ))
+    if privileged_title and is_enabled(results.get("PAM")):
+        pam_product = str(results.get("PAM", "") or "действующий PAM").strip()
+        normalized.update({
+            "semantic_key": "pam_assurance",
+            "_semantic_key": "pam_assurance",
+            "level": "LOW",
+            "risk": "Охват привилегированных доступов действующим PAM требует аттестации",
+            "description": (
+                f"В анкете подтвержден действующий PAM: {pam_product}. Требуется проверить, что в контур "
+                "включены критичные системы, сервисные и аварийные учетные записи, а исключения имеют владельцев."
+            ),
+            "impact": (
+                "Неучтенные привилегированные записи и исключения сохраняют возможность обхода контроля "
+                "даже при внедренной PAM-платформе."
+            ),
+            "recommendation": (
+                "Провести аттестацию привилегий: сопоставить PAM с каталогом учетных записей и критичных "
+                "систем, проверить запись сессий, аварийный доступ и сроки закрытия исключений."
+            ),
+            "evidence": [
+                f"PAM в анкете: {pam_product}",
+                "Полнота охвата критичных систем и исключений требует периодического подтверждения",
+            ],
+            "success_metric": (
+                "Все критичные привилегированные записи учтены; исключения имеют владельца и срок; "
+                "контрольные сессии записываются и проверяются"
+            ),
+            "vendors": [],
+        })
+        key = "pam_assurance"
+
+    monitoring_title = any(marker in title_text for marker in (
+        "siem", "soc", "оцб", "оциб", "мониторинг событий", "корреляц",
+    ))
+    if monitoring_title and has_security_monitoring(results):
+        monitoring_value = (
+            results.get("SIEM") or results.get("ОЦИБ") or results.get("Модель ОЦИБ") or results.get("SOC")
+        )
+        normalized.update({
+            "semantic_key": "soc_assurance",
+            "_semantic_key": "soc_assurance",
+            "level": "LOW",
+            "risk": "Покрытие централизованного мониторинга требует проверки",
+            "description": (
+                f"В анкете подтвержден мониторинг через {monitoring_value}. Наличие внутреннего или внешнего "
+                "ОЦИБ не подтверждает автоматически полноту источников, use-case и SLA реагирования."
+            ),
+            "impact": (
+                "Неподключенные критичные источники или неактуальные сценарии могут создавать слепые зоны "
+                "при формально действующей услуге мониторинга."
+            ),
+            "recommendation": (
+                "Провести SOC use-case assessment: сверить критичные активы с источниками и сценариями, "
+                "проверить SLA эскалации и качество расследований; расширение SIEM/MSSP рассматривать только "
+                "после подтверждения конкретного разрыва."
+            ),
+            "evidence": [
+                f"Централизованный мониторинг: {monitoring_value}",
+                "Полнота источников, use-case и SLA требует регулярного подтверждения",
+            ],
+            "success_metric": (
+                "Критичные активы сопоставлены с источниками и use-case; обязательная телеметрия поступает; "
+                "SLA эскалации подтверждается отчетностью"
+            ),
+            "vendors": [],
+        })
+        key = "soc_assurance"
 
     if key == "database_security":
         normalized.update({
